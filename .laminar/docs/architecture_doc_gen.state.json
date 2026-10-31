@@ -1,0 +1,1353 @@
+{
+ "contracts": null,
+ "diagrams": {
+  "g.diagram": {
+   "anchor_hash": "e3b0c44298fc1c14",
+   "attempts": 0,
+   "mermaid": "flowchart TD\n    subgraph Control Plane\n        do_admin_api[\"do-admin-api\"]\n        scheduler[\"scheduler\"]\n        orchestrator[\"orchestrator\"]\n        cofig_db[\"cofig_db\"]\n    end\n\n    subgraph Processing\n        child_export_dag[\"child_export_dag\"]\n        emr_do[\"emr_do\"]\n        dev[\"dev\"]\n    end\n\n    subgraph Storage and Egress\n        staging_bucet_internal[\"staging_bucet_internal\"]\n        egress_lambda[\"egress-lambda\"]\n        egress_dag[\"egress dag\"]\n        audit_bucket[\"audit_bucket\"]\n    end\n\n    subgraph External Customers\n        customer_SFTP_server[\"customer SFTP server\"]\n        customer_bucket[\"customer bucket\"]\n        Customer_Azure_Blob_Destination[\"Customer Azure Blob Destination\"]\n        Customer_GCS_Destination[\"Customer GCS Destination\"]\n    end\n\n    do_admin_api -->|write| cofig_db\n    do_admin_api -->|trigger| orchestrator\n    scheduler -->|trigger| orchestrator\n    orchestrator -->|read| cofig_db\n    orchestrator -->|invoke| child_export_dag\n    child_export_dag -->|invoke| emr_do\n    child_export_dag -->|read| cofig_db\n    emr_do -->|read| dev\n    emr_do -->|write| staging_bucet_internal\n    staging_bucet_internal -->|trigger| egress_lambda\n    egress_lambda -->|trigger| egress_dag\n    egress_dag -->|read| staging_bucet_internal\n    egress_dag -->|push| customer_SFTP_server\n    egress_dag -->|push| customer_bucket\n    egress_dag -->|push| Customer_Azure_Blob_Destination\n    egress_dag -->|push| Customer_GCS_Destination\n    do_admin_api -->|write| audit_bucket\n    emr_do -->|push| audit_bucket\n    egress_dag -->|push| audit_bucket",
+   "status": "complete",
+   "updated_epoch": 1793481480430
+  }
+ },
+ "doc_hash": "378f5ec46f5166b05d300b4a6fcfa736b6a675760d3f94ae4aea0e977bc23d31",
+ "format": 1,
+ "graph_hash": "88c8e9821357aaa74ac6e3ee37db430510beadad62cea53a7d123b377f0b0d49",
+ "notes": [],
+ "revision": 4,
+ "sections": {
+  "c.imp_aws_aws_emr_serverless_5.asm": {
+   "attempts": 0,
+   "body": "- **Principle**: Standardized Operational Assumptions.\n- **Rationale**: Assumes standard AWS service quotas for EMR Serverless applications are sufficient for peak concurrent child export jobs.\n- **Guardrails**: Any scaling limit increases must be coordinated via infrastructure-as-code change requests.",
+   "hash": "2b16625dadf20aea",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_emr_serverless_5.cfg": {
+   "attempts": 0,
+   "body": "- **Principle**: Minimalist Declarative Configuration Overrides.\n- **Rationale**: Setting explicit boundaries on application capacity prevents runaway scaling while accommodating heavy batch processing spikes.\n- **Guardrails**: The architecture sets the following configuration properties: `application_name` = `emr_do`, `release_label` = `emr-7.0.0`, `job_type` = `SPARK`, and `max_capacity_units` = `200`. Default vendor settings are applied for all unlisted properties.",
+   "hash": "aa67398cca812c77",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_emr_serverless_5.err": {
+   "attempts": 0,
+   "body": "- **Principle**: Fail-Fast and Job-Level Retry Isolation.\n- **Rationale**: Unhandled exceptions during data extraction or transformation fail the job run immediately, preventing incomplete data from contaminating staging storage.\n- **Guardrails**: Failed runs must trigger alert notifications and record execution failure status in the audit store.",
+   "hash": "e2343eddbb4985d5",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_emr_serverless_5.fo": {
+   "attempts": 0,
+   "body": "- **Principle**: Scalable Serverless Distributed Data Processing.\n- **Rationale**: The **emr_do** component executes large-scale Apache Spark jobs to extract, transform, and stage Golden Entity datasets from the **dev** Redshift cluster without requiring manual cluster provisioning or capacity tuning.\n- **Guardrails**: Engineers must ensure jobs utilize dynamic worker allocation, partition datasets correctly on S3 to prevent query throttling, and process only necessary columns to minimize memory pressure.",
+   "hash": "163edec615298a09",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_emr_serverless_5.in": {
+   "attempts": 0,
+   "body": "- **Principle**: Parameterized Extraction Contract.\n- **Rationale**: The job accepts structured runtime parameters (such as execution lineage UUID, extraction mode, and watermark timestamps) from the invoking **child_export_dag** to determine extraction boundaries.\n- **Guardrails**: Inputs must be strictly validated against expected schemas before initiating Spark distributed reads.",
+   "hash": "aa5ae71c4a4bee7f",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_emr_serverless_5.out": {
+   "attempts": 0,
+   "body": "- **Principle**: Idempotent Data Staging.\n- **Rationale**: Output datasets are written as partitioned files to **staging_bucet_internal**, accompanied by manifest records to ensure downstream verification.\n- **Guardrails**: Job writes must be atomic, using S3 committers to prevent partial or corrupted file propagation.",
+   "hash": "c7ee2d54a2abcde8",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_emr_serverless_5.perf": {
+   "attempts": 0,
+   "body": "- **Principle**: Optimized Distributed Resource Utilization.\n- **Rationale**: Performance is measured by job completion time, worker scaling latency, and efficient memory utilization across executors.\n- **Guardrails**: Peak worker RSS memory must stay within allocated worker limits, and small file creation on S3 must be avoided through proper partitioning.",
+   "hash": "d089126119da5c59",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_emr_serverless_5.sec": {
+   "attempts": 0,
+   "body": "- **Principle**: Least-Privilege IAM and Data Minimization.\n- **Rationale**: EMR Serverless jobs execute under dedicated IAM execution roles with restricted read access to Redshift and write access only to designated staging buckets.\n- **Guardrails**: Sensitive profile attributes (PII) must be handled in compliance with organizational masking and encryption standards.",
+   "hash": "8ff8c61919fc2207",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_emr_serverless_5.tel": {
+   "attempts": 0,
+   "body": "- **Principle**: Standardized CloudEvents Telemetry.\n- **Rationale**: Job lifecycle milestones (start, success, failure) emit structured events to track execution duration, record counts, and lineage.\n- **Guardrails**: Telemetry publishing failures must be caught and logged locally without crashing the core job execution flow.",
+   "hash": "3d8ff6980ef1301e",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_emr_serverless_5.tn": {
+   "attempts": 0,
+   "body": "- **Principle**: Ephemeral Compute Isolation and Stateless Execution.\n- **Rationale**: EMR Serverless applications spin up compute resources exclusively for the duration of the job run and terminate them immediately upon completion, containing blast radii and eliminating idle infrastructure costs.\n- **Guardrails**: Workers must never store persistent state locally; all outputs and intermediate checkpoints must be written directly to S3 storage.",
+   "hash": "8c3b90b097a25f26",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_eventbridge_2.asm": {
+   "attempts": 0,
+   "body": "- **Bi-weekly cadence:** EventBridge cron cannot express \"every two weeks\" natively; assumption: bi-weekly is implemented as a monthly-style rule with a fortnight offset pattern (two rules offset by one week, each firing fortnightly via day-of-month constraints), or the orchestrator filters bi-weekly connections from a weekly event using the config's cadence metadata. The orchestrator's \u00b110-minute window logic remains the single selection authority.\n- **Organisation logging-standard retention value:** not stated in inputs; assumption: a single confirmed value (in days) is supplied per environment before sprint commitment and applied uniformly to all pipeline log groups and the audit store (SCRUM-486 AC#4). Until confirmed, the value is parameterised, never hardcoded.\n- **Scheduler hosting in the allowlist check:** SCRUM-485 lists n2 \"where hosted\"; assumption: the scheduler is realised as EventBridge rules attached to the MWAA environment's eventing and is reported in the allowlist verification report as part of the MWAA-managed stack, not as a separate resource type.\n- **Time zone:** assumption: all cron schedules are evaluated in UTC, consistent with the ISO-8601 UTC audit timestamp requirement.\n\n---",
+   "hash": "d5aa548d1aae837e",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481834574
+  },
+  "c.imp_aws_aws_eventbridge_2.cfg": {
+   "attempts": 0,
+   "body": "**Principle: Configure only what the architecture decides; defer the rest to managed defaults.** The architecture sets exactly the following, each with rationale:\n\n| Setting | Value / approach | Rationale |\n|---|---|---|\n| Rule type | Scheduled (cron/rate) rule per cadence class | One rule per cadence family keeps filtering specific and avoids overly broad patterns (anti-pattern guard). |\n| Target | MWAA orchestrator DAG trigger (n3) | Direct, managed hand-off; no intermediate compute needed for a metadata-only event. |\n| Retry policy | Bounded retries with maximum event age set to fit inside the \u00b110-minute selection window | An event delivered after the window would be ignored by n3 anyway; expiring it early prevents wasted retries. |\n| DLQ | Attached to the rule target | Mandatory per EventBridge tenets; failed deliveries are captured, alarmed, and replayable. |\n| Event archiving | Enabled with a retention aligned to the organisation logging-standard value | Supports replay for debugging and audit reconstruction (SCRUM-486). |\n\nDefaults deliberately not overridden: event envelope fields, rule naming conventions, and bus encryption (AWS-managed KMS) \u2014 these are production-grade managed defaults and deferring to them is itself the decision.",
+   "hash": "1b0942dd36827fec",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481834574
+  },
+  "c.imp_aws_aws_eventbridge_2.err": {
+   "attempts": 0,
+   "body": "**Principle: Fail visibly, retry bounded, never lose the fact that a schedule fired.** If the orchestrator target fails to invoke, EventBridge retries per the configured policy and then routes the event to the DLQ; a DLQ depth alarm raises an automated alert. Because the \u00b110-minute window makes late delivery moot, the retry budget is deliberately short. Missed schedules (e.g., during an outage) are reconciled by the orchestrator's window logic on the next event, not by backfill from the scheduler.\n\n**Guardrails:** no unbounded retries; no silent drops (DLQ mandatory); DLQ replay is an operational action, not an automatic one, to avoid duplicate runs.",
+   "hash": "8250160e8900d0c8",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481834574
+  },
+  "c.imp_aws_aws_eventbridge_2.fo": {
+   "attempts": 0,
+   "body": "**Architectural principle: Decoupled, event-driven scheduling.** The Export Scheduler (n2) is implemented as an Amazon EventBridge scheduled rule that raises a cadence event at each configured schedule time T and hands it to the Export Orchestrator DAG (n3) on MWAA. The scheduler owns *when* work is due; the orchestrator owns *what* work is due. This separation means schedule evaluation (cron matching, the \u00b110-minute selection window of SCRUM-480 AC#1) is a pure concern of the orchestrator, while the scheduler remains a stateless, zero-maintenance time source.\n\n**Rationale and trade-offs.** A managed scheduler removes the need for a self-hosted cron container or ECS-based timer (both rejected: extra always-on infrastructure outside the approved allowlist of SCRUM-485). EventBridge schedules are highly available and emit a standard event envelope. The trade-off is that EventBridge delivery is asynchronous and at-least-once; the orchestrator must therefore be idempotent per schedule time, which it already is because selection is deterministic within the \u00b110-minute window.\n\n**Guardrails.** The scheduler must never carry connection metadata or business data in its events \u2014 it emits only the schedule time and cadence identity; all connection selection happens in n3 against the Export Config Store (n6). It must not be used for synchronous request/response (per EventBridge anti-patterns); manual triggers enter exclusively through the Export Admin API (n1). Every rule target must have a DLQ attached so a failed orchestrator invocation is never silently dropped.",
+   "hash": "b4f58794208149ac",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481834574
+  },
+  "c.imp_aws_aws_eventbridge_2.in": {
+   "attempts": 0,
+   "body": "**Principle: The scheduler consumes configuration, not data.** Its only \"input\" is the set of active cadences defined in the Export Config Store (n6) via the Export Admin API (n1). The scheduler does not read n6 directly \u2014 cadence rules are provisioned from that configuration through the deployment pipeline, keeping the scheduler stateless and the config store authoritative.\n\n**Guardrails:** cadence changes must flow exclusively through the config CRUD path (SCRUM-479) so that every change is validated (5-field cron, allowed cadences) and audited (`ADMIN_CREATE`/`ADMIN_UPDATE`); the scheduler must never accept or act on ad-hoc schedule input at runtime.",
+   "hash": "42ca7074cdd8c73d",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481834574
+  },
+  "c.imp_aws_aws_eventbridge_2.out": {
+   "attempts": 0,
+   "body": "**Principle: Emit minimal, self-describing trigger events.** Output is a single event per scheduled time T, carrying the standard EventBridge envelope (`source`, `detail-type`, `time`, `region`, `account`) plus the cadence identity and schedule time. The orchestrator (n3) uses `time` to apply the \u00b110-minute selection window (SCRUM-480 AC#1).\n\n**Side effects:** (1) an audit event in n13 recording the scheduled trigger with `actor_id = system:export-scheduler` and the run's lineage UUID once n3 assigns it; (2) possible DLQ messages on target failure. The scheduler itself writes no data anywhere else.\n\n**Guardrails:** events must remain well under 256 KB; the scheduler must never emit per-connection events \u2014 fan-out to one Child Export DAG (n14) per connection is the orchestrator's responsibility (SCRUM-480 AC#4).",
+   "hash": "ba1ad014bd3ac86f",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481834574
+  },
+  "c.imp_aws_aws_eventbridge_2.perf": {
+   "attempts": 0,
+   "body": "**Principle: Measure schedule fidelity, not throughput.** Key metrics: schedule-to-orchestrator-invocation latency (must comfortably support the SCRUM-480 AC#5 requirement that a manual-triggered run reaches `running` within 30 s \u2014 scheduled events have no such hard SLA but are expected to invoke within seconds), target invocation success rate, DLQ depth (target: 0), and event archive volume. Alarms on DLQ depth and invocation failure rate.\n\n**Guardrails:** the scheduler is not on the 30-second manual-trigger path (that flows through the Export Admin API \u2192 Airflow REST API), so it must never be a latency bottleneck for that flow; hourly fast-batch cadences bound the minimum rule interval and must be validated against EventBridge scheduling granularity.",
+   "hash": "56602e68d6cbc27d",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481834574
+  },
+  "c.imp_aws_aws_eventbridge_2.sec": {
+   "attempts": 0,
+   "body": "**Principle: Least privilege on the event path.** The scheduler's rule target invokes MWAA with a dedicated IAM role scoped to that single action; no component can publish to or consume from the bus without an explicit role. The bus and archive are encrypted with the AWS-managed key (default, deliberately not overridden). Events carry no PII or credentials \u2014 connection credentials live only encrypted in n6 (SCRUM-481 AC#6) \u2014 so the scheduler's compliance surface is limited to audit integrity (SCRUM-486 schema) and stack allowlist compliance (SCRUM-485: EventBridge is the scheduling mechanism within the approved MWAA/RDS/Lambda/EMR Serverless/S3/ECS stack; the scheduler is accounted for \"where hosted\" per SCRUM-485 scope).\n\n**Guardrails:** no public event bus; no cross-account targets without explicit policy; scheduler log group retention set to the confirmed organisation value.",
+   "hash": "e54c4542a30bf812",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481834574
+  },
+  "c.imp_aws_aws_eventbridge_2.tel": {
+   "attempts": 0,
+   "body": "**Principle: One audit schema, uniformly applied.** Scheduler-related telemetry follows the SCRUM-486 schema exactly: `actor_id` (`system:export-scheduler`), `timestamp_utc` (ISO-8601, millisecond precision, Z suffix), `event_type` (from the enumerated set \u2014 scheduled triggers map to `EXECUTION_STARTED` at the orchestrator boundary), and `execution_id` (the lineage UUID generated by n3). The scheduler's own operational telemetry (rule invocations, DLQ depth, target delivery failures) goes to its explicitly provisioned CloudWatch log group under n13 with the organisation retention value.\n\n**Guardrails:** exactly one audit record per event occurrence (SCRUM-486 AC#1); no free-form event types; timestamps always UTC with Z suffix.",
+   "hash": "7bebd970d1e1aaea",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481834574
+  },
+  "c.imp_aws_aws_eventbridge_2.tn": {
+   "attempts": 0,
+   "body": "**Principle: Single responsibility of the time source.** The scheduler exists only to raise events on cadence; it holds no configuration, no state, and no business logic.\n\n- **Tenet 1 \u2014 Cadence coverage.** The scheduler must support the full cadence set required by SCRUM-481: daily, weekly, bi-weekly, monthly, and hourly fast-batch schedules. Bi-weekly is not natively expressible in a single cron expression, so the architecture resolves it as a documented assumption (see Assumptions) rather than by adding a new component.\n- **Tenet 2 \u2014 Immutability of emitted events.** Events are immutable facts; the scheduler never mutates or retracts an event. A missed or duplicate event is reconciled by the orchestrator's window logic, not by event editing.\n- **Tenet 3 \u2014 Explicit failure capture.** Every rule target carries a DLQ and a bounded retry policy; a DLQ depth alarm is the scheduler's primary health signal.\n- **Tenet 4 \u2014 Auditability.** Scheduled trigger events are recorded in the Audit & Execution Log Store (n13) as `EXECUTION_STARTED`-class lifecycle events with `actor_id = system:export-scheduler`, satisfying SCRUM-486's schema.\n\n**Guardrails:** no ad-hoc schedule changes outside the Export Config Store (n6) as the single source of truth for cadences; no payload growth beyond the 256 KB event limit (trivially satisfied since payloads are metadata-only).",
+   "hash": "3eb308df388a9bd9",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481834574
+  },
+  "c.imp_aws_aws_lambda_9.asm": {
+   "attempts": 0,
+   "body": "- **Principle**: Asynchronous Event Coupling Assumption.\n- **Rationale**: Assumes S3 event notifications arrive reliably and in order, with MWAA handling duplicate event deduplication if necessary.\n- **Guardrails**: Idempotency keys must be enforced across workflow triggers.",
+   "hash": "633191d917fbef43",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_lambda_9.cfg": {
+   "attempts": 0,
+   "body": "- **Principle**: Right-Sized Serverless Resource Allocation.\n- **Rationale**: Allocating adequate memory and timeout ensures efficient event parsing and API invocation without over-provisioning.\n- **Guardrails**: The architecture sets the following properties: `function_name` = `egress-lambda`, `runtime` = `python3.11`, `handler` = `lambda_function.lambda_handler`, `memory_mb` = `512`, `timeout_seconds` = `30`, `vpc_enabled` = `False`, `environment_variables` = `{}`, and `tags` = `{}`.",
+   "hash": "c520ec83c7d3f21b",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_lambda_9.err": {
+   "attempts": 0,
+   "body": "- **Principle**: Dead-Letter Queue and Retry Resilience.\n- **Rationale**: Failed event processing attempts are retried synchronously up to configured limits before being routed to a dead-letter queue for investigation.\n- **Guardrails**: Errors must be fully captured with stack traces in CloudWatch Logs.",
+   "hash": "fd4b6cc80233c6ba",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_lambda_9.fo": {
+   "attempts": 0,
+   "body": "- **Principle**: Event-Driven Serverless Integration.\n- **Rationale**: The **egress-lambda** function acts as a lightweight event bridge, consuming S3 object creation notifications from **staging_bucet_internal** and triggering the **egress dag** workflow.\n- **Guardrails**: The function must remain stateless and delegate heavy processing to MWAA and Spark compute layers.",
+   "hash": "2f2dce32313636f2",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_lambda_9.in": {
+   "attempts": 0,
+   "body": "- **Principle**: Standardized S3 Event Notification Contract.\n- **Rationale**: Consumes standard Amazon S3 event notification JSON payloads containing bucket names, object keys, and event timestamps.\n- **Guardrails**: Incoming event structures must be validated before triggering downstream DAG orchestration.",
+   "hash": "a989965a28f39956",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_lambda_9.out": {
+   "attempts": 0,
+   "body": "- **Principle**: Workflow Trigger Side Effect.\n- **Rationale**: Invokes the MWAA **egress dag** via REST API, passing the lineage UUID and object metadata in the run configuration.\n- **Guardrails**: Invocation calls must be retried with exponential backoff upon encountering transient HTTP errors.",
+   "hash": "12d61823bc635c23",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_lambda_9.perf": {
+   "attempts": 0,
+   "body": "- **Principle**: Cold-Start Minimization and Fast Execution.\n- **Rationale**: Monitored via invocation duration, memory consumption, and concurrency metrics.\n- **Guardrails**: Execution duration should remain well below the 30-second timeout threshold.",
+   "hash": "2016a8fb7b1fdc32",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_lambda_9.sec": {
+   "attempts": 0,
+   "body": "- **Principle**: Least-Privilege IAM Execution Role.\n- **Rationale**: The Lambda function executes under an IAM role restricted strictly to reading event metadata and invoking the designated MWAA DAG.\n- **Guardrails**: Network access and environment variables must be secured against unauthorized extraction.",
+   "hash": "c040b50072830a07",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_lambda_9.tel": {
+   "attempts": 0,
+   "body": "- **Principle**: Structured CloudWatch Logging and Tracing.\n- **Rationale**: Emits JSON-formatted logs containing request IDs, execution duration, and success/failure metrics to CloudWatch.\n- **Guardrails**: Logs must never contain PII or plaintext credentials.",
+   "hash": "9022e0899c2de2b0",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_lambda_9.tn": {
+   "attempts": 0,
+   "body": "- **Principle**: Low-Latency Execution and Reliable Invocation.\n- **Rationale**: Ensures rapid notification handling and workflow orchestration without maintaining idle server infrastructure.\n- **Guardrails**: Timeout and memory configurations must be tuned to prevent throttling or execution failure during peak event surges.",
+   "hash": "c8bfa17c06f1cbb6",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_mwaa_dag_10.asm": {
+   "attempts": 0,
+   "body": "- **Principle**: Standardized Operational Assumptions.\n- **Rationale**: Assumes customer-provided PGP public keys and destination connection parameters are pre-configured and valid within the export configuration store.\n- **Guardrails**: Invalid keys or unreachable endpoints fail during pre-flight checks.",
+   "hash": "412a3724f0634b4b",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_mwaa_dag_10.cfg": {
+   "attempts": 0,
+   "body": "- **Principle**: Deterministic Schedule and Concurrency Control.\n- **Rationale**: Restricting active runs and scheduling windows prevents overlapping data egress operations for the same target datasets.\n- **Guardrails**: The architecture sets the following properties: `dag_name` = `egress dag`, `schedule` = `@daily`, `catchup` = `False`, `max_active_runs` = `1`, and `tags` = `{}`.",
+   "hash": "c1dfe98a1b983173",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_mwaa_dag_10.err": {
+   "attempts": 0,
+   "body": "- **Principle**: Fail-Closed Cryptographic and Transfer Abort.\n- **Rationale**: If PGP encryption fails or host-key verification fails on sFTP, the transfer aborts immediately, zero bytes are transmitted, and an alert is raised.\n- **Guardrails**: Transient destination errors are retried up to 3 times before recording a final failure event.",
+   "hash": "72384b3dddb403c2",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_mwaa_dag_10.fo": {
+   "attempts": 0,
+   "body": "- **Principle**: Orchestrated Workflow Dependency and Delivery Management.\n- **Rationale**: The **egress dag** coordinates downstream packaging, GZIP compression, strict fail-closed PGP encryption, manifest generation, and multi-destination delivery (S3, Azure Blob, GCS, sFTP).\n- **Guardrails**: Engineers must ensure all data transformation steps execute sequentially and atomically before dispatching files to external endpoints.",
+   "hash": "e9290bf7189c13a8",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_mwaa_dag_10.in": {
+   "attempts": 0,
+   "body": "- **Principle**: Context-Driven Payload Inspection.\n- **Rationale**: Receives staging bucket object references and connection configuration metadata containing destination types, compression flags, and encryption parameters.\n- **Guardrails**: Input configuration must be validated against schema definitions prior to task execution.",
+   "hash": "09e4bda58e1a4c55",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_mwaa_dag_10.out": {
+   "attempts": 0,
+   "body": "- **Principle**: Secure Multi-Destination Egress Delivery.\n- **Rationale**: Delivers encrypted or raw export packages alongside SHA-256 JSON manifest control files to customer-owned destinations and internal audit sinks.\n- **Guardrails**: Zero unencrypted files may be transmitted when PGP encryption is enabled.",
+   "hash": "2528e7fb2b4a6f75",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_mwaa_dag_10.perf": {
+   "attempts": 0,
+   "body": "- **Principle**: Bounded Memory and Throughput Optimization.\n- **Rationale**: File splitting and streaming compression techniques prevent worker memory exhaustion when processing large export packages.\n- **Guardrails**: Peak memory usage must remain within standard worker tier boundaries.",
+   "hash": "6c0bed05be1c30a6",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_mwaa_dag_10.sec": {
+   "attempts": 0,
+   "body": "- **Principle**: Transport-Layer Security and Strict Verification.\n- **Rationale**: Enforces TLS 1.3 for S3, HTTPS for Azure and GCS, and SSH with strict host-key verification for sFTP to ensure absolute data protection in transit.\n- **Guardrails**: Missing or corrupt PGP keys must trigger immediate workflow termination and incident alerting.",
+   "hash": "dff2c9d29e061f66",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_mwaa_dag_10.tel": {
+   "attempts": 0,
+   "body": "- **Principle**: Comprehensive Workflow Audit Logging.\n- **Rationale**: Emits lifecycle events (`TRANSFER_STARTED`, `TRANSFER_COMPLETED`, `TRANSFER_FAILED`) capturing lineage UUIDs, checksums, and timestamps.\n- **Guardrails**: All telemetry records must be written immutably to the audit execution log store.",
+   "hash": "894dc674585ad253",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_mwaa_dag_10.tn": {
+   "attempts": 0,
+   "body": "- **Principle**: Resilient Delivery-Only Semantics with Retries.\n- **Rationale**: External deliveries are subject to network volatility; the DAG enforces robust retry policies to handle transient destination outages without data corruption.\n- **Guardrails**: Top-level DAG code must remain lightweight and free of heavy computation or blocking network calls.",
+   "hash": "3dbe7dc28ce2ed75",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_mwaa_dag_3.asm": {
+   "attempts": 0,
+   "body": "* **Assumption**: MWAA worker capacity is provisioned adequately to handle concurrent DAG parse cycles and task scheduling without queuing delays.\n* **Assumption**: Airflow REST API authentication tokens are securely managed via internal IAM instance profiles and secrets manager references.",
+   "hash": "51bb51c931b71aee",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481345604
+  },
+  "c.imp_aws_aws_mwaa_dag_3.cfg": {
+   "attempts": 0,
+   "body": "* **Principle**: Declarative Workflow Scheduling.\n* **Rationale**: Externalizing DAG parameters ensures consistent execution behavior and reproducible scheduling across environments.\n* **Guardrails**: Only architecture-mandated properties are explicitly configured:\n  * `schedule`: `@daily` \u2014 Aligns batch orchestration cadences with daily data synchronization requirements.\n  * `catchup`: `False` \u2014 Prevents unintended backfilling of historical DAG runs upon deployment or restart.\n  * `max_active_runs`: `1` \u2014 Ensures single-threaded execution per schedule window to prevent overlapping data extractions.\n  * `tags`: `{}` \u2014 Provisioned with metadata tags for operational categorization.\n  * `dag_name`: `orchestrator` \u2014 Unique identifier matching the workflow definition module.",
+   "hash": "b7c4aab1ca68374e",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481345604
+  },
+  "c.imp_aws_aws_mwaa_dag_3.err": {
+   "attempts": 0,
+   "body": "* **Principle**: Bounded Retries and Fail-Fast Alerting.\n* **Rationale**: Transient infrastructure issues should trigger automated retries, while persistent failures must immediately halt execution propagation and alert operators.\n* **Guardrails**: Configure bounded task retry attempts with exponential backoff; unhandled DAG failures trigger callback notifications and log failure events to **audit_bucket**.",
+   "hash": "bc97fc45210157bc",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481345604
+  },
+  "c.imp_aws_aws_mwaa_dag_3.fo": {
+   "attempts": 0,
+   "body": "The **orchestrator** component (Export Orchestrator DAG in Amazon MWAA) acts as the central time-based and event-driven workflow coordinator. On scheduled cadences or manual triggers, it queries **cofig_db** for active connection metadata, evaluates schedule alignment ($\\pm 10$ minutes), generates a unique RFC 4122 v4 lineage UUID for end-to-end tracing, and dispatches child execution workloads.",
+   "hash": "b25a5e9296c4fd2e",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481345604
+  },
+  "c.imp_aws_aws_mwaa_dag_3.in": {
+   "attempts": 0,
+   "body": "* **Principle**: Event-Driven Workflow Parameterization.\n* **Rationale**: Workflows receive execution triggers from the **scheduler** or manual invocation requests from **do-admin-api**, carrying contextual configuration parameters.\n* **Guardrails**: Inputs must contain validated connection metadata references and optional manual override flags.",
+   "hash": "8cb91d6aa8775d70",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481345604
+  },
+  "c.imp_aws_aws_mwaa_dag_3.out": {
+   "attempts": 0,
+   "body": "* **Principle**: Deterministic Lineage Propagation and Task Dispatch.\n* **Rationale**: Every workflow execution must establish a unique lineage identifier and reliably trigger downstream child tasks while recording lifecycle state changes.\n* **Guardrails**: Generates a single RFC 4122 v4 lineage UUID per run, reads active connection records from **cofig_db**, invokes **child_export_dag**, and writes audit events to **audit_bucket**.",
+   "hash": "d782aaeff1fe837e",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481345604
+  },
+  "c.imp_aws_aws_mwaa_dag_3.perf": {
+   "attempts": 0,
+   "body": "* **Principle**: Deterministic Schedule Adherence.\n* **Rationale**: Orchestration triggers must evaluate active connections and dispatch child workloads within defined time windows to satisfy downstream SLAs.\n* **Guardrails**: Schedule evaluation must occur within $\\pm 10$ minutes of scheduled times; concurrency limits (`max_active_runs = 1`) prevent resource contention.",
+   "hash": "402d7d699daafaa1",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481345604
+  },
+  "c.imp_aws_aws_mwaa_dag_3.sec": {
+   "attempts": 0,
+   "body": "* **Principle**: Network Isolation and Least Privilege Execution.\n* **Rationale**: Orchestration engines handle sensitive connection metadata and credentials, requiring robust perimeter and access controls.\n* **Guardrails**: MWAA environments operate exclusively within private VPC subnets with outbound traffic routed through NAT gateways; IAM execution roles adhere strictly to least privilege principles.",
+   "hash": "091646e55596c0df",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481345604
+  },
+  "c.imp_aws_aws_mwaa_dag_3.tel": {
+   "attempts": 0,
+   "body": "* **Principle**: Comprehensive Workflow Lifecycle Auditing.\n* **Rationale**: Operational visibility requires tracking workflow initialization, success, and failure states with precise timestamps and lineage correlation.\n* **Guardrails**: Publishes standardized CloudEvents-shaped telemetry records (`EXECUTION_STARTED`, `EXECUTION_COMPLETED`) containing the lineage UUID and system actor (`system:orchestrator`) to **audit_bucket**.",
+   "hash": "26fe3f5d6d1ceadd",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481345604
+  },
+  "c.imp_aws_aws_mwaa_dag_3.tn": {
+   "attempts": 0,
+   "body": "* **Principle**: Lightweight Orchestration-Only Control Plane.\n* **Rationale**: Airflow and MWAA must be strictly reserved for workflow orchestration, state coordination, and dependency management, offloading all heavy data processing to specialized compute engines.\n* **Guardrails**: Top-level DAG python files must execute instantaneously without network calls, database queries, or heavy computations outside operator execution methods.",
+   "hash": "e6229852e3c88ef3",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481345604
+  },
+  "c.imp_aws_aws_mwaa_dag_4.asm": {
+   "attempts": 0,
+   "body": "* **Assumption**: MWAA worker memory and CPU allocations scale dynamically based on the number of active child DAG runs.\n* **Assumption**: EMR Serverless application warm pools are configured to minimize job submission latency.",
+   "hash": "5ab0b8e68683d36c",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481345604
+  },
+  "c.imp_aws_aws_mwaa_dag_4.cfg": {
+   "attempts": 0,
+   "body": "* **Principle**: Consistent Workflow Configuration Standards.\n* **Rationale**: Child workflows must mirror organizational orchestration standards while supporting parameterized tenant execution.\n* **Guardrails**: Only architecture-mandated properties are explicitly set:\n  * `schedule`: `@daily` \u2014 Aligned with batch extraction cadences.\n  * `catchup`: `False` \u2014 Prevents historical backfill storms upon deployment.\n  * `max_active_runs`: `1` \u2014 Ensures single-threaded execution per child pipeline to prevent resource conflicts.\n  * `tags`: `{}` \u2014 Provisioned with metadata tags.\n  * `dag_name`: `child_export_dag` \u2014 Unique workflow identifier.",
+   "hash": "00973d9c4979263a",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481345604
+  },
+  "c.imp_aws_aws_mwaa_dag_4.err": {
+   "attempts": 0,
+   "body": "* **Principle**: Graceful Failure Propagation and Alerting.\n* **Rationale**: Extraction failures must be captured cleanly, updating execution status and notifying operations without crashing the broader platform.\n* **Guardrails**: Configure bounded task retries with exponential backoff; persistent failures trigger failure audit records and operational alerts.",
+   "hash": "cab25e324889e7a6",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481345604
+  },
+  "c.imp_aws_aws_mwaa_dag_4.fo": {
+   "attempts": 0,
+   "body": "**Architectural principle: Orchestration-only DAGs with delegated compute.** The Child Export DAG (n14) is a per-connection MWAA DAG whose sole job is to coordinate one connection's export execution: it receives the lineage UUID and its connection JSON in run conf from the Export Orchestrator DAG (n3), submits the Export Extract Spark Job (n4) on EMR Serverless, and hands the resulting staged output in the Customer Staging Buckets (n8) to the downstream Transform & Encrypt flow. It performs no data processing itself \u2014 heavy work is delegated to EMR Serverless per the MWAA tenet of offloading compute.\n\n**Rationale and trade-offs.** Splitting orchestration (n3) from per-connection execution (n14) isolates failure domains: one connection's failure cannot stall the fan-out of others, and a stop request (SCRUM-480 AC#6) can terminate a run without affecting sibling child runs. The trade-off is one more DAG hop and one more audit boundary, accepted because per-connection isolation and independent retry are explicit acceptance criteria.\n\n**Guardrails:** top-level DAG code must be instantaneous (no network calls or queries outside `execute()`); every task must be idempotent so a re-run for the same lineage UUID produces the same result; the DAG must carry the lineage UUID end-to-end and never regenerate it (SCRUM-480 AC#3/AC#4).",
+   "hash": "4a3bd58b0b34878b",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481834574
+  },
+  "c.imp_aws_aws_mwaa_dag_4.in": {
+   "attempts": 0,
+   "body": "* **Principle**: Parameterized Tenant Run Configuration.\n* **Rationale**: Child DAGs require explicit input parameters passed from the parent orchestrator to identify the target customer connection and lineage.\n* **Guardrails**: Run configuration payloads must include the lineage UUID, connection ID, dataset type, and extraction mode (initial vs. incremental).",
+   "hash": "478c2405af557d90",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481345604
+  },
+  "c.imp_aws_aws_mwaa_dag_4.out": {
+   "attempts": 0,
+   "body": "**Principle: The DAG's outputs are orchestration facts, not data.** Outputs and side effects:\n\n1. **EMR Serverless job submission** \u2014 one Export Extract Spark Job (n4) run per child DAG execution, with a dedicated least-privilege job execution role scoped to the source (n5) and staging buckets (n8).\n2. **Staged files** \u2014 written by n4 (not the DAG) into Customer Staging Buckets (n8), partitioned per entity type and lineage UUID; these S3 writes are the trigger for the Egress Lambda (n15) \u2192 Transform & Encrypt DAG (n7) chain.\n3. **Audit events** \u2014 `EXECUTION_STARTED` and `EXECUTION_COMPLETED` (or failure) records in the Audit & Execution Log Store (n13) with the lineage UUID, `actor_id = system:child-export-dag`, and ISO-8601 UTC timestamps (SCRUM-486).\n4. **Run state** \u2014 observable via the Airflow REST API, which is the measurement interface for SCRUM-480 AC#4\u2013AC#6.\n\n**Guardrails:** the DAG must not write to customer destinations (n9\u2013n12) \u2014 delivery is exclusively via the Egress path; on stop, it must ensure no further child work is started for that execution after termination; exactly one audit record per lifecycle event.\n\n---",
+   "hash": "3404cd22709d26c3",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481834574
+  },
+  "c.imp_aws_aws_mwaa_dag_4.perf": {
+   "attempts": 0,
+   "body": "* **Principle**: Scalable Parallel Tenant Execution.\n* **Rationale**: The child orchestration layer must support concurrent execution across multiple customer connections within SLA limits.\n* **Guardrails**: Task polling intervals optimized to balance responsiveness with MWAA resource utilization.",
+   "hash": "2a21d6c9136710b7",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481345604
+  },
+  "c.imp_aws_aws_mwaa_dag_4.sec": {
+   "attempts": 0,
+   "body": "* **Principle**: VPC Isolation and Least Privilege IAM.\n* **Rationale**: Child workflows interact with database secrets and compute clusters, requiring strict network and permission boundaries.\n* **Guardrails**: Executed within private VPC subnets with IAM roles restricted to interacting only with approved EMR Serverless applications, RDS databases, and audit storage.",
+   "hash": "d3ff6b39d07b7fb0",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481345604
+  },
+  "c.imp_aws_aws_mwaa_dag_4.tel": {
+   "attempts": 0,
+   "body": "* **Principle**: Granular Execution Telemetry.\n* **Rationale**: Every child workflow execution must emit start, success, and failure events to provide end-to-end observability per tenant.\n* **Guardrails**: Publishes CloudEvents-shaped records (`EXECUTION_STARTED`, `EXECUTION_COMPLETED`, `EXECUTION_FAILED`) carrying the lineage UUID and connection ID to **audit_bucket**.",
+   "hash": "e4d4003cc64e332c",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481345604
+  },
+  "c.imp_aws_aws_mwaa_dag_4.tn": {
+   "attempts": 0,
+   "body": "* **Principle**: Isolated Task Delegation and Fault Containment.\n* **Rationale**: Isolating individual customer export executions into child DAGs ensures that a failure in one customer's extraction does not abort concurrent runs for other tenants.\n* **Guardrails**: Child DAGs must act strictly as orchestrators\u2014submitting compute jobs and checking status without performing heavy data processing within worker processes.",
+   "hash": "ebd8aff1ca22f9eb",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481345604
+  },
+  "c.imp_aws_aws_rds_7.asm": {
+   "attempts": 0,
+   "body": "- **Principle**: Explicit resource sizing and availability assumptions.\n- **Rationale**: Assumes that `db.t3.micro` with 20 GB of storage is sufficient for metadata storage in non-production environments. The user-specified `multi_az=False` property is honored; production environments requiring high availability are assumed to override this flag to `True` via Terraform variable inputs.\n- **Guardrails**: Capacity planning reviews must be conducted prior to onboarding large numbers of concurrent enterprise customer export configurations.\n\n---",
+   "hash": "539d3446f95216a8",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481648926
+  },
+  "c.imp_aws_aws_rds_7.cfg": {
+   "attempts": 0,
+   "body": "- **Principle**: Cost-optimized and resource-bounded database allocation.\n- **Rationale**: The architecture explicitly sets engine to `postgres` (version 15.4), instance class to `db.t3.micro`, allocated storage to `20` GB, and `multi_az` to `False` as stated in the architecture graph. This configuration is authoritative and tailored for lower-tier or standard resource-conscious environments. (Note: Production deployments requiring high-availability failover must explicitly override `multi_az` to `True` via deployment configuration parameters).\n- **Guardrails**: Storage auto-scaling (`gp3`) must be enabled to prevent out-of-disk failures during peak administrative writes.",
+   "hash": "25d30b6106ada6c4",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481648925
+  },
+  "c.imp_aws_aws_rds_7.err": {
+   "attempts": 0,
+   "body": "- **Principle**: Graceful degradation and connection resilience.\n- **Rationale**: Database connectivity dropouts trigger exponential backoff retries at the client library layer (`common.clients.db`), ensuring temporary network blips do not fail pipeline runs.\n- **Guardrails**: Unhandled database exceptions must result in transaction rollbacks and structured error logging.",
+   "hash": "dff688ccf3d3aaf4",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481648926
+  },
+  "c.imp_aws_aws_rds_7.fo": {
+   "attempts": 0,
+   "body": "- **Principle**: Relational data persistence for operational configuration and state tracking.\n- **Rationale**: The **cofig_db** component (Amazon RDS Postgres) serves as the authoritative operational data store for the DataOutbound platform. It stores customer export configurations, incremental extraction watermarks, and administrative metadata. Relational storage is chosen to guarantee ACID compliance, transactional integrity, and strong consistency for configuration updates and incremental state management.\n- **Guardrails**: Direct modifications to database records bypassing the **do-admin-api** or official migration pipelines are strictly prohibited.",
+   "hash": "69c567a6fada01b6",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481648925
+  },
+  "c.imp_aws_aws_rds_7.in": {
+   "attempts": 0,
+   "body": "- **Principle**: Parameterized SQL and transactional input.\n- **Rationale**: Inputs consist of parameterized SQL queries and DML commands originating from the **do-admin-api**, **orchestrator**, and **child_export_dag**.\n- **Guardrails**: Dynamic SQL generation from untrusted strings is strictly prohibited to prevent SQL injection vulnerabilities.",
+   "hash": "6bd454d7b99d11a1",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481648925
+  },
+  "c.imp_aws_aws_rds_7.out": {
+   "attempts": 0,
+   "body": "- **Principle**: Durable transactional persistence.\n- **Rationale**: Produces committed relational records, connection metadata JSON structures, and incremental watermark state updates.\n- **Guardrails**: Database write transactions must be wrapped in explicit transaction blocks with proper rollback semantics on failure.",
+   "hash": "75d2869bb9c44939",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481648926
+  },
+  "c.imp_aws_aws_rds_7.perf": {
+   "attempts": 0,
+   "body": "- **Principle**: Low-latency transactional query execution.\n- **Rationale**: Optimized for fast primary-key lookups and small transactional payloads required during DAG orchestration metadata reads.\n- **Guardrails**: Monitor CPU utilization, database connections, and disk I/O via CloudWatch Performance Insights.",
+   "hash": "77dd6b41c4c41030",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481648926
+  },
+  "c.imp_aws_aws_rds_7.sec": {
+   "attempts": 0,
+   "body": "- **Principle**: Defense-in-depth data protection.\n- **Rationale**: **cofig_db** is deployed in isolated private database subnets with no public internet accessibility. Storage is encrypted at rest using AWS KMS Customer Managed Keys (CMKs), and transport connections enforce TLS (`rds.force_ssl=1`).\n- **Guardrails**: Database credentials must be stored securely in SSM Parameter Store (SecureString) and rotated periodically.",
+   "hash": "cf21b808a8ea0984",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481648926
+  },
+  "c.imp_aws_aws_rds_7.tel": {
+   "attempts": 0,
+   "body": "- **Principle**: Comprehensive database auditing.\n- **Rationale**: Administrative configuration changes are captured at the application layer and committed as audit events to `audit_bucket`.\n- **Guardrails**: Database error logs and slow-query logs must be forwarded to CloudWatch Logs with a 30-day retention period.",
+   "hash": "a8a596df54fd3ca6",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481648926
+  },
+  "c.imp_aws_aws_rds_7.tn": {
+   "attempts": 0,
+   "body": "- **Principle**: Transactional consistency and secure isolation.\n- **Rationale**: Ensures that export configurations and incremental watermarks are safely persisted and protected against concurrent race conditions or data corruption.\n- **Guardrails**: All database connections must use connection pooling and enforce encrypted transport.",
+   "hash": "a547953a3139cdb2",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481648925
+  },
+  "c.imp_aws_aws_redshift_6.asm": {
+   "attempts": 0,
+   "body": "- **Principle**: External Ownership Assumption.\n- **Rationale**: The Golden Entity Source Store is treated as an existing externally owned source (excluded from Terraform pipeline deletion checks) but fully integrated via connection configurations.\n- **Guardrails**: Schema modifications on source tables must be coordinated with downstream data pipeline maintainers.",
+   "hash": "aa03cace4d4ecabe",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_redshift_6.cfg": {
+   "attempts": 0,
+   "body": "- **Principle**: Provisioned Compute and Storage Scalability.\n- **Rationale**: Selecting appropriate node types and counts ensures sufficient parallelism for scanning large hospitality entity datasets.\n- **Guardrails**: The architecture sets the following properties: `cluster_identifier` = `golden_data_source`, `database_name` = `dev`, `node_type` = `dc2.large`, and `number_of_nodes` = `2`.",
+   "hash": "faf0a4c2b5a3775d",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_redshift_6.err": {
+   "attempts": 0,
+   "body": "- **Principle**: Graceful Connection Recovery and Abort.\n- **Rationale**: Transient connection drops trigger bounded client-side retries, while syntax or schema errors abort the extraction job cleanly.\n- **Guardrails**: Detailed error messages must be logged securely without exposing database credentials.",
+   "hash": "42b5e8d645dc2d95",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_redshift_6.fo": {
+   "attempts": 0,
+   "body": "- **Principle**: High-Performance Analytical Data Warehousing.\n- **Rationale**: The **dev** Redshift cluster (cluster identifier `golden_data_source`, database name `dev`) acts as the authoritative Golden Entity Source Store, providing high-speed SQL execution for batch data extractions.\n- **Guardrails**: Queries must leverage proper distribution and sort keys to optimize table scans and join performance.",
+   "hash": "6882222486f2690a",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_redshift_6.in": {
+   "attempts": 0,
+   "body": "- **Principle**: Parameterized SQL Query Extraction.\n- **Rationale**: Accepts parameterized SQL queries from the EMR Serverless Spark job for both full and incremental dataset extractions.\n- **Guardrails**: Dynamic SQL generation must prevent injection vulnerabilities by utilizing bound parameters.",
+   "hash": "eb03717f2c43d023",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_redshift_6.out": {
+   "attempts": 0,
+   "body": "- **Principle**: Read-Only Result Set Streaming.\n- **Rationale**: Outputs structured result sets representing identity profiles, subscriptions, campaigns, reactions, and reservation items to the querying Spark workers.\n- **Guardrails**: Result sets must not produce side effects on source table states.",
+   "hash": "cb00e38899e1cb57",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_redshift_6.perf": {
+   "attempts": 0,
+   "body": "- **Principle**: Analytical Query Latency Optimization.\n- **Rationale**: Monitored via cluster CPU utilization, query queue wait times, and disk space usage.\n- **Guardrails**: Concurrency limits must be managed to prevent resource exhaustion during peak extraction windows.",
+   "hash": "1d8bf58857947ecf",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_redshift_6.sec": {
+   "attempts": 0,
+   "body": "- **Principle**: Network Isolation and Encryption at Rest.\n- **Rationale**: Deployed within private VPC subnets with KMS storage encryption enforced to protect sensitive hospitality data at rest.\n- **Guardrails**: Database credentials must be retrieved securely from SSM Parameter Store or secrets management stores.",
+   "hash": "11da0d13d8986167",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_redshift_6.tel": {
+   "attempts": 0,
+   "body": "- **Principle**: Database Query Audit and Performance Logging.\n- **Rationale**: Captures query execution metrics, connection durations, and error logs for operational monitoring.\n- **Guardrails**: Query logs must exclude sensitive PII values.",
+   "hash": "7999513d25b4a656",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_redshift_6.tn": {
+   "attempts": 0,
+   "body": "- **Principle**: Isolated Analytical Workload Management.\n- **Rationale**: Separating analytical storage from operational transactional stores prevents query interference and ensures reliable batch extraction performance.\n- **Guardrails**: Direct write access is restricted to authorized data ingestion pipelines; external access is read-only.",
+   "hash": "89f7dbe19124ff4c",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_s3_bucket_12.asm": {
+   "attempts": 0,
+   "body": "- **Principle**: External Accountability Assumption.\n- **Rationale**: Assumes the customer maintains ownership, availability, and access governance of their destination bucket.\n- **Guardrails**: Platform responsibilities are strictly limited to delivery attempts, retries, and integrity validation via manifests.",
+   "hash": "8451e3e778fa2bf3",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_s3_bucket_12.fo": {
+   "attempts": 0,
+   "body": "- **Principle**: External Bounded Integration Endpoint.\n- **Rationale**: The **customer bucket** represents a customer-owned S3 storage destination that receives finalized, encrypted or raw export packages and JSON manifest control files via secure TLS 1.3 transport.\n- **Guardrails**: As an external context component, platform components do not manage its lifecycle, permissions, or internal infrastructure.",
+   "hash": "126b580bfa687d6e",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_s3_bucket_12.in": {
+   "attempts": 0,
+   "body": "- **Principle**: Secure Multipart Object Ingestion.\n- **Rationale**: Receives export data files and SHA-256 manifest control files pushed by the egress pipeline.\n- **Guardrails**: Objects must be transmitted securely over TLS 1.3 with application-level SHA-256 integrity verification.",
+   "hash": "1306b65dad1cfe34",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_s3_bucket_12.out": {
+   "attempts": 0,
+   "body": "- **Principle**: Delivery Confirmation and Receipt.\n- **Rationale**: Confirms successful object storage back to the caller, enabling completion telemetry logging.\n- **Guardrails**: Delivery failures must trigger retry logic and eventual error logging if thresholds are exceeded.",
+   "hash": "164e24c000da78e5",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_s3_bucket_12.sec": {
+   "attempts": 0,
+   "body": "- **Principle**: Transport Security and Encryption at Rest.\n- **Rationale**: Enforces TLS 1.3 for secure transport and relies on customer-managed encryption policies at rest within their destination bucket.\n- **Guardrails**: Credential and access keys for writing to external customer buckets must be stored securely encrypted in SSM Parameter Store.",
+   "hash": "9621aafe30448fa8",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481379826
+  },
+  "c.imp_aws_aws_s3_bucket_15.asm": {
+   "attempts": 0,
+   "body": "* **Assumption**: Standard S3 availability (99.99%) and 11 nines of durability satisfy the platform's audit retention requirements.\n* **Assumption**: Lifecycle transition schedules (30 days to IA, 90 days to Glacier) align with organizational log governance standards.",
+   "hash": "cd64a9ab9a78f361",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481345604
+  },
+  "c.imp_aws_aws_s3_bucket_15.cfg": {
+   "attempts": 0,
+   "body": "* **Principle**: Secure and Governed Object Storage.\n* **Rationale**: Object storage parameters must balance high durability with strict security and automated cost optimization.\n* **Guardrails**: Only architecture-mandated properties are explicitly set:\n  * `versioning`: `False` \u2014 Versioning disabled on audit bucket to prevent uncontrolled version proliferation of append-only audit logs (relies on append-only write patterns).\n  * `encryption`: `AES256` \u2014 Server-side encryption enforced on all ingested audit objects.\n  * `public_access_block`: `True` \u2014 Enforces absolute prevention of public bucket policies and ACLs.\n  * `lifecycle_enabled`: `True` \u2014 Enables automated lifecycle transitions for cost-effective log management.\n  * `lifecycle_transition_days`: `30` \u2014 Transitions audit objects to Standard-IA storage after 30 days.\n  * `lifecycle_glacier_days`: `90` \u2014 Transitions audit objects to Glacier archival storage after 90 days.\n  * `tags`: `{}` \u2014 Provisioned with metadata tags for operational ownership.\n  * `bucket_name`: `audit_bucket` \u2014 Explicit resource identifier.",
+   "hash": "5f3003fc267967e7",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481345604
+  },
+  "c.imp_aws_aws_s3_bucket_15.err": {
+   "attempts": 0,
+   "body": "* **Principle**: Client-Side Retry Resilience.\n* **Rationale**: Transient network or S3 service interruptions during audit publishing must be retried by client applications without crashing core business workflows.\n* **Guardrails**: Audit publishers (`common.telemetry.auditor`) wrap S3 put operations in exponential backoff retries and fail silently or log locally if auxiliary telemetry sinks experience prolonged outages, ensuring business transactions are never blocked.",
+   "hash": "0cc2fea08b5cd38f",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481345604
+  },
+  "c.imp_aws_aws_s3_bucket_15.fo": {
+   "attempts": 0,
+   "body": "The **audit_bucket** component (Audit & Execution Log Store backed by Amazon S3) serves as the centralized, immutable repository for all system audit events, lifecycle logs, and compliance records generated by **do-admin-api**, **emr_do**, and **egress dag**. It guarantees long-term retention and tamper-resistant storage for operational traceability.",
+   "hash": "89404cf1308bf09d",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481345604
+  },
+  "c.imp_aws_aws_s3_bucket_15.in": {
+   "attempts": 0,
+   "body": "* **Principle**: Standardized Audit Payload Ingestion.\n* **Rationale**: Ingesting telemetry and audit records in a uniform schema ensures consistent querying and compliance verification.\n* **Guardrails**: Incoming audit records must conform to the standard JSON audit schema (`actor_id`, `timestamp_utc`, `event_type`, `execution_id`).",
+   "hash": "1a4c80169c9f8fcc",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481345604
+  },
+  "c.imp_aws_aws_s3_bucket_15.out": {
+   "attempts": 0,
+   "body": "* **Principle**: Durable Object Persistence and Archival.\n* **Rationale**: Audit records written to the bucket must be durably stored and automatically transitioned according to governance schedules.\n* **Guardrails**: Objects are durably persisted with SHA-256 integrity checks and migrated across storage tiers without altering record payloads.",
+   "hash": "e8a5239e7ac8b747",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481345604
+  },
+  "c.imp_aws_aws_s3_bucket_15.perf": {
+   "attempts": 0,
+   "body": "* **Principle**: High-Throughput Concurrent Write Optimization.\n* **Rationale**: Distributed serverless and container tasks emit audit events concurrently; the storage architecture must ingest high volumes without throttling.\n* **Guardrails**: Utilize non-sequential prefix naming conventions (e.g., partitioned by date/service) to distribute S3 request load across partitions.",
+   "hash": "40aac745356b07ab",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481345604
+  },
+  "c.imp_aws_aws_s3_bucket_15.sec": {
+   "attempts": 0,
+   "body": "* **Principle**: Least Privilege Access and Zero Public Exposure.\n* **Rationale**: Audit logs contain sensitive operational metadata and must be protected against unauthorized exfiltration or tampering.\n* **Guardrails**: Enforce `public_access_block`, apply AES256 encryption at rest, restrict bucket policies to allow write access only from authenticated pipeline roles and read access strictly to authorized security principals.",
+   "hash": "c9585b2f6b8f6cb8",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481345604
+  },
+  "c.imp_aws_aws_s3_bucket_15.tel": {
+   "attempts": 0,
+   "body": "* **Principle**: Self-Telemetry and Access Logging.\n* **Rationale**: Access to the audit bucket itself must be monitored to detect unauthorized read or write attempts.\n* **Guardrails**: S3 server access logging enabled, routing storage access metrics to CloudWatch.",
+   "hash": "ae233fcc8dddcef8",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481345604
+  },
+  "c.imp_aws_aws_s3_bucket_15.tn": {
+   "attempts": 0,
+   "body": "* **Principle**: Immutable Audit Governance & Automated Lifecycle Archival.\n* **Rationale**: Centralizing operational logs in a dedicated S3 bucket ensures strict compliance with organizational retention policies while controlling long-term storage costs through automated tiering.\n* **Guardrails**: Public access must be strictly blocked. Server-side encryption must be enforced for all stored objects, and lifecycle policies must automatically transition logs to archival storage tiers.",
+   "hash": "712cee695bb667c7",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481345604
+  },
+  "c.imp_aws_aws_s3_bucket_8.asm": {
+   "attempts": 0,
+   "body": "- **Lifecycle conflict resolution (authoritative):** the user's explicit property `lifecycle_enabled=False` on this bucket is honored as stated. The SCRUM-486 AC#5 / SCRUM-482 AC#1 requirement for a 7-day expiration rule on \"every customer staging bucket\" is therefore **not** implemented by an S3 lifecycle rule on this bucket; it is assumed to be satisfied by an external, pipeline-independent purge mechanism (e.g., an operations-owned scheduled cleanup outside this architecture's diagram), which is out of scope for this component. This conflict is flagged for confirmation with the requesting Security & Operations Engineer before sprint commitment: either the user's `lifecycle_enabled=False` stands and the external purge is accepted, or the property is deliberately revised to enable the lifecycle rule. No silent override is applied in either direction.\n- **Encryption choice:** AES256/SSE-S3 is taken verbatim from the user's property; no KMS CMK is introduced for this bucket.\n- **Versioning absence:** recovery from any staged-object loss is by Child Export DAG re-execution; no backup of staging data is assumed.\n- **Retention value:** the organisation logging-standard retention value referenced by SCRUM-486 remains unconfirmed and applies to log groups, not to this bucket; it does not alter this bucket's configuration.",
+   "hash": "204847b1e42fe546",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793482045905
+  },
+  "c.imp_aws_aws_s3_bucket_8.cfg": {
+   "attempts": 0,
+   "body": "**Principle: User-Decided Posture, Documented Trade-offs.** Only the properties the architecture actually sets are listed; everything else defers to S3 defaults, which is itself a decision.\n\n| Property | Value | Rationale |\n|---|---|---|\n| `versioning` | `False` (user-set) | Staged files are reproducible from the source store; versioning adds cost and complexity with no recovery benefit here. Accepted risk: no rollback of overwrites/deletes. |\n| `encryption` | `AES256` (SSE-S3, user-set) | S3-managed AES-256 encryption at rest satisfies the baseline confidentiality requirement for transient staging data without the key-management overhead of SSE-KMS; the fail-closed PGP gate protects data at the customer boundary, which is where the security requirement is anchored. |\n| `lifecycle_enabled` | `False` (user-set) | The user explicitly disabled automated lifecycle rules on this bucket. This is authoritative. See Assumptions for the reconciliation with the 7-day purge requirement. |\n| Deletion protection | Read from per-environment Terraform variable (dev/staging/prod) | SCRUM-485 AC#3: no hardcoded values; lower environments tear down cleanly, prod is protected. |\n| Public access | All public access blocks enabled (production-grade default) | Staging data must never be publicly reachable; this is a non-negotiable security default, not an override. |\n\n**Guardrail:** the Terraform module must express these three user-set values verbatim; a configuration scan that finds versioning enabled, KMS encryption, or a lifecycle rule on this bucket is a defect against the user's explicit decision.",
+   "hash": "810e4a5d3c386acf",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793482045905
+  },
+  "c.imp_aws_aws_s3_bucket_8.err": {
+   "attempts": 0,
+   "body": "**Principle: Fail Loudly Upstream, Recover by Re-execution.** As passive storage, the bucket's failure modes are access failures (denied IAM, throttling) and missing objects.\n\n- **Access/throttle errors:** surfaced as typed errors through the shared S3 client (`common/clients/aws/s3/s3_client.py`) to the calling component, which applies its own retry policy (e.g., the Egress Lambda's 3-retry rule for delivery; the Spark job's EMR Serverless retry semantics for writes).\n- **Missing/expired object:** if the Transform & Encrypt DAG or Egress Lambda finds a staged object absent, the run fails with an audit error entry and the Child Export DAG re-run regenerates the file \u2014 the accepted consequence of `versioning=False` and `lifecycle_enabled=False`.\n- **Guardrail:** no component may silently skip a missing staged object; absence is always an auditable failure, never a no-op.",
+   "hash": "96de3a9bca12b507",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793482045905
+  },
+  "c.imp_aws_aws_s3_bucket_8.fo": {
+   "attempts": 0,
+   "body": "**Architectural principle: Ephemeral Staging Buffer with Explicitly Minimal Configuration.** Customer Staging Buckets (`staging_bucet_internal`) is the intermediate landing zone between the Export Extract Spark Job (`emr_do`) and the Transform & Encrypt DAG (`egress dag` / `egress-lambda` trigger path). Its role is strictly transient: hold raw staged export files (JSON/TXT per entity type, named with the lineage UUID) just long enough for the S3 event notification to fire and the downstream transform/egress flow to consume them.\n\n**Rationale:** A staging bucket deliberately configured to the minimum the user specified \u2014 versioning disabled, AES256 (SSE-S3) server-side encryption, lifecycle automation disabled \u2014 keeps the buffer cheap, simple, and free of state that could mask pipeline bugs. Trade-off: with versioning off, an overwrite or delete of a staged object is unrecoverable; the architecture accepts this because staged files are reproducible artifacts (re-running the Child Export DAG regenerates them from the Golden Entity Source Store), not system-of-record data.\n\n**Guardrails:** Engineers must treat this bucket as disposable and reproducible \u2014 no component may treat it as a durable store, and no business data may exist only here. The bucket must never be referenced as a final delivery destination except for the Acme internal inspection-staging use case defined in SCRUM-484 AC#4, which is itself bounded by the same ephemerality.",
+   "hash": "23a5f12585abc3b1",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793482045905
+  },
+  "c.imp_aws_aws_s3_bucket_8.in": {
+   "attempts": 0,
+   "body": "**Principle: Contractual, Lineage-Keyed Object Writes.** The bucket accepts objects from exactly two writers: the Export Extract Spark Job (`emr_do`, raw staged export files) and the Egress Lambda (`egress-lambda`, internal inspection-staging packages per SCRUM-484 AC#4).\n\n- **Input contract:** staged export files as JSON or TXT objects, partitioned per entity type (Unified Identity Profile, Pii Restricted Profile, Contact Method Subscription, Enriched Campaigns, Enriched Campaign Reactions, and the four reservation subtypes), with the lineage UUID embedded in the object key. Internal inspection-staging writes arrive as the export package plus `manifest_<lineage_uuid>.json`.\n- **Trigger mechanism:** S3 `ObjectCreated` event notification \u2192 Egress Lambda (asynchronous, event-driven).\n- **Guardrails:** IAM write permission is restricted to the exact role ARNs of `emr_do` and `egress-lambda` against this bucket's ARN only; no other principal may write. Object keys must avoid sequential prefixes to prevent S3 hot-partition throttling.",
+   "hash": "cdd209a99a3006d4",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793482045905
+  },
+  "c.imp_aws_aws_s3_bucket_8.out": {
+   "attempts": 0,
+   "body": "**Principle: Single Downstream Trigger, No Silent Fan-out.** The bucket's outputs are (1) the S3 event notification that invokes `egress-lambda` exactly once per staged file, and (2) object reads by the Transform & Encrypt DAG (`egress dag`) when it pulls staged content.\n\n- **Side effects:** object creation events (the pipeline's only automatic side effect); no replication, no cross-region copy, no inventory export \u2014 all deferred to defaults deliberately, since the buffer is transient.\n- **Guardrail:** the event notification payload must carry the lineage UUID (via the object key) so the downstream DAG run is uniquely correlated; a staged file without a lineage UUID in its key is a contract violation and must fail the downstream run.",
+   "hash": "f633372d6c81da5f",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793482045905
+  },
+  "c.imp_aws_aws_s3_bucket_8.perf": {
+   "attempts": 0,
+   "body": "**Principle: Throughput-Sufficient by Construction, Monitored at the Consumers.** S3 automatically scales per-prefix; the architecture's obligations are to avoid hot partitions (non-sequential, lineage-UUID-prefixed keys) and to size writes for the Spark job's parallel output (partitioned keys per entity type, avoiding small-file sprawl per the EMR Serverless guidance).\n\n- **Watch items:** S3 503/slow-down responses on the staging prefix (indicating write contention from concurrent Child Export DAG runs), and event-notification delivery latency to `egress-lambda` (normally near-instant; sustained delay indicates notification misconfiguration).\n- **Guardrail:** the Spark job must not write unpartitioned small files; the staging key layout is part of the `emr_do` contract.",
+   "hash": "1a1d06c5ba9435d2",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793482045905
+  },
+  "c.imp_aws_aws_s3_bucket_8.sec": {
+   "attempts": 0,
+   "body": "**Principle: Private-by-Default, Encrypted at Rest, Least-Privilege Access.**\n\n- **Network & access:** all public access blocks enabled; access only via IAM roles of `emr_do`, `egress-lambda`, and the MWAA execution roles for `egress dag`, each scoped to this bucket's ARN with minimal actions. In-transit protection is HTTPS/TLS enforced on every S3 API call.\n- **Encryption at rest:** SSE-S3 (AES256) per the user's explicit setting. Trade-off accepted: no customer-managed KMS key, hence no per-key audit trail or independent key revocation for staging data; this is justified by the data's transient, reproducible nature and the fail-closed PGP gate at the egress boundary.\n- **Compliance posture:** with `lifecycle_enabled=False` and `versioning=False`, the bucket holds no long-lived data by design; the compliance obligation for 7-day purge is addressed in Assumptions. Deletion protection follows the per-environment Terraform variable (SCRUM-485).\n- **Guardrail:** no plaintext credential or PGP private key material may ever be written to this bucket; secrets live only in SSM SecureString parameters.",
+   "hash": "868115472aa2dbd5",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793482045905
+  },
+  "c.imp_aws_aws_s3_bucket_8.tel": {
+   "attempts": 0,
+   "body": "**Principle: Audit at the Boundary, Not the Buffer.** The bucket itself emits no business audit events; audit records for staging-related activity are written by the components that act on it (`emr_do` for EXECUTION_COMPLETED, `egress dag`/`egress-lambda` for TRANSFER_* events) to the Audit & Execution Log Store (`audit_bucket`), following the SCRUM-486 schema (`actor_id`, `timestamp_utc`, `event_type`, `execution_id`).\n\n- **Operational telemetry:** S3 server access logs and CloudWatch request metrics are available by default; the architecture relies on the downstream components' audit events for compliance traceability rather than duplicating events at the storage layer. *Rationale:* avoids double-counting against the SCRUM-486 expected-event-count formula (admin ops + 2N + 2N).\n- **Guardrail:** no component may write audit records directly into this bucket; it is not the audit store.",
+   "hash": "6f6429a1cd0dee25",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793482045905
+  },
+  "c.imp_aws_aws_s3_bucket_8.tn": {
+   "attempts": 0,
+   "body": "- **Principle: Reproducibility over Retention.** Staged objects are deterministic outputs of a re-runnable Spark job; the architecture relies on re-execution (idempotent Child Export DAG runs keyed by lineage UUID) rather than object versioning for recovery. *Rationale:* versioning would double storage cost and complicate lifecycle semantics for data that is regenerated on demand. *Guardrail:* any consumer that needs a durable copy must write it to `audit_bucket` or a customer destination before the staging object is removed.\n- **Principle: Explicit Configuration, No Silent Defaults.** The bucket's posture is exactly what the user set: `versioning=False`, `encryption=AES256`, `lifecycle_enabled=False`. These are authoritative decisions and are documented as such, not \"corrected\" to best-practice defaults. *Guardrail:* any future change to these properties must be a deliberate, reviewed configuration change \u2014 engineers must not enable versioning, swap encryption, or add lifecycle rules opportunistically.\n- **Principle: Event-Driven Handoff.** The bucket's only active behavior is the S3 event notification that invokes the Egress Lambda (`egress-lambda`) on staged-file creation, carrying the lineage UUID. *Guardrail:* exactly one event per staged file; the notification configuration must not fan out to multiple consumers.",
+   "hash": "c8b10fceadca23bf",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793482045905
+  },
+  "c.imp_azure_blob_store_13.asm": {
+   "attempts": 0,
+   "body": "* **Principle**: External dependency boundary.\n* **Rationale**: The platform assumes the customer maintains valid container permissions, sufficient storage quota, and continuous network reachability on their Azure environment.\n* **Guardrails**: This component is outside the scope of platform Terraform infrastructure provisioning and lifecycle management.\n\n---",
+   "hash": "979928a7e63b9f0b",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481366475
+  },
+  "c.imp_azure_blob_store_13.cfg": {
+   "attempts": 0,
+   "body": "* **Principle**: Parameterized external destination mapping.\n* **Rationale**: Storage account names, container paths, and authentication tokens vary per customer and are dynamically resolved from the export configuration store at runtime.\n* **Guardrails**: The architecture sets and enforces secure transfer requirements (`https_only = true`), disables public blob access, and utilizes general-purpose v2 storage account configurations supplied by the customer.",
+   "hash": "04eed52198c02a47",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481366475
+  },
+  "c.imp_azure_blob_store_13.err": {
+   "attempts": 0,
+   "body": "* **Principle**: Resilient retry with fail-closed delivery.\n* **Rationale**: External network anomalies or temporary Azure storage throttling should not cause immediate job failure, but persistent errors must be handled safely without data corruption.\n* **Guardrails**: Failed transfer attempts are retried up to 3 times with exponential backoff. Upon exhausting retries, a terminal `TRANSFER_FAILED` event is recorded, an operational alert is raised, and the failure is logged for review.",
+   "hash": "69ca3969e31ac1df",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481366475
+  },
+  "c.imp_azure_blob_store_13.fo": {
+   "attempts": 0,
+   "body": "The Customer Azure Blob Destination component represents an external, customer-owned Azure Blob Storage container utilized as a terminal sink for outbound data synchronization packages.\n* **Principle**: External cloud-native object store integration.\n* **Rationale**: Decoupling the destination infrastructure from core platform processing allows customers to receive data in their preferred cloud environment securely, leveraging native object storage paradigms without requiring custom ingress logic on the platform side.\n* **Guardrails**: The platform interacts with this component strictly via egress delivery mechanisms, pushing encrypted or raw export packages and manifest control files into pre-provisioned customer containers.",
+   "hash": "41eb2ac935c60920",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481366475
+  },
+  "c.imp_azure_blob_store_13.in": {
+   "attempts": 0,
+   "body": "* **Principle**: Standardized payload containerization.\n* **Rationale**: Incoming payloads from the egress pipeline must conform to the agreed export package structure to ensure predictable delivery and parsing at the destination.\n* **Guardrails**: Accepts GZIP-compressed, PGP-encrypted files (`.gz.pgp`) or raw JSON/TXT files accompanied by a mandatory SHA-256 JSON manifest control file.",
+   "hash": "5b1deda870eaf0a8",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481366475
+  },
+  "c.imp_azure_blob_store_13.out": {
+   "attempts": 0,
+   "body": "* **Principle**: Write-once deliverable sink.\n* **Rationale**: Serves as a terminal endpoint for outbound data flows; persistence in this container completes the delivery lifecycle for the specific export run.\n* **Guardrails**: Side effects are limited strictly to object creation and modification within the customer's designated container path; no downstream platform triggers or callbacks are initiated from this component.",
+   "hash": "06767b68f9753d77",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481366475
+  },
+  "c.imp_azure_blob_store_13.perf": {
+   "attempts": 0,
+   "body": "* **Principle**: SLA-bound throughput monitoring.\n* **Rationale**: Outbound deliveries must complete within the platform's 24-hour overall delivery SLA for payloads up to 1 GB and 100,000 records.\n* **Guardrails**: Monitor upload duration, HTTP status codes, and throughput bandwidth to detect degradation or throttling against Azure storage limits.",
+   "hash": "f3c45b3ed32c705f",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481366475
+  },
+  "c.imp_azure_blob_store_13.sec": {
+   "attempts": 0,
+   "body": "* **Principle**: Transport security and least-privilege authorization.\n* **Rationale**: Protects sensitive customer data during transit across cloud boundaries and ensures access is restricted solely to authorized export pipelines.\n* **Guardrails**: Enforces HTTPS transport, utilizes Microsoft Entra ID or securely managed SAS tokens retrieved from encrypted parameter stores, and verifies object integrity via post-upload SHA-256 comparisons.",
+   "hash": "4f88130d46e58558",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481366475
+  },
+  "c.imp_azure_blob_store_13.tel": {
+   "attempts": 0,
+   "body": "* **Principle**: Unified transfer auditing.\n* **Rationale**: To ensure end-to-end traceability, all delivery attempts must emit standardized telemetry events regardless of the target cloud provider.\n* **Guardrails**: Emits `TRANSFER_STARTED`, `TRANSFER_COMPLETED`, and `TRANSFER_FAILED` CloudEvents-shaped audit records to the audit bucket, capturing lineage UUIDs, timestamps, actor identifiers, and cryptographic checksum validation results.",
+   "hash": "78d47c9184d2abb0",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481366475
+  },
+  "c.imp_azure_blob_store_13.tn": {
+   "attempts": 0,
+   "body": "- **Principle**: Secure, encrypted external cloud storage delivery.\n- **Rationale**: The **Customer Azure Blob Destination** component represents an external, customer-owned Azure Blob Storage or ADLS Gen2 endpoint. The platform delivers packaged export files to this endpoint adhering strictly to external integration contracts and security standards.\n- **Guardrails**: Transport must enforce HTTPS exclusively for all Azure Blob transfers (per requirements SCRUM-484). Public anonymous access must remain strictly disabled at both container and storage account levels, and authentication must utilize managed identity or secure SAS tokens provided via SSM Parameter Store.",
+   "hash": "3e2c277c9b429a1a",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481648926
+  },
+  "c.imp_gcp_gcs_14.asm": {
+   "attempts": 0,
+   "body": "* **Principle**: External resource ownership.\n* **Rationale**: GCS buckets are provisioned, owned, and managed entirely by the customer; the platform bears responsibility solely for outbound transmission and audit logging.\n* **Guardrails**: Bucket provisioning, access policy tuning, and lifecycle management are out of scope for the platform's Terraform infrastructure.\n\n---",
+   "hash": "ef6ae789b0160c73",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481366475
+  },
+  "c.imp_gcp_gcs_14.cfg": {
+   "attempts": 0,
+   "body": "* **Principle**: Parameterized external destination mapping.\n* **Rationale**: GCS bucket URIs, project IDs, and service account authentication keys are dynamic per customer configuration and resolved at runtime from the export configuration store.\n* **Guardrails**: The architecture relies on standard regional or multi-regional GCS bucket defaults, delegating bucket lifecycle, retention, and encryption policy management entirely to the customer.",
+   "hash": "60e7a46e46c1df9b",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481366475
+  },
+  "c.imp_gcp_gcs_14.err": {
+   "attempts": 0,
+   "body": "* **Principle**: Bounded retry and fail-safe alerting.\n* **Rationale**: Mitigates transient connectivity issues between AWS compute resources and GCP storage endpoints without infinite blocking loops.\n* **Guardrails**: Implements a maximum of 3 retry attempts with exponential backoff; exhaustion of retries triggers an immediate operational alert and records a terminal failure audit entry.",
+   "hash": "f615e33d59c4f8e8",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481366475
+  },
+  "c.imp_gcp_gcs_14.fo": {
+   "attempts": 0,
+   "body": "The Customer GCS Destination component represents an external, customer-owned Google Cloud Storage (GCS) bucket acting as a terminal delivery endpoint for scheduled data exports.\n* **Principle**: Multi-cloud outbound interoperability.\n* **Rationale**: Accommodates enterprise customers operating within the Google Cloud ecosystem by delivering export packages directly to their designated GCS buckets.\n* **Guardrails**: The platform interacts with this destination solely via secure HTTPS push operations executed by the egress pipeline.",
+   "hash": "37a39a5e2c1e6dc4",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481366475
+  },
+  "c.imp_gcp_gcs_14.in": {
+   "attempts": 0,
+   "body": "* **Principle**: Strict manifest-driven package ingestion.\n* **Rationale**: Incoming payloads must adhere to standardized naming conventions and include control files to verify data integrity upon delivery.\n* **Guardrails**: Accepts export data packages (compressed/encrypted or raw) along with the corresponding JSON manifest detailing file sizes and SHA-256 checksums.",
+   "hash": "a8d79d0cde520e9d",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481366475
+  },
+  "c.imp_gcp_gcs_14.out": {
+   "attempts": 0,
+   "body": "* **Principle**: Terminal object storage sink.\n* **Rationale**: Persists delivered export files in customer GCS buckets for downstream ingestion by customer analytics or operational systems.\n* **Guardrails**: Side effects are strictly confined to object creation within the target bucket; no internal platform execution workflows are triggered by this destination.",
+   "hash": "5ea691360896cd26",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481366475
+  },
+  "c.imp_gcp_gcs_14.perf": {
+   "attempts": 0,
+   "body": "* **Principle**: Latency and throughput tracking.\n* **Rationale**: Ensures data delivery meets contractual SLAs and identifies network bottlenecks across cloud providers.\n* **Guardrails**: Track upload duration, payload size, and error rates per transfer batch.",
+   "hash": "8f9e05af190dc260",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481366475
+  },
+  "c.imp_gcp_gcs_14.sec": {
+   "attempts": 0,
+   "body": "* **Principle**: Transport encryption and identity isolation.\n* **Rationale**: Prevents data leakage during cross-cloud transmission and enforces least-privilege access.\n* **Guardrails**: Enforces HTTPS transport, utilizes secure service-account credentials stored in encrypted parameter stores, and prohibits anonymous or public bucket configurations.",
+   "hash": "f687452e131701a9",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481366475
+  },
+  "c.imp_gcp_gcs_14.tel": {
+   "attempts": 0,
+   "body": "* **Principle**: Comprehensive transfer audit logging.\n* **Rationale**: Complete visibility into multi-cloud delivery success and failure states is required for operational compliance.\n* **Guardrails**: Emits standardized CloudEvents (`TRANSFER_STARTED`, `TRANSFER_COMPLETED`, `TRANSFER_FAILED`) to the audit bucket, embedding lineage UUIDs and verification statuses.",
+   "hash": "38edc796f79bb4e9",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481366475
+  },
+  "c.imp_gcp_gcs_14.tn": {
+   "attempts": 0,
+   "body": "* **Principle**: Secure cloud-to-cloud boundary transmission.\n* **Rationale**: Cross-cloud data transfers must maintain high security standards, ensuring data remains encrypted and verifiable upon arrival.\n* **Guardrails**: Mandatory TLS transport, strict bucket-level access controls, and post-transfer cryptographic checksum validation against the accompanying manifest file.",
+   "hash": "d0d593e81fd5de22",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481366475
+  },
+  "c.imp_standard_standard_api_1.asm": {
+   "attempts": 0,
+   "body": "* **Assumption**: JWT token issuers and public keys are managed by the enterprise identity provider and made available to the API runtime via environment configuration.\n* **Assumption**: Rate limiting thresholds are configured via the shared config loader to handle expected administrative concurrency without external distributed cache complexity.",
+   "hash": "2605fb98122b396a",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481345604
+  },
+  "c.imp_standard_standard_api_1.cfg": {
+   "attempts": 0,
+   "body": "* **Principle**: Externalized Environment-Driven Configuration.\n* **Rationale**: Configuration parameters are decoupled from code to support seamless promotion across development, staging, and production environments without rebuilding deployment artifacts.\n* **Guardrails**: Only configuration properties explicitly required by the architecture are overridden.\n  * `protocol`: `REST` \u2014 Chosen to provide standard, stateless HTTP interface semantics.\n  * `authentication`: `JWT` \u2014 Enforces cryptographically verified token-based identity propagation.\n  * `api_name`: `do-admin-api` \u2014 Standard service identifier for logging and telemetry correlation.",
+   "hash": "ec6227d6e548519e",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481345604
+  },
+  "c.imp_standard_standard_api_1.err": {
+   "attempts": 0,
+   "body": "* **Principle**: Standardized Error Envelopes and Semantic Status Codes.\n* **Rationale**: Providing uniform error responses enables client applications to reliably parse failure reasons while maintaining security by omitting internal stack traces.\n* **Guardrails**: Return uniform error structures (`{ \"error\": { \"code\": \"STRING_CODE\", \"message\": \"...\", \"details\": [] } }`) accompanied by appropriate semantic HTTP status codes (`400 Bad Request`, `401 Unauthorized`, `403 Forbidden`, `404 Not Found`, `409 Conflict`, `500 Internal Server Error`).",
+   "hash": "4d0ecce2203f0073",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481345604
+  },
+  "c.imp_standard_standard_api_1.fo": {
+   "attempts": 0,
+   "body": "The **do-admin-api** component serves as the bounded RESTful API entrypoint for authorized Acme administrators to manage customer export configurations and trigger operational workflows. Operating within a containerized runtime, it exposes endpoints for creating, retrieving, updating, and deleting export definitions\u2014such as target destination types, dataset selections, synchronization modes, and cron schedules\u2014while securely persisting sensitive credentials and emitting audit trails.",
+   "hash": "b91e488b91ad6a0a",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481345604
+  },
+  "c.imp_standard_standard_api_1.in": {
+   "attempts": 0,
+   "body": "* **Principle**: Contract-First Strict Boundary Validation.\n* **Rationale**: Enforcing strict schema validation at the HTTP boundary prevents malformed payloads from corrupting downstream configuration stores or triggering invalid pipeline executions.\n* **Guardrails**: Incoming JSON payloads must conform to OpenAPI 3.0 specifications, defining required fields (`connection_name`, `target_type`, `dataset`, `mode`, `cron_schedule`, and `credentials`) with strict type constraints.",
+   "hash": "aae588b3a6db298b",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481345604
+  },
+  "c.imp_standard_standard_api_1.out": {
+   "attempts": 0,
+   "body": "* **Principle**: Transactional Persistence and Asynchronous Orchestration.\n* **Rationale**: Administrative write operations must durably persist state to the configuration store and reliably trigger downstream orchestration or audit logging without blocking client connections unnecessarily.\n* **Guardrails**: Successful mutations return standardized HTTP status codes (`201 Created`, `200 OK`, `204 No Content`), persist encrypted secrets to **cofig_db**, trigger workflow execution in **orchestrator**, and write audit records to **audit_bucket**.",
+   "hash": "4654e56b2b31db51",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481345604
+  },
+  "c.imp_standard_standard_api_1.perf": {
+   "attempts": 0,
+   "body": "* **Principle**: Low-Latency Control Plane Responsiveness.\n* **Rationale**: Administrative APIs must remain snappy and responsive to support operator workflows and script automation without resource starvation.\n* **Guardrails**: Target response latency under 200ms for standard CRUD operations; apply sliding-window rate limiting per client IP or tenant to prevent abuse.",
+   "hash": "7cae3150cafef3eb",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481345604
+  },
+  "c.imp_standard_standard_api_1.sec": {
+   "attempts": 0,
+   "body": "* **Principle**: Defense-in-Depth Identity and Data Protection.\n* **Rationale**: Administrative interfaces represent high-value attack vectors that require rigorous authentication, role-based access control, and encrypted secret storage.\n* **Guardrails**: Enforce JWT/OAuth2 bearer token validation, restrict route access to authorized roles, enforce TLS transport encryption, and ensure credential fields are stored encrypted in **cofig_db**.",
+   "hash": "e65096d2068a93c5",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481345604
+  },
+  "c.imp_standard_standard_api_1.tel": {
+   "attempts": 0,
+   "body": "* **Principle**: Unified Event-Driven Observability.\n* **Rationale**: Every administrative action must be traceable to an authenticated actor and execution context for auditing and regulatory compliance.\n* **Guardrails**: Emits CloudEvents-shaped audit records (`actor_id`, `timestamp_utc`, `event_type` such as `ADMIN_CREATE`, `ADMIN_UPDATE`, `ADMIN_DELETE`, `ADMIN_MANUAL_TRIGGER`, and `execution_id`) directly to **audit_bucket**.",
+   "hash": "1420947c8015f998",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481345604
+  },
+  "c.imp_standard_standard_api_1.tn": {
+   "attempts": 0,
+   "body": "* **Principle**: Bounded Context API Gateway & Least Privilege Control.\n* **Rationale**: Centralizing administrative operations through a secure API gateway decouples configuration management from execution engines, ensuring that data modification is strictly authenticated, authorized, and audited.\n* **Guardrails**: All endpoints require valid JWT bearer token authentication and `export-admin` role authorization. Direct database access for administrative tasks is prohibited; all mutations must flow through validated service boundaries.",
+   "hash": "f73c39a4db32b388",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481345604
+  },
+  "c.imp_standard_standard_sftp_11.asm": {
+   "attempts": 0,
+   "body": "* **Principle**: External infrastructure boundary.\n* **Rationale**: The platform assumes the customer maintains continuous server uptime, adequate disk quota, and correct network routing for their SFTP service.\n* **Guardrails**: The customer SFTP server is outside the platform's infrastructure control; infrastructure scaling, patching, and availability management are strictly the customer's responsibility.",
+   "hash": "f03320b95065c0a3",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481366475
+  },
+  "c.imp_standard_standard_sftp_11.fo": {
+   "attempts": 0,
+   "body": "The customer SFTP server component represents an external, legacy or enterprise-standard SFTP endpoint hosted and managed by the customer for secure file drop delivery.\n* **Principle**: Enterprise-standard file transfer boundary integration.\n* **Rationale**: Many hospitality enterprises rely on secure file transfer protocols (SFTP) for batch data integration, making direct SFTP delivery a critical capability for platform interoperability.\n* **Guardrails**: The platform connects exclusively over SSH (Port 22) using key-based authentication, transferring packaged export files and manifests into the customer's designated remote directory.",
+   "hash": "c8e412ebf3f673ea",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481366475
+  },
+  "c.imp_standard_standard_sftp_11.in": {
+   "attempts": 0,
+   "body": "* **Principle**: Stream-based file and manifest transmission.\n* **Rationale**: Files are streamed over authenticated SSH channels to remote directories, requiring atomic transfer patterns to prevent partial file ingestion by the customer.\n* **Guardrails**: Payloads consist of GZIP/PGP encrypted or raw data files and JSON manifests, fully validated and checksum-verified prior to transmission initiation.",
+   "hash": "ec7de749aace3f81",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481366475
+  },
+  "c.imp_standard_standard_sftp_11.out": {
+   "attempts": 0,
+   "body": "* **Principle**: Remote filesystem persistence.\n* **Rationale**: Drops delivered export packages into the customer's target SFTP directory path, completing the outbound synchronization flow.\n* **Guardrails**: Side effects are restricted to file creation on the remote SFTP server; no platform feedback loops or downstream triggers depend on this external server.",
+   "hash": "eaa1f71ef0e165fd",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481366475
+  },
+  "c.imp_standard_standard_sftp_11.sec": {
+   "attempts": 0,
+   "body": "* **Principle**: Cryptographic host verification and key-based access.\n* **Rationale**: Protects against man-in-the-middle attacks and unauthorized server impersonation during file transfer.\n* **Guardrails**: Strict host-key verification is mandatory. If host-key verification fails, the connection is refused immediately, zero bytes are transmitted, no retries are attempted, an alert is raised, and a failure entry is written to the audit store.",
+   "hash": "baa227ce4a6b7b3a",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793481366475
+  },
+  "g.assump": {
+   "attempts": 0,
+   "body": "The following assumptions and design decisions apply system-wide. Each is a production-grade default adopted where the requirements were silent; all are binding on the detailed design unless superseded by an explicit user decision.\n\n#### A1. Approved AWS Stack Conformance\n**Decision:** All pipeline-owned resources are provisioned exclusively from the approved allowlist \u2014 MWAA, RDS Postgres, Lambda, EMR Serverless, S3, and ECS \u2014 via the Terraform pipeline. Golden Entity Source Store (n5) and customer destinations (n9\u2013n12) are externally/customer-owned and are consumed, never provisioned.\n**Rationale:** SCRUM-485 mandates a closed, verifiable resource inventory per environment; restricting the stack makes the allowlist check deterministic and keeps the blast radius of teardown automation bounded.\n**Guardrails:** The resource-inventory verification check runs in every environment (dev, staging, prod) and must exit 0; any resource type outside the allowlist fails the check. Externally owned components (n5, n9\u2013n12) are listed by name in the report but never created by the pipeline.\n\n#### A2. Environment-Driven Deletion Protection\n**Decision:** Every stateful resource \u2014 Export Config Store (n6), Customer Staging Buckets (n8), Audit & Execution Log Store (n13), and all encryption keys \u2014 reads its deletion-protection flag from a per-environment configuration variable (dev, staging, prod). No value is hardcoded in the Terraform module.\n**Rationale:** Lower environments must be fully tearable-down for cost and iteration speed, while staging/prod data (customer configurations, audit trail, encryption keys) must survive accidental teardown. Centralizing the flag in environment config makes the safety posture explicit and auditable per environment.\n**Guardrails:** Teardown against an environment with deletion protection enabled must exit non-zero and delete nothing; teardown of dev must leave zero stateful resources with protection enabled. A static scan of the module source must find zero hardcoded protection values.\n\n#### A3. Organisation Logging-Standard Retention Value\n**Assumption:** The single organisation logging-standard retention value (in days) referenced by SCRUM-486 is not stated in the inputs. It is assumed to be **365 days** for all pipeline log groups and the audit log store, pending confirmation before sprint commitment.\n**Rationale:** One year is a mainstream compliance default for audit-grade operational logs; the requirement explicitly demands a single confirmed value, so a placeholder default is adopted and flagged for confirmation.\n**Guardrails:** Every log group is explicitly provisioned in configuration with `retention_in_days` set to the confirmed value; zero groups may have retention unset or never-expire. If the confirmed value differs, only the configuration variable changes \u2014 no component redesign.\n\n#### A4. Audit Schema and Event Counting Contract\n**Decision:** Every business audit event conforms to the fixed schema: `actor_id` (authenticated Acme user for admin operations, `system:<component-name>` for automated events), `timestamp_utc` (ISO-8601, millisecond precision, Z suffix), `event_type` (enumerated: ADMIN_CREATE, ADMIN_UPDATE, ADMIN_DELETE, ADMIN_MANUAL_TRIGGER, EXECUTION_STARTED, EXECUTION_COMPLETED, TRANSFER_STARTED, TRANSFER_COMPLETED, TRANSFER_FAILED), and `execution_id` (the lineage UUID generated by the Export Orchestrator DAG). Expected event count per run = admin operations + 2 per connection execution + 2 per transfer (or start plus TRANSFER_FAILED on abort).\n**Rationale:** A fixed, countable schema makes the audit trail verifiable by acceptance test rather than by inspection, and the lineage UUID as the sole correlation key enables end-to-end traceability from orchestrator run through extraction, transform, and delivery.\n**Guardrails:** Exactly one audit record per event; every record carries all four non-null fields. The 100% event-count acceptance check is a hard gate.\n\n#### A5. Fail-Closed Encryption Posture\n**Decision:** When PGP encryption is enabled for a connection, encryption failure of any kind (missing, corrupt, or failing key) aborts the transfer entirely: zero bytes of unencrypted data reach any destination, a TRANSFER_FAILED audit event is written within 5 seconds, and an automated alert is raised.\n**Rationale:** Data protection in transit and at rest is a non-negotiable security invariant; delivering plaintext when encryption was configured would be a silent confidentiality breach. Fail-closed is the only acceptable posture.\n**Guardrails:** The Egress Lambda must never receive unencrypted payloads when a connection enables PGP; the Transform & Encrypt DAG gates delivery behind successful encryption. Alerting and audit write are part of the failure path, not optional.\n\n#### A6. Delivery-Only Semantics and Integrity Standard\n**Decision:** Delivery to customer destinations is delivery-only \u2014 no post-delivery reconciliation, acknowledgment processing, or destination-side lifecycle management is in scope. Integrity is verified uniformly by an application-level SHA-256 recomputed from read-back of each delivered object/file and compared to the manifest value; native transport checksums (S3 ChecksumSHA256, Azure Content-MD5, GCS CRC32C) are requested as additional checks where supported.\n**Rationale:** The requirements define delivery semantics as delivery-only; a single uniform integrity standard applied across heterogeneous destinations (S3, Azure Blob, GCS, sFTP) keeps verification logic simple and testable, while native checksums add defense-in-depth at no architectural cost.\n**Guardrails:** Every delivered file and manifest must pass read-back SHA-256 verification; failed transfers retry up to 3 times, with final failure recorded only after the third retry. sFTP host-key verification failure is non-retryable by design (refuse, zero bytes, alert).\n\n#### A7. Staging Lifecycle and Temporary Data Hygiene\n**Decision:** Every Customer Staging Bucket carries an S3 lifecycle rule with expiration of exactly 7 days; the Acme inspection staging destination (delivery back into n8) is subject to the same rule.\n**Rationale:** Staged files are transient pipeline artifacts; automatic purge prevents unbounded data accumulation and limits exposure of customer data copies. The 7-day value is explicitly mandated by SCRUM-486.\n**Guardrails:** Objects aged 6 days must still exist; objects aged 7+ days must be purged within the S3 lifecycle evaluation window (\u226448h of expiry). The rule is configured identically on every staging bucket.\n\n#### A8. Lineage UUID as the Sole Correlation Identifier\n**Decision:** A single RFC 4122 v4 lineage UUID is generated per orchestrator run and carried in every Child Export DAG run conf, every output file name, the manifest, and every audit event for that run.\n**Rationale:** One immutable correlation key across orchestration, extraction, transformation, delivery, and audit eliminates ambiguity when tracing or re-running a specific export, and satisfies the audit schema's `execution_id` requirement.\n**Guardrails:** Exactly one UUID per run; the same value must appear in the orchestrator run conf, child run confs, manifest, and audit records. Re-runs generate a new UUID (idempotency is per-lineage, not per-connection).\n\n#### A9. Credential Protection at Rest\n**Decision:** All credential fields in the Export Config Store (n6) are persisted only in encrypted form; no retrieve operation ever returns plaintext credentials, and raw record reads expose no plaintext values.\n**Rationale:** Export configurations contain customer destination credentials (S3 keys, sFTP keys, Azure/GCS secrets); storing them encrypted at rest with KMS-backed keys and masking on retrieval is the minimum viable protection for a multi-tenant configuration store.\n**Guardrails:** Encryption keys are stateful resources subject to environment-driven deletion protection (A2). Credential fields are masked in all API responses; the acceptance test that a stored value differs from submitted plaintext is a hard gate.\n\n#### A10. Scheduling Tolerance and Cadence Semantics\n**Decision:** The Export Scheduler raises cadence events on the configured schedule; the Export Orchestrator selects connections whose cron time falls within \u00b110 minutes of the event time. Supported cadences are daily, weekly, bi-weekly, monthly, and hourly fast-batch, expressed as 5-field cron expressions validated at configuration time.\n**Rationale:** A bounded selection window absorbs clock skew and event-delivery latency without allowing duplicate or missed selections to go unnoticed; cron validation at the API boundary prevents unparseable schedules from reaching the scheduler.\n**Guardrails:** Connections outside the \u00b110-minute window are not selected; manual trigger and stop enter through the Export Admin API and are authorized by the export-admin role, with unauthorized attempts returning HTTP 403 and leaving run state unchanged.",
+   "hash": "1f910bedc3379963",
+   "reason": null,
+   "source": "trail:r0",
+   "status": "complete",
+   "updated_epoch": 1793482125487
+  },
+  "g.exec": {
+   "attempts": 0,
+   "body": "#### System Purpose\n\nThis architecture defines the **Customer Data Export Platform** for Acme's hospitality data domain: a production-grade, event-driven batch pipeline that extracts Golden Entity datasets from the enterprise data warehouse, stages and transforms them into customer-ready export packages, and delivers them to heterogeneous customer destinations (S3, Azure Blob, GCS, sFTP, and Acme's internal inspection staging) with end-to-end integrity verification, fail-closed encryption, and complete auditability.\n\nThe platform serves two primary actors:\n\n- **Authorized Administrators / Data Platform Administrators**, who manage export connection configurations, trigger and stop runs on demand, and rely on the platform to synchronize customer datasets accurately across daily, weekly, bi-weekly, monthly, and hourly fast-batch cadences.\n- **Data Engineers / Security & Operations Engineers**, who operate the pipeline, verify compliance with the approved AWS stack, and depend on the audit trail and lifecycle guarantees for traceability and cost hygiene.\n\n#### Architectural Principles Governing the Whole System\n\n1. **Orchestration\u2013Compute Separation (MWAA + EMR Serverless)** \u2014 Airflow DAGs (Export Orchestrator DAG n3, Child Export DAG n14, Transform & Encrypt DAG n7) only orchestrate; all heavy data movement runs in EMR Serverless (Export Extract Spark Job n4) or Lambda (Egress Lambda n15). *Rationale:* keeps the control plane lightweight, scales compute independently per workload, and aligns with the approved AWS allowlist (MWAA, RDS Postgres, Lambda, EMR Serverless, S3, ECS). *Guardrail:* no data processing inside Airflow workers; DAG top-level code stays instantaneous.\n\n2. **Configuration-as-Data (Export Config Store, RDS Postgres n6)** \u2014 every connection (target type, dataset, mode, cron schedule, split thresholds, GZIP/PGP flags, credentials) is persisted configuration, never code. *Rationale:* enables CRUD via the Export Admin API (n1) without deployments and makes per-connection behavior fully data-driven. *Guardrail:* credential fields are encrypted at rest and never returned in plaintext; deletion protection on the store is driven by per-environment Terraform variables, never hardcoded.\n\n3. **Event-Driven Decoupling with a Single Lineage UUID** \u2014 the Export Scheduler (n2) raises cadence events; the Orchestrator selects active connections within \u00b110 minutes of schedule, generates one RFC 4122 v4 lineage UUID per run, and fans out one Child Export DAG run per connection. The lineage UUID threads through every downstream artifact: file names, manifests, audit events, and DAG run configurations. *Rationale:* decouples scheduling from execution, isolates per-connection failures, and makes every record traceable end-to-end. *Guardrail:* exactly one UUID per run; exactly one Transform & Encrypt DAG run per staged-file S3 event.\n\n4. **Fail-Closed Security** \u2014 PGP encryption, when enabled, is a hard gate: a missing, corrupt, or failing key aborts the transfer, writes an audit error entry within 5 seconds, raises an alert, and passes **zero bytes** to any destination. sFTP host-key verification failures likewise refuse the connection with zero bytes sent and no retry. *Rationale:* customer data must never leak in plaintext; integrity failures are treated as security events, not transient errors.\n\n5. **Verified Delivery, Delivery-Only Semantics** \u2014 every destination receives the data file(s) plus a `manifest_<lineage_uuid>.json` control file; integrity is proven by an application-level SHA-256 recomputed from a read-back of each delivered object and compared to the manifest. Transient failures retry up to 3 times; final failure is recorded only after the third retry. *Rationale:* uniform integrity standard across S3 (TLS 1.3), Azure/GCS (HTTPS), and sFTP (SSH), independent of each provider's native checksums (which are requested as additional transport checks where supported).\n\n6. **Environment-Driven Lifecycle & Compliance** \u2014 staging objects in Customer Staging Buckets (n8) expire after exactly 7 days via S3 lifecycle rules; every log group is explicitly provisioned with the single organisation logging-standard retention value (to be confirmed in days before sprint commitment); all stateful resources (n6, n8, n13, encryption keys) read deletion-protection flags from per-environment configuration (dev/staging/prod), enabling lower-environment teardown while protecting production. *Rationale:* prevents temporary data accumulation, guarantees log compliance, and makes environment posture a configuration decision rather than a code decision.\n\n#### End-to-End Workflow\n\n1. **Configuration** \u2014 Administrators create, retrieve, update, and delete export connections through the **Export Admin API (n1)**, which validates payloads (connection name, target type \u2208 {s3, azure_blob, gcs, sftp}, dataset, mode \u2208 {initial, incremental}, 5-field cron, credentials), persists them to the **Export Config Store (n6)** with encrypted credentials, and emits `ADMIN_*` audit events to the **Audit & Execution Log Store (n13)**.\n\n2. **Scheduling & Orchestration** \u2014 the **Export Scheduler (n2)** raises cadence events; the **Export Orchestrator DAG (n3)** on MWAA reads active connection metadata from n6, selects connections whose cron matches within \u00b110 minutes, generates the lineage UUID, and submits one **Child Export DAG (n14)** per connection. Manual trigger and stop requests enter through n1 (HTTP 202, run state transitions verified via the Airflow REST API within 30 seconds).\n\n3. **Extraction & Staging** \u2014 each Child Export DAG submits the **Export Extract Spark Job (n4)** on EMR Serverless, which reads Golden Entity data (Unified Identity Profile, Pii Restricted Profile, Contact Method Subscription, Enriched Campaigns, Enriched Campaign Reactions, and reservation items \u2014 Room stay, Restaurant reservation, Tee time, Spa treatment) from the **Golden Entity Source Store (n5)** in full or incremental mode (strictly-greater-than watermark filtering) and writes staged files to the **Customer Staging Buckets (n8)**.\n\n4. **Transform & Encrypt** \u2014 an S3 event on n8 invokes the **Egress Lambda (n15)**, which triggers exactly one **Transform & Encrypt DAG (n7)** run carrying the lineage UUID. The DAG applies connection-defined formatting: configurable record-split thresholds (e.g., 500,000 records/file with peak worker RSS below 2,048 MB), optional GZIP compression **before** PGP encryption, and generation of the JSON manifest (record count, file sizes, SHA-256 checksums). The processed package is handed back to the Egress Lambda for delivery.\n\n5. **Egress Delivery** \u2014 the **Egress Lambda (n15)** delivers the package and manifest to each configured destination \u2014 **Customer sFTP Destination (n9)**, **Customer S3 Destination (n10)**, **Customer Azure Blob Destination (n11)**, **Customer GCS Destination (n12)** \u2014 or to Acme's internal inspection staging (also n8), verifying SHA-256 integrity on read-back, retrying transient failures up to 3 times, and recording `TRANSFER_STARTED` / `TRANSFER_COMPLETED` / `TRANSFER_FAILED` audit events throughout.\n\n6. **Audit & Operations** \u2014 the **Audit & Execution Log Store (n13)**, as parent of explicitly provisioned per-component log groups, captures every administrative, execution, and transfer event under the defined schema (`actor_id`, `timestamp_utc` ISO-8601 millisecond UTC, `event_type` from the enumerated set, `execution_id`), with expected event counts per run fully deterministic (admin operations + 2 per connection execution + 2 per transfer).\n\n#### Key Assumptions & Follow-up Resolutions\n\n- The organisation logging-standard retention value (in days) is **not stated in the inputs and must be confirmed before sprint commitment**; all log groups will carry that single value once confirmed \u2014 no group may be unset or never-expire.\n- The Golden Entity Source Store (n5) is an existing, externally owned source, and customer destinations (n9\u2013n12) are customer-owned; both are excluded from the approved-allowlist verification and are listed explicitly in the test report.\n- The approved AWS stack is MWAA, RDS Postgres, Lambda, EMR Serverless, S3, and ECS; the Export Admin API (n1) and Export Scheduler (n2) are hosted within this allowlist, and no pipeline-owned resource may run outside it in any environment.\n- Delivery semantics are delivery-only: the platform does not manage or reconcile downstream customer-side retention, processing, or acknowledgement beyond verified delivery.",
+   "hash": "a0f2a87e48836dd1",
+   "reason": null,
+   "source": "lead:r0",
+   "status": "complete",
+   "updated_epoch": 1793481751657
+  },
+  "g.ops.data": {
+   "attempts": 0,
+   "body": "- **D-01 \u2014 Encrypted at rest and in transit, everywhere.** S3 buckets (n8, n13) use SSE-KMS with CMKs; RDS (n6) storage is KMS-encrypted; all inter-service and egress traffic uses the transports in A-14. Encryption keys are stateful resources covered by deletion-protection configuration (A-02).\n- **D-02 \u2014 Credentials never in plaintext.** Credential fields in n6 are encrypted at rest, masked on retrieve, and never logged. PGP private keys are stored encrypted and never written to logs or audit events.\n- **D-03 \u2014 PII handling.** Exported entities include Pii Restricted Profile and Unified Identity Profile; the pipeline treats all staged and in-flight data as sensitive. PGP encryption (when enabled) is the at-rest protection for data leaving Acme's boundary; when a connection disables PGP, the customer destination is deemed an approved raw-delivery endpoint by that connection's configuration \u2014 this is an explicit business decision recorded per connection, not a default.\n- **D-04 \u2014 Audit immutability.** Audit events in n13 are append-only; no component updates or deletes audit records. The audit schema (A-07) is the single contract for all writers.\n- **D-05 \u2014 Temporary data minimisation.** Staged files in n8 expire after exactly 7 days (A-13); no other intermediate copies persist beyond the run. The pipeline does not retain a second copy of delivered data.\n- **D-06 \u2014 Data classification of destinations.** Customer destinations (n9\u2013n12) are outside Acme's governance boundary once delivery is verified; the manifest control file (record counts, sizes, SHA-256 checksums) is the handover evidence and is delivered alongside every package.\n- **D-07 \u2014 Source data ownership.** Golden Entity Source Store (n5) is externally owned; the Spark job (n4) holds read-only access scoped to the six exported entity types (Unified Identity Profile, Pii Restricted Profile, Contact Method Subscription, Enriched Campaigns, Enriched Campaign Reactions, reservation items including Room stay, Restaurant reservation, Tee time, Spa treatment).",
+   "hash": "d9f11cde723d6574",
+   "reason": null,
+   "source": "trail:r0",
+   "status": "complete",
+   "updated_epoch": 1793481907747
+  },
+  "g.ops.perf": {
+   "attempts": 0,
+   "body": "- **P-01 \u2014 Scheduling precision.** Scheduled runs start within the \u00b110-minute selection window (A-10); a manual trigger results in a running orchestrator run within 30 seconds of HTTP 202, and a stop takes effect within 30 seconds (SCRUM-480 AC#5\u2013AC#6).\n- **P-02 \u2014 Audit latency.** Audit events are written within 5 seconds of the triggering action (SCRUM-479 AC#4\u2013AC#5, SCRUM-486); encryption-failure alerts within 5 seconds of the failure, and abort-related error alerts within 5 minutes of the abort (SCRUM-482 AC#5).\n- **P-03 \u2014 Throughput envelope.** The Transform & Encrypt DAG handles datasets of at least 1.2M records within the 2,048 MB worker RSS ceiling via configurable split thresholds (A-12); larger datasets scale by splitting, not by memory growth. EMR Serverless (n4) uses dynamic worker allocation between configured minimum and maximum capacity rather than static sizing.\n- **P-04 \u2014 Delivery latency.** No explicit end-to-end SLA is stated in the requirements; the architecture assumes a batch-export posture where a run (extract \u2192 stage \u2192 transform \u2192 deliver) completes within hours, not minutes. Hourly fast-batch cadences are sized on the same envelope; if a stricter SLA emerges, it must be confirmed before commitment.\n- **P-05 \u2014 Retry timing.** The 3 transfer retries use exponential backoff (assumed default: e.g., 1/2/4-minute spacing) so transient destination outages are absorbed without breaching the audit-latency expectations; the final failure is recorded only after the third attempt (A-09).\n- **P-06 \u2014 Staging lifecycle evaluation.** S3 lifecycle expiry is evaluated by AWS within its standard cycle (\u226448h past the 7-day mark); the architecture accepts this platform behaviour rather than implementing an active deletion job (SCRUM-486 AC#5).\n- **P-07 \u2014 Concurrency.** Multiple connections scheduled in the same window run as parallel Child Export DAG runs (n14); MWAA and EMR Serverless capacity limits are the concurrency ceiling. No per-tenant rate limiting is required \u2014 the API serves authorised internal administrators only, with standard input validation at the boundary.",
+   "hash": "7b43670884d1a391",
+   "reason": null,
+   "source": "trail:r0",
+   "status": "complete",
+   "updated_epoch": 1793481907747
+  },
+  "g.ops.res": {
+   "attempts": 0,
+   "body": "- **R-01 \u2014 Managed-service HA defaults.** RDS Postgres (n6) runs Multi-AZ with automated backups; MWAA (n3, n7, n14) uses its managed multi-AZ workers; S3 (n8, n13) is inherently multi-AZ. No additional standby environments are provisioned.\n- **R-02 \u2014 Retry and DLQ posture.** Transfer failures retry up to 3 times (A-09); sFTP host-key failures never retry. S3 event notifications that fail to invoke the Egress Lambda (n15) are retried by the S3 notification mechanism; a DLQ is attached to the notification configuration so undeliverable events are captured rather than dropped silently.\n- **R-03 \u2014 Exactly-once trigger.** The S3 event \u2192 Egress Lambda \u2192 Transform & Encrypt DAG chain must produce exactly one DAG run per lineage UUID (SCRUM-482 AC#3); the Lambda deduplicates on lineage UUID before triggering, guarding against S3's at-least-once delivery.\n- **R-04 \u2014 Stop semantics.** A stop request accepted via the Export Admin API terminates the orchestrator run within 30 seconds and prevents any further child run from starting; in-flight child runs are cancelled, and partial transfers are treated as failed with a TRANSFER_FAILED audit event.\n- **R-05 \u2014 Recovery from partial delivery.** Because delivery is idempotent per lineage UUID and file name, a retried transfer overwrites the same destination keys rather than creating duplicates; the read-back SHA-256 check confirms final integrity.\n- **R-06 \u2014 Deletion protection in non-prod/prod.** Staging and prod stateful resources cannot be deleted by teardown automation (A-02); recovery from accidental deletion in dev is by environment re-provisioning from Terraform, not backup restore.\n- **R-07 \u2014 No cross-region DR is assumed.** The requirements do not mandate a secondary region; the architecture assumes single-region deployment with managed-service availability zones. Any DR requirement is a future scope extension.",
+   "hash": "5f9078e5bb0d66ee",
+   "reason": null,
+   "source": "trail:r0",
+   "status": "complete",
+   "updated_epoch": 1793481907747
+  },
+  "g.ops.tn": {
+   "attempts": 0,
+   "body": "1. **Orchestrate, don't compute.** MWAA DAGs (n3, n7, n14) coordinate only; heavy extraction runs on EMR Serverless (n4), delivery on the Egress Lambda (n15). No data processing inside Airflow workers.\n2. **Idempotency everywhere.** Every DAG task and Lambda invocation is idempotent per lineage UUID: re-running a task for the same execution produces the same result and never duplicates a delivered file or audit event.\n3. **Fail closed on security, fail loud on operations.** Encryption failures abort silently toward destinations but loudly toward operations (audit entry \u22645s, alert raised). Operational failures retry 3\u00d7 then alert.\n4. **Configuration over code.** All connection behaviour (target type, dataset, mode, cadence, GZIP/PGP flags, split thresholds, credentials) lives in the Export Config Store (n6); no per-connection logic is hardcoded in DAGs or Lambda.\n5. **Explicit provisioning.** Every log group is explicitly defined in configuration with a set retention; no resource relies on implicit or never-expire defaults.\n6. **Least privilege per component.** Each component (Spark job, Lambda, DAGs) holds a dedicated IAM role scoped to exactly the buckets, keys, and stores it touches.\n7. **One lineage UUID, one truth.** Any question about \"what happened to this export\" is answered by tracing the lineage UUID across n3, n14, n4, n8, n7, n15, and n13.",
+   "hash": "30eeb197242841fe",
+   "reason": null,
+   "source": "trail:r0",
+   "status": "complete",
+   "updated_epoch": 1793481907747
+  },
+  "g.sec": {
+   "attempts": 0,
+   "body": "- **IAM Least Privilege**: All compute engines (`emr_do`, `egress-lambda`, MWAA DAGs) operate under dedicated, least-privilege IAM roles restricting access strictly to required S3 buckets, SSM parameters, and database endpoints.\n- **Transport Security & Protocols**: In strict accordance with transport standards, data in transit is encrypted using TLS 1.3 for AWS S3 destinations (`customer bucket`), secure HTTPS for Azure Blob (`Customer Azure Blob Destination`) and GCS (`Customer GCS Destination`), and SSH with strict host-key verification and key-based authentication for SFTP (`customer SFTP server`).\n- **Lambda Network Isolation**: The `egress-lambda` function operates with `vpc_enabled = False` per explicit configuration. As a non-VPC Lambda function, it invokes the Transform & Encrypt DAG (MWAA) securely via IAM-authenticated REST API calls over AWS public service endpoints using SigV4 signing, eliminating the need for ENI provisioning while maintaining encrypted HTTPS transport.\n- **Fail-Closed Encryption**: PGP encryption enforced within the transformation pipeline is strictly fail-closed. If key retrieval or encryption fails, the export run aborts immediately, raising an automated alert and transmitting zero unencrypted bytes to any destination.",
+   "hash": "6e4d8863c3ea667f",
+   "reason": null,
+   "source": "trail:r0",
+   "status": "complete",
+   "updated_epoch": 1793481673226
+  },
+  "g.tenets": {
+   "attempts": 0,
+   "body": "The DataOutbound data-sync capability is governed by core architectural tenets that ensure domain alignment, predictable scale, stringent security, and operational reliability across all platform components (`do-admin-api`, `scheduler`, `orchestrator`, `child_export_dag`, `emr_do`, `dev`, `cofig_db`, `staging_bucet_internal`, `egress-lambda`, `egress dag`, `Customer Azure Blob Destination`, `Customer GCS Destination`, and `audit_bucket`).\n\n#### Deterministic Orchestration and Traceability\n- **Principle**: End-to-end lineage propagation and idempotent workflow execution.\n- **Rationale**: Batch data synchronization across distributed serverless compute environments requires absolute accountability and reproducibility. By generating a cryptographic lineage UUID at the orchestration boundary (`orchestrator`) and propagating it through every downstream stage (`child_export_dag`, `emr_do`, `staging_bucet_internal`, `egress-lambda`, `egress dag`, and external sinks), the system guarantees that every execution artifact, payload, manifest, and audit log can be deterministically correlated.\n- **Guardrails**: Engineers must ensure that no workload executes without a valid lineage context. All state transitions, retry attempts, and failures must be explicitly captured and published to `audit_bucket` within defined SLAs.\n\n#### Fail-Closed Security and Least Privilege\n- **Principle**: Zero-trust access controls with cryptographic fail-closed enforcement.\n- **Rationale**: Handling sensitive hospitality Golden Entity profiles and customer credentials requires strict isolation. Encryption keys and secrets are externalized via AWS SSM Parameter Store (SecureString) and referenced securely. Furthermore, PGP encryption for outbound transfers is strictly fail-closed: if encryption fails, the transfer pipeline aborts immediately, raising an automated alert and transmitting zero unencrypted bytes.\n- **Guardrails**: Hardcoded credentials or secrets are strictly prohibited across all application modules, DAGs, and Terraform configurations. IAM execution roles must adhere strictly to the principle of least privilege, restricting data store read/write permissions to exact resource ARNs.\n\n#### Serverless Compute Isolation and Cost-Optimized Scaling\n- **Principle**: On-demand elasticity with strict tenant and network boundary isolation.\n- **Rationale**: Leveraging serverless compute engines such as EMR Serverless (`emr_do`), Amazon MWAA (`orchestrator`, `child_export_dag`, `egress dag`), and AWS Lambda (`egress-lambda`) eliminates idle capacity overhead while scaling automatically to meet peak loads of up to 100,000 records per export. All compute resources execute within private VPC subnets with outbound traffic routed through NAT gateways.\n- **Guardrails**: Over-allocation of static compute resources is prohibited. Stateful resources (such as `cofig_db`, `staging_bucet_internal`, and `audit_bucket`) must have their deletion protection flags driven dynamically by environment configuration (`dev`, `staging`, `prod`) to allow clean lower-environment teardowns.\n\n#### Immutable Audit Logging and Automated Lifecycle Governance\n- **Principle**: Comprehensive operational visibility paired with automated ephemeral data pruning.\n- **Rationale**: Compliance and auditing require that every administrative action, schedule trigger, execution state change, and transfer attempt is durably recorded in `audit_bucket` using a standardized JSON schema. Simultaneously, temporary staging artifacts residing in `staging_bucet_internal` must not accumulate indefinitely; automated S3 lifecycle rules enforce strict 7-day expiration policies to optimize storage costs and mitigate data leakage risks.\n- **Guardrails**: Log retention periods must strictly align with organizational compliance standards. Staging buckets must never disable automated lifecycle expiration rules in production environments.",
+   "hash": "87cd430aacfe83c5",
+   "reason": null,
+   "source": "lead:r0",
+   "status": "complete",
+   "updated_epoch": 1793481564162
+  }
+ },
+ "task_key": "architecture_doc_gen",
+ "template_hash": "4f552f5277c09b15878165cba9a6258a6ac0b5d259fa6bce2fe49c848f8f12b7"
+}

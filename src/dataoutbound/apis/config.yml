@@ -1,0 +1,89 @@
+# API-wide configuration for the DataOutbound API components.
+# Loaded exclusively through dataoutbound.config.config_loader.ConfigLoader.
+api:
+  name: do-admin-api
+  module: export_admin_api
+  version: v1
+  prefix: /api/v1/exports
+
+default:
+  host: 0.0.0.0
+  port: 8080
+  log_level: INFO
+  request:
+    max_body_bytes: 1048576
+    timeout_seconds: 30
+  cors:
+    allow_origins:
+      - "*"
+    allow_methods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - OPTIONS
+    allow_headers:
+      - Authorization
+      - Content-Type
+      - X-Correlation-Id
+    allow_credentials: false
+  auth:
+    issuer: https://identity.acme.example.com/
+    audience: do-admin-api
+    algorithm: RS256
+    jwks_url: https://identity.acme.example.com/.well-known/jwks.json
+    required_role: export-admin
+    leeway_seconds: 30
+  rate_limit:
+    enabled: true
+    requests_per_minute: 120
+    burst: 30
+  pagination:
+    default_page_size: 50
+    max_page_size: 200
+  # Fernet key (URL-safe base64, 32 bytes). In deployed environments this value
+  # is replaced by a ConfigLoader secret reference pointing at SSM SecureString.
+  credential_encryption_key: "YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE="
+  orchestrator_dag_id: orchestrator
+
+dev:
+  host: 0.0.0.0
+  port: 8080
+  log_level: DEBUG
+  auth:
+    issuer: https://identity.dev.acme.example.com/
+    audience: do-admin-api-dev
+    jwks_url: https://identity.dev.acme.example.com/.well-known/jwks.json
+  rate_limit:
+    requests_per_minute: 600
+    burst: 60
+  cors:
+    allow_origins:
+      - "*"
+
+staging:
+  host: 0.0.0.0
+  port: 8080
+  log_level: INFO
+  auth:
+    issuer: https://identity.staging.acme.example.com/
+    audience: do-admin-api-staging
+    jwks_url: https://identity.staging.acme.example.com/.well-known/jwks.json
+  rate_limit:
+    requests_per_minute: 240
+    burst: 40
+
+prod:
+  host: 0.0.0.0
+  port: 8080
+  log_level: WARNING
+  auth:
+    issuer: https://identity.acme.example.com/
+    audience: do-admin-api
+    jwks_url: https://identity.acme.example.com/.well-known/jwks.json
+  rate_limit:
+    requests_per_minute: 120
+    burst: 30
+  cors:
+    allow_origins:
+      - https://admin.acme.example.com

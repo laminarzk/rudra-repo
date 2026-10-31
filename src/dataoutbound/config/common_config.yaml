@@ -1,0 +1,52 @@
+# Base configuration shared by every DataOutbound module.
+# Environment overlays (dev / staging / prod) are applied by ConfigLoader.
+# Values never contain secrets directly; use `secret://<ssm-parameter-name>`.
+
+aws:
+  region: us-east-1
+  retry:
+    max_attempts: 5
+    mode: standard
+  endpoints: {}
+
+timeouts:
+  connect_seconds: 5
+  read_seconds: 30
+
+retry:
+  max_attempts: 3
+  base_delay_seconds: 0.5
+  max_delay_seconds: 30
+
+logging:
+  level: INFO
+  retain_days: 365
+
+secrets:
+  prefix: /dataoutbound
+
+dev:
+  logging:
+    level: DEBUG
+  aws:
+    region: us-east-1
+  endpoints:
+    s3: http://localhost:4566
+    sqs: http://localhost:4566
+    ssm: http://localhost:4566
+
+staging:
+  logging:
+    level: INFO
+  aws:
+    region: us-east-1
+
+prod:
+  logging:
+    level: INFO
+  aws:
+    retry:
+      max_attempts: 8
+    region: us-east-1
+  timeouts:
+    read_seconds: 60

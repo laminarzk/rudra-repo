@@ -1,0 +1,429 @@
+# laminar:node:imp-aws-aws_emr_serverless-5: dev.export_extract_spark_job_emr,prod.export_extract_spark_job_emr,staging.export_extract_spark_job_emr
+# laminar:node:imp-aws-aws_eventbridge-2: dev.export_scheduler_eventbridge,prod.export_scheduler_eventbridge,staging.export_scheduler_eventbridge
+# laminar:node:imp-aws-aws_lambda-9: dev.egress_lambda,prod.egress_lambda,staging.egress_lambda
+# laminar:node:imp-aws-aws_mwaa_dag-10: dev.transform_encrypt_dag_mwaa,prod.transform_encrypt_dag_mwaa,staging.transform_encrypt_dag_mwaa
+# laminar:node:imp-aws-aws_mwaa_dag-3: dev.export_orchestrator_dag_mwaa,prod.export_orchestrator_dag_mwaa,staging.export_orchestrator_dag_mwaa
+# laminar:node:imp-aws-aws_mwaa_dag-4: dev.child_export_dag_mwaa,prod.child_export_dag_mwaa,staging.child_export_dag_mwaa
+# laminar:node:imp-aws-aws_rds-7: dev.export_config_store_rds,prod.export_config_store_rds,staging.export_config_store_rds
+# laminar:node:imp-aws-aws_redshift-6: dev.golden_entity_source_store_redshift,prod.golden_entity_source_store_redshift,staging.golden_entity_source_store_redshift
+# laminar:node:imp-aws-aws_s3_bucket-15: dev.audit_execution_log_store_s3,prod.audit_execution_log_store_s3,staging.audit_execution_log_store_s3
+# laminar:node:imp-aws-aws_s3_bucket-8: dev.customer_staging_buckets_s3,prod.customer_staging_buckets_s3,staging.customer_staging_buckets_s3
+# laminar:node:imp-azure-blob_store-13: dev.customer_azure_blob_destination_blob_store,prod.customer_azure_blob_destination_blob_store,staging.customer_azure_blob_destination_blob_store
+# laminar:node:imp-gcp-gcs-14: dev.customer_gcs_destination_gcs,prod.customer_gcs_destination_gcs,staging.customer_gcs_destination_gcs
+# laminar:node:imp-standard-standard_api-1: dev.export_admin_api,prod.export_admin_api,staging.export_admin_api
+dev:
+  audit_execution_log_store_s3:
+    force_destroy: true
+    transition_days: 30
+    glacier_days: 90
+    log_retention_days: 180
+    object_lock_mode: GOVERNANCE
+    cost_center: dataoutbound-dev-01
+  child_export_dag_mwaa:
+    kms_deletion_window_days: 7
+    log_retention_days: 90
+    vpc_id: vpc-dev-REPLACE
+    vpc_cidr: 10.0.0.0/16
+    db_subnet_cidrs:
+    - 10.0.5.0/24
+    - 10.0.6.0/24
+    cost_center: dataoutbound-dev-01
+  customer_azure_blob_destination_blob_store:
+    storage_account_name: acmedoblobdev
+    storage_account_resource_group: rg-dataoutbound-dev-customer
+    container_name: dataoutbound-exports
+    workload_identity_issuer: https://oidc.dev.acme.internal
+    workload_identity_subject: system:dataoutbound-dev:transform_encrypt_dag
+  customer_gcs_destination_gcs:
+    destination_config_param_name: /dataoutbound/dev/destinations/gcs/config
+    service_account_secret_param_name: /dataoutbound/dev/destinations/gcs/service-account-json
+    gcs_bucket_name: dataoutbound-dev-customer-gcs
+    gcs_object_path: exports/
+    kms_deletion_window_days: 7
+  customer_staging_buckets_s3:
+    force_destroy: true
+    kms_deletion_window_days: 7
+    lifecycle_expiration_days: 7
+    noncurrent_version_expiration_days: 7
+    event_filter_prefix: staging/
+    cost_center: dataoutbound-dev-01
+  egress_lambda:
+    memory_mb: 512
+    timeout_seconds: 30
+    reserved_concurrency: 10
+    max_retry_attempts: 2
+    log_level: INFO
+    log_retention_days: 90
+    kms_deletion_window_days: 7
+    staging_prefix: exports/
+    dag_id: egress_dag
+    cost_center: dataoutbound-dev-01
+  export_admin_api:
+    memory_mb: 1024
+    timeout_seconds: 15
+    reserved_concurrency: -1
+    log_retention_days: 90
+    alerts_topic_arn: arn:aws:sns:us-east-1:123456789012:laminar-alerts-topic
+  export_config_store_rds:
+    engine_version: '15.4'
+    instance_class: db.t3.micro
+    allocated_storage: 20
+    max_allocated_storage: 100
+    multi_az: false
+    backup_retention_period: 30
+    backup_window: 03:00-04:00
+    maintenance_window: sun:05:00-sun:06:00
+    monitoring_interval: 1
+    deletion_protection: false
+    skip_final_snapshot: true
+    kms_deletion_window_days: 7
+    cost_center: dataoutbound-dev-01
+    vpc_id: vpc-REPLACE-DEV
+    db_subnet_ids:
+    - subnet-REPLACE-DEV-DB-A
+    - subnet-REPLACE-DEV-DB-B
+    allowed_client_security_group_ids:
+    - sg-REPLACE-DEV-MWAA
+    - sg-REPLACE-DEV-API-LAMBDA
+  export_extract_spark_job_emr:
+    release_label: emr-7.0.0
+    max_vcpu: 100
+    max_memory_gb: 400
+    max_disk_gb: 200
+    initial_worker_count: 2
+    initial_worker_vcpu: 4
+    initial_worker_memory_gb: 16
+    initial_worker_disk_gb: 20
+    auto_stop_idle_minutes: 15
+    vpc_id: vpc-REPLACE-ME
+    private_subnet_ids:
+    - subnet-priv-1
+    - subnet-priv-2
+    redshift_cidr_blocks:
+    - 10.0.7.0/24
+    redshift_port: 5439
+    redshift_cluster_identifier: golden_data_source
+    redshift_database_name: dev
+    redshift_db_user: dataoutbound_extract
+    log_retention_days: 90
+    kms_deletion_window_days: 7
+    cost_center: dataoutbound-dev-01
+  export_orchestrator_dag_mwaa:
+    kms_deletion_window_days: 7
+    config_db_user: orchestrator_app
+  export_scheduler_eventbridge:
+    schedule_expression: cron(0 6 * * ? *)
+    rule_state: ENABLED
+    kms_deletion_window_days: 7
+    log_retention_days: 30
+    dlq_message_retention_seconds: 345600
+    max_retry_attempts: 2
+    max_event_age_seconds: 3600
+    failed_invocations_threshold: 0
+    trigger_package_path: build/export_scheduler_trigger.zip
+    trigger_memory_mb: 256
+    trigger_timeout_seconds: 30
+  golden_entity_source_store_redshift:
+    vpc_name: dataoutbound-dev-vpc
+    subnet_tier: private-data
+    ingress_cidr_blocks:
+    - 10.0.3.0/24
+    - 10.0.4.0/24
+    node_type: dc2.large
+    number_of_nodes: 2
+    database_name: dev
+    automated_snapshot_retention_days: 7
+    deletion_protection: false
+    kms_deletion_window_days: 7
+  transform_encrypt_dag_mwaa:
+    vpc_id: vpc-0dev0000000000000
+    airflow_version: 2.8.1
+    environment_class: mw1.small
+    min_workers: 1
+    max_workers: 2
+    schedulers: 1
+    max_active_runs: 1
+    max_task_concurrency_per_worker: 2
+    dlq_message_retention_seconds: 1209600
+    kms_deletion_window_days: 7
+    log_retention_days: 90
+    deletion_protection: false
+    webserver_access_mode: PRIVATE_ONLY
+staging:
+  audit_execution_log_store_s3:
+    force_destroy: false
+    transition_days: 30
+    glacier_days: 90
+    log_retention_days: 365
+    object_lock_mode: COMPLIANCE
+    cost_center: dataoutbound-staging-01
+  child_export_dag_mwaa:
+    kms_deletion_window_days: 30
+    log_retention_days: 90
+    vpc_id: vpc-staging-REPLACE
+    vpc_cidr: 10.0.0.0/16
+    db_subnet_cidrs:
+    - 10.0.5.0/24
+    - 10.0.6.0/24
+    cost_center: dataoutbound-staging-01
+  customer_azure_blob_destination_blob_store:
+    storage_account_name: acmedoblobstg
+    storage_account_resource_group: rg-dataoutbound-staging-customer
+    container_name: dataoutbound-exports
+    workload_identity_issuer: https://oidc.staging.acme.internal
+    workload_identity_subject: system:dataoutbound-staging:transform_encrypt_dag
+  customer_gcs_destination_gcs:
+    destination_config_param_name: /dataoutbound/staging/destinations/gcs/config
+    service_account_secret_param_name: /dataoutbound/staging/destinations/gcs/service-account-json
+    gcs_bucket_name: dataoutbound-staging-customer-gcs
+    gcs_object_path: exports/
+    kms_deletion_window_days: 14
+  customer_staging_buckets_s3:
+    force_destroy: false
+    kms_deletion_window_days: 30
+    lifecycle_expiration_days: 7
+    noncurrent_version_expiration_days: 7
+    event_filter_prefix: staging/
+    cost_center: dataoutbound-staging-01
+  egress_lambda:
+    memory_mb: 512
+    timeout_seconds: 30
+    reserved_concurrency: 50
+    max_retry_attempts: 2
+    log_level: INFO
+    log_retention_days: 90
+    kms_deletion_window_days: 30
+    staging_prefix: exports/
+    dag_id: egress_dag
+    cost_center: dataoutbound-staging-01
+  export_admin_api:
+    memory_mb: 1024
+    timeout_seconds: 15
+    reserved_concurrency: 20
+    log_retention_days: 90
+    alerts_topic_arn: arn:aws:sns:us-east-1:123456789012:laminar-alerts-topic
+  export_config_store_rds:
+    engine_version: '15.4'
+    instance_class: db.m6g.large
+    allocated_storage: 50
+    max_allocated_storage: 200
+    multi_az: true
+    backup_retention_period: 30
+    backup_window: 03:00-04:00
+    maintenance_window: sun:05:00-sun:06:00
+    monitoring_interval: 1
+    deletion_protection: true
+    skip_final_snapshot: false
+    kms_deletion_window_days: 30
+    cost_center: dataoutbound-staging-01
+    vpc_id: vpc-REPLACE-STAGING
+    db_subnet_ids:
+    - subnet-REPLACE-STAGING-DB-A
+    - subnet-REPLACE-STAGING-DB-B
+    - subnet-REPLACE-STAGING-DB-C
+    allowed_client_security_group_ids:
+    - sg-REPLACE-STAGING-MWAA
+    - sg-REPLACE-STAGING-API-LAMBDA
+  export_extract_spark_job_emr:
+    release_label: emr-7.0.0
+    max_vcpu: 100
+    max_memory_gb: 400
+    max_disk_gb: 200
+    initial_worker_count: 2
+    initial_worker_vcpu: 4
+    initial_worker_memory_gb: 16
+    initial_worker_disk_gb: 20
+    auto_stop_idle_minutes: 15
+    vpc_id: vpc-REPLACE-ME
+    private_subnet_ids:
+    - subnet-priv-1
+    - subnet-priv-2
+    redshift_cidr_blocks:
+    - 10.0.7.0/24
+    redshift_port: 5439
+    redshift_cluster_identifier: golden_data_source
+    redshift_database_name: dev
+    redshift_db_user: dataoutbound_extract
+    log_retention_days: 90
+    kms_deletion_window_days: 7
+    cost_center: dataoutbound-staging-01
+  export_orchestrator_dag_mwaa:
+    kms_deletion_window_days: 30
+    config_db_user: orchestrator_app
+  export_scheduler_eventbridge:
+    schedule_expression: cron(0 6 * * ? *)
+    rule_state: ENABLED
+    kms_deletion_window_days: 14
+    log_retention_days: 90
+    dlq_message_retention_seconds: 1209600
+    max_retry_attempts: 2
+    max_event_age_seconds: 3600
+    failed_invocations_threshold: 0
+    trigger_package_path: build/export_scheduler_trigger.zip
+    trigger_memory_mb: 256
+    trigger_timeout_seconds: 30
+  golden_entity_source_store_redshift:
+    vpc_name: dataoutbound-staging-vpc
+    subnet_tier: private-data
+    ingress_cidr_blocks:
+    - 10.0.3.0/24
+    - 10.0.4.0/24
+    node_type: ra3.xlplus
+    number_of_nodes: 2
+    database_name: dev
+    automated_snapshot_retention_days: 14
+    deletion_protection: true
+    kms_deletion_window_days: 14
+  transform_encrypt_dag_mwaa:
+    vpc_id: vpc-0staging000000000000
+    airflow_version: 2.8.1
+    environment_class: mw1.medium
+    min_workers: 2
+    max_workers: 4
+    schedulers: 2
+    max_active_runs: 1
+    max_task_concurrency_per_worker: 2
+    dlq_message_retention_seconds: 1209600
+    kms_deletion_window_days: 30
+    log_retention_days: 90
+    deletion_protection: true
+    webserver_access_mode: PRIVATE_ONLY
+prod:
+  audit_execution_log_store_s3:
+    force_destroy: false
+    transition_days: 30
+    glacier_days: 90
+    log_retention_days: 365
+    object_lock_mode: COMPLIANCE
+    cost_center: dataoutbound-prod-01
+  child_export_dag_mwaa:
+    kms_deletion_window_days: 30
+    log_retention_days: 90
+    vpc_id: vpc-prod-REPLACE
+    vpc_cidr: 10.0.0.0/16
+    db_subnet_cidrs:
+    - 10.0.5.0/24
+    - 10.0.6.0/24
+    cost_center: dataoutbound-prod-01
+  customer_azure_blob_destination_blob_store:
+    storage_account_name: acmedoblobprod
+    storage_account_resource_group: rg-dataoutbound-prod-customer
+    container_name: dataoutbound-exports
+    workload_identity_issuer: https://oidc.prod.acme.internal
+    workload_identity_subject: system:dataoutbound-prod:transform_encrypt_dag
+  customer_gcs_destination_gcs:
+    destination_config_param_name: /dataoutbound/prod/destinations/gcs/config
+    service_account_secret_param_name: /dataoutbound/prod/destinations/gcs/service-account-json
+    gcs_bucket_name: dataoutbound-prod-customer-gcs
+    gcs_object_path: exports/
+    kms_deletion_window_days: 30
+  customer_staging_buckets_s3:
+    force_destroy: false
+    kms_deletion_window_days: 30
+    lifecycle_expiration_days: 7
+    noncurrent_version_expiration_days: 7
+    event_filter_prefix: staging/
+    cost_center: dataoutbound-prod-01
+  egress_lambda:
+    memory_mb: 1024
+    timeout_seconds: 30
+    reserved_concurrency: 100
+    max_retry_attempts: 2
+    log_level: INFO
+    log_retention_days: 90
+    kms_deletion_window_days: 30
+    staging_prefix: exports/
+    dag_id: egress_dag
+    cost_center: dataoutbound-prod-01
+  export_admin_api:
+    memory_mb: 1024
+    timeout_seconds: 15
+    reserved_concurrency: 50
+    log_retention_days: 90
+    alerts_topic_arn: arn:aws:sns:us-east-1:123456789012:laminar-alerts-topic
+  export_config_store_rds:
+    engine_version: '15.4'
+    instance_class: db.r6g.large
+    allocated_storage: 100
+    max_allocated_storage: 500
+    multi_az: true
+    backup_retention_period: 30
+    backup_window: 03:00-04:00
+    maintenance_window: sun:05:00-sun:06:00
+    monitoring_interval: 1
+    deletion_protection: true
+    skip_final_snapshot: false
+    kms_deletion_window_days: 30
+    cost_center: dataoutbound-prod-01
+    vpc_id: vpc-REPLACE-PROD
+    db_subnet_ids:
+    - subnet-REPLACE-PROD-DB-A
+    - subnet-REPLACE-PROD-DB-B
+    - subnet-REPLACE-PROD-DB-C
+    allowed_client_security_group_ids:
+    - sg-REPLACE-PROD-MWAA
+    - sg-REPLACE-PROD-API-LAMBDA
+  export_extract_spark_job_emr:
+    release_label: emr-7.0.0
+    max_vcpu: 200
+    max_memory_gb: 800
+    max_disk_gb: 400
+    initial_worker_count: 4
+    initial_worker_vcpu: 8
+    initial_worker_memory_gb: 32
+    initial_worker_disk_gb: 20
+    auto_stop_idle_minutes: 15
+    vpc_id: vpc-REPLACE-ME
+    private_subnet_ids:
+    - subnet-priv-1
+    - subnet-priv-2
+    redshift_cidr_blocks:
+    - 10.0.7.0/24
+    redshift_port: 5439
+    redshift_cluster_identifier: golden_data_source
+    redshift_database_name: dev
+    redshift_db_user: dataoutbound_extract
+    log_retention_days: 90
+    kms_deletion_window_days: 30
+    cost_center: dataoutbound-prod-01
+  export_orchestrator_dag_mwaa:
+    kms_deletion_window_days: 30
+    config_db_user: orchestrator_app
+  export_scheduler_eventbridge:
+    schedule_expression: cron(0 6 * * ? *)
+    rule_state: ENABLED
+    kms_deletion_window_days: 30
+    log_retention_days: 90
+    dlq_message_retention_seconds: 1209600
+    max_retry_attempts: 2
+    max_event_age_seconds: 3600
+    failed_invocations_threshold: 0
+    trigger_package_path: build/export_scheduler_trigger.zip
+    trigger_memory_mb: 512
+    trigger_timeout_seconds: 30
+  golden_entity_source_store_redshift:
+    vpc_name: dataoutbound-prod-vpc
+    subnet_tier: private-data
+    ingress_cidr_blocks:
+    - 10.0.3.0/24
+    - 10.0.4.0/24
+    node_type: ra3.4xlarge
+    number_of_nodes: 3
+    database_name: dev
+    automated_snapshot_retention_days: 35
+    deletion_protection: true
+    kms_deletion_window_days: 30
+  transform_encrypt_dag_mwaa:
+    vpc_id: vpc-0prod0000000000000
+    airflow_version: 2.8.1
+    environment_class: mw1.medium
+    min_workers: 2
+    max_workers: 10
+    schedulers: 2
+    max_active_runs: 1
+    max_task_concurrency_per_worker: 2
+    dlq_message_retention_seconds: 1209600
+    kms_deletion_window_days: 30
+    log_retention_days: 90
+    deletion_protection: true
+    webserver_access_mode: PRIVATE_ONLY

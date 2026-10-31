@@ -1,0 +1,60 @@
+# Export Extract Spark Job configuration (EMR Serverless, application "emr_do").
+# Merged with src/dataoutbound/config/common_config.yaml by ConfigLoader and
+# selected for the runtime environment passed via --environment.
+# Secret references in the "${ssm:/path}" form are resolved by ConfigLoader;
+# no credential value is ever stored in this file.
+module: spark_emr/export_extract_spark_job
+recipes_dir: config/recipes
+
+default:
+  log_level: WARN
+  output:
+    format: parquet
+    mode: overwrite
+    partition_columns:
+      - year
+      - month
+      - day
+    max_records_per_file: 100000
+    compute_checksums: false
+  hive:
+    enabled: false
+    glue_catalog: false
+  spark:
+    spark.sql.session.timeZone: UTC
+    spark.sql.sources.partitionOverwriteMode: dynamic
+    spark.sql.adaptive.enabled: "true"
+    spark.sql.adaptive.coalescePartitions.enabled: "true"
+    spark.sql.parquet.compression.codec: snappy
+    spark.serializer: org.apache.spark.serializer.KryoSerializer
+    spark.hadoop.fs.s3a.committer.name: directory
+    spark.hadoop.fs.s3a.committer.staging.conflict-mode: append
+    spark.hadoop.mapreduce.fileoutputcommitter.algorithm.version: "2"
+    spark.hadoop.fs.s3a.connection.maximum: "100"
+  hadoop:
+    fs.s3a.endpoint.region: eu-west-1
+  jdbc:
+    driver: com.amazon.redshift.jdbc42.Driver
+    fetch_size: 10000
+    url: jdbc:redshift://golden_data_source.000000000000.eu-west-1.redshift-serverless.amazonaws.com:5439/dev
+    user: svc_dataoutbound
+    password: "${ssm:/dataoutbound/${environment}/redshift/password}"
+  source:
+    num_partitions: 8
+  sink:
+    staging_base_uri: s3a://staging_bucet_internal
+    audit_base_uri: s3a://audit_bucket
+    manifest_dir: manifests
+  pii:
+    policy: default
+  retry:
+    max_attempts: 3
+
+dev:
+  log_level: INFO
+
+staging:
+  log_level: INFO
+
+prod:
+  log_level: WARN

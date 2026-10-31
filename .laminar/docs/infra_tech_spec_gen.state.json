@@ -1,0 +1,666 @@
+{
+ "contracts": {
+  "data": {
+   "edges": [
+    {
+     "action": "write",
+     "errors": "HTTP 400/500, transaction rollback on database constraint failure",
+     "from": "do-admin-api",
+     "from_id": "imp-standard-standard_api-1",
+     "idempotency": "idempotent via config_id upsert constraint",
+     "interaction": "sync call",
+     "protocol": "HTTPS/REST (SQL/ORM via psycopg2)",
+     "ref": "conn-imp-1",
+     "request": "{config_id: string, customer_id: string, export_schedule: string, targets: list, active: boolean}",
+     "response": "{status: string, config_id: string, updated_at: string}",
+     "telemetry_event": "com.laminar.dataoutbound.admin.config.written",
+     "to": "cofig_db",
+     "to_id": "imp-aws-aws_rds-7",
+     "trigger": "HTTP request from authorized admin user"
+    },
+    {
+     "action": "trigger",
+     "errors": "HTTP client retry with backoff, HTTP 502/503 handled by API service",
+     "from": "do-admin-api",
+     "from_id": "imp-standard-standard_api-1",
+     "idempotency": "idempotent via unique dag_run_id generation",
+     "interaction": "async event",
+     "protocol": "HTTPS/REST (MWAA REST API)",
+     "ref": "conn-imp-2",
+     "request": "{dag_id: string, conf: {config_id: string, lineage_uuid: string}}",
+     "response": "{dag_run_id: string, execution_date: string, state: string}",
+     "telemetry_event": "com.laminar.dataoutbound.orchestrator.triggered",
+     "to": "orchestrator",
+     "to_id": "imp-aws-aws_mwaa_dag-3",
+     "trigger": "Manual export trigger API request"
+    },
+    {
+     "action": "trigger",
+     "errors": "EventBridge retry policy up to 24 hours, DLQ on exhaustion",
+     "from": "scheduler",
+     "from_id": "imp-aws-aws_eventbridge-2",
+     "idempotency": "idempotent DAG execution per logical date",
+     "interaction": "scheduled trigger",
+     "protocol": "EventBridge event to MWAA API",
+     "ref": "conn-imp-3",
+     "request": "{source: string, detail-type: string, time: string, detail: object}",
+     "response": "MWAA DAG run triggered successfully (HTTP 200)",
+     "telemetry_event": "com.laminar.dataoutbound.scheduler.triggered",
+     "to": "orchestrator",
+     "to_id": "imp-aws-aws_mwaa_dag-3",
+     "trigger": "Cron schedule expression (@daily)"
+    },
+    {
+     "action": "read",
+     "errors": "Database connection retry (3 attempts), task failure and alert",
+     "from": "orchestrator",
+     "from_id": "imp-aws-aws_mwaa_dag-3",
+     "idempotency": "idempotent read",
+     "interaction": "data read",
+     "protocol": "JDBC / SQL",
+     "ref": "conn-imp-4",
+     "request": "SELECT config_id, customer_id, schedule FROM export_configurations WHERE active = true",
+     "response": "List of active configuration records (JSON/rows)",
+     "telemetry_event": "none",
+     "to": "cofig_db",
+     "to_id": "imp-aws-aws_rds-7",
+     "trigger": "Orchestrator DAG task execution start"
+    },
+    {
+     "action": "invoke",
+     "errors": "Airflow task retry (3 attempts with exponential backoff)",
+     "from": "orchestrator",
+     "from_id": "imp-aws-aws_mwaa_dag-3",
+     "idempotency": "idempotent via unique run configuration mapping",
+     "interaction": "async event",
+     "protocol": "Airflow TriggerDagRunOperator (MWAA API)",
+     "ref": "conn-imp-5",
+     "request": "{dag_id: string, conf: {config_id: string, lineage_uuid: string}}",
+     "response": "Child DAG run initiated successfully",
+     "telemetry_event": "com.laminar.dataoutbound.child.invoked",
+     "to": "child_export_dag",
+     "to_id": "imp-aws-aws_mwaa_dag-4",
+     "trigger": "Orchestrator DAG looping through active configurations"
+    },
+    {
+     "action": "invoke",
+     "errors": "AWS SDK retry, task retry on failure",
+     "from": "child_export_dag",
+     "from_id": "imp-aws-aws_mwaa_dag-4",
+     "idempotency": "idempotent via job run idempotency token",
+     "interaction": "async event",
+     "protocol": "boto3 API (EMR Serverless StartJobRun)",
+     "ref": "conn-imp-6",
+     "request": "{applicationId: string, executionRoleArn: string, jobDriver: object, configurationOverrides: object}",
+     "response": "{jobRunId: string}",
+     "telemetry_event": "com.laminar.dataoutbound.emr.started",
+     "to": "emr_do",
+     "to_id": "imp-aws-aws_emr_serverless-5",
+     "trigger": "Child export DAG task execution"
+    },
+    {
+     "action": "read",
+     "errors": "Database retry, task failure",
+     "from": "child_export_dag",
+     "from_id": "imp-aws-aws_mwaa_dag-4",
+     "idempotency": "idempotent read",
+     "interaction": "data read",
+     "protocol": "JDBC / SQL",
+     "ref": "conn-imp-7",
+     "request": "SELECT watermark_timestamp FROM watermark_table WHERE config_id = ?",
+     "response": "{watermark_timestamp: string}",
+     "telemetry_event": "none",
+     "to": "cofig_db",
+     "to_id": "imp-aws-aws_rds-7",
+     "trigger": "Child export DAG initialization task"
+    },
+    {
+     "action": "read",
+     "errors": "Spark task retry (up to 2 attempts), fail-closed on timeout",
+     "from": "emr_do",
+     "from_id": "imp-aws-aws_emr_serverless-5",
+     "idempotency": "idempotent read",
+     "interaction": "data read",
+     "protocol": "JDBC / Redshift Spark Connector",
+     "ref": "conn-imp-8",
+     "request": "SELECT * FROM golden_entities WHERE updated_at >= ?",
+     "response": "Spark DataFrame of golden entity records",
+     "telemetry_event": "none",
+     "to": "dev",
+     "to_id": "imp-aws-aws_redshift-6",
+     "trigger": "Spark job execution in EMR Serverless"
+    },
+    {
+     "action": "write",
+     "errors": "S3 multi-part upload retry, Spark task failure",
+     "from": "emr_do",
+     "from_id": "imp-aws-aws_emr_serverless-5",
+     "idempotency": "idempotent file write via deterministic path naming",
+     "interaction": "file transfer",
+     "protocol": "S3 API (boto3 / s3a)",
+     "ref": "conn-imp-9",
+     "request": "Parquet/JSON files written to s3://staging_bucet_internal/exports/{config_id}/",
+     "response": "HTTP 200 OK / ETag",
+     "telemetry_event": "com.laminar.dataoutbound.staging.written",
+     "to": "staging_bucet_internal",
+     "to_id": "imp-aws-aws_s3_bucket-8",
+     "trigger": "Spark job completion of dataset extraction and transformation"
+    },
+    {
+     "action": "trigger",
+     "errors": "Lambda asynchronous retry (2 retries), DLQ on failure",
+     "from": "staging_bucet_internal",
+     "from_id": "imp-aws-aws_s3_bucket-8",
+     "idempotency": "idempotent processing via object key tracking",
+     "interaction": "async event",
+     "protocol": "S3 Event Notification to Lambda",
+     "ref": "conn-imp-10",
+     "request": "{Records: [{s3: {bucket: {name: string}, object: {key: string}}}]}",
+     "response": "Lambda invocation accepted (status 202)",
+     "telemetry_event": "com.laminar.dataoutbound.egress.triggered",
+     "to": "egress-lambda",
+     "to_id": "imp-aws-aws_lambda-9",
+     "trigger": "S3 ObjectCreated:* event notification"
+    },
+    {
+     "action": "trigger",
+     "errors": "HTTP client retry, Lambda exception handling",
+     "from": "egress-lambda",
+     "from_id": "imp-aws-aws_lambda-9",
+     "idempotency": "idempotent via unique DAG run configuration key",
+     "interaction": "async event",
+     "protocol": "MWAA REST API / TriggerDagRun",
+     "ref": "conn-imp-11",
+     "request": "{dag_id: string, conf: {file_uri: string, config_id: string, lineage_uuid: string}}",
+     "response": "DAG run queued successfully",
+     "telemetry_event": "com.laminar.dataoutbound.egressdag.triggered",
+     "to": "egress dag",
+     "to_id": "imp-aws-aws_mwaa_dag-10",
+     "trigger": "Egress Lambda execution completion"
+    },
+    {
+     "action": "read",
+     "errors": "S3 read retry, task failure",
+     "from": "egress dag",
+     "from_id": "imp-aws-aws_mwaa_dag-10",
+     "idempotency": "idempotent read",
+     "interaction": "data read",
+     "protocol": "S3 API (boto3)",
+     "ref": "conn-imp-12",
+     "request": "{Bucket: string, Key: string}",
+     "response": "File stream / object payload",
+     "telemetry_event": "none",
+     "to": "staging_bucet_internal",
+     "to_id": "imp-aws-aws_s3_bucket-8",
+     "trigger": "Egress DAG processing task execution"
+    },
+    {
+     "action": "push",
+     "errors": "SFTP connection retry (3 attempts), fail-closed abort on PGP error, DLQ/alert",
+     "from": "egress dag",
+     "from_id": "imp-aws-aws_mwaa_dag-10",
+     "idempotency": "idempotent file upload via atomic temp file rename",
+     "interaction": "file transfer",
+     "protocol": "SFTP over SSH (port 22)",
+     "ref": "conn-imp-13",
+     "request": "Encrypted export file stream (GZIP/PGP)",
+     "response": "Remote file ACK / transfer complete",
+     "telemetry_event": "com.laminar.dataoutbound.egress.delivered.sftp",
+     "to": "customer SFTP server",
+     "to_id": "imp-standard-standard_sftp-11",
+     "trigger": "Egress DAG encryption and delivery task"
+    },
+    {
+     "action": "push",
+     "errors": "S3 upload retry, fail-closed abort on PGP error",
+     "from": "egress dag",
+     "from_id": "imp-aws-aws_mwaa_dag-10",
+     "idempotency": "idempotent object PUT",
+     "interaction": "file transfer",
+     "protocol": "S3 API (Cross-account boto3 push)",
+     "ref": "conn-imp-14",
+     "request": "{Bucket: string, Key: string, Body: bytes}",
+     "response": "HTTP 200 OK / ETag",
+     "telemetry_event": "com.laminar.dataoutbound.egress.delivered.s3",
+     "to": "customer bucket",
+     "to_id": "imp-aws-aws_s3_bucket-12",
+     "trigger": "Egress DAG delivery task execution"
+    },
+    {
+     "action": "push",
+     "errors": "Azure SDK retry, abort on failure",
+     "from": "egress dag",
+     "from_id": "imp-aws-aws_mwaa_dag-10",
+     "idempotency": "idempotent block blob put",
+     "interaction": "file transfer",
+     "protocol": "Azure Blob Storage REST API (HTTPS)",
+     "ref": "conn-imp-15",
+     "request": "Block blob upload payload (encrypted file stream)",
+     "response": "HTTP 201 Created / ETag",
+     "telemetry_event": "com.laminar.dataoutbound.egress.delivered.azure",
+     "to": "Customer Azure Blob Destination",
+     "to_id": "imp-azure-blob_store-13",
+     "trigger": "Egress DAG delivery task execution"
+    },
+    {
+     "action": "push",
+     "errors": "GCS SDK retry, abort on failure",
+     "from": "egress dag",
+     "from_id": "imp-aws-aws_mwaa_dag-10",
+     "idempotency": "idempotent object insert",
+     "interaction": "file transfer",
+     "protocol": "Google Cloud Storage XML/JSON API (HTTPS)",
+     "ref": "conn-imp-16",
+     "request": "Object upload payload (encrypted file stream)",
+     "response": "HTTP 200 OK / MD5 hash",
+     "telemetry_event": "com.laminar.dataoutbound.egress.delivered.gcp",
+     "to": "Customer GCS Destination",
+     "to_id": "imp-gcp-gcs-14",
+     "trigger": "Egress DAG delivery task execution"
+    },
+    {
+     "action": "write",
+     "errors": "S3 retry, fallback local logging",
+     "from": "do-admin-api",
+     "from_id": "imp-standard-standard_api-1",
+     "idempotency": "idempotent write via unique audit event ID filename",
+     "interaction": "file transfer",
+     "protocol": "S3 API (boto3)",
+     "ref": "conn-imp-17",
+     "request": "CloudEvents JSON audit record written to audit_bucket/admin/",
+     "response": "HTTP 200 OK",
+     "telemetry_event": "com.laminar.dataoutbound.audit.admin",
+     "to": "audit_bucket",
+     "to_id": "imp-aws-aws_s3_bucket-15",
+     "trigger": "API request audit logging event"
+    },
+    {
+     "action": "push",
+     "errors": "S3 retry",
+     "from": "emr_do",
+     "from_id": "imp-aws-aws_emr_serverless-5",
+     "idempotency": "idempotent write via unique event ID",
+     "interaction": "file transfer",
+     "protocol": "S3 API (boto3)",
+     "ref": "conn-imp-18",
+     "request": "CloudEvents JSON audit record written to audit_bucket/spark/",
+     "response": "HTTP 200 OK",
+     "telemetry_event": "com.laminar.dataoutbound.audit.spark",
+     "to": "audit_bucket",
+     "to_id": "imp-aws-aws_s3_bucket-15",
+     "trigger": "Spark job execution audit event emission"
+    },
+    {
+     "action": "push",
+     "errors": "S3 retry",
+     "from": "egress dag",
+     "from_id": "imp-aws-aws_mwaa_dag-10",
+     "idempotency": "idempotent write via unique event ID",
+     "interaction": "file transfer",
+     "protocol": "S3 API (boto3)",
+     "ref": "conn-imp-19",
+     "request": "CloudEvents JSON audit record written to audit_bucket/egress/",
+     "response": "HTTP 200 OK",
+     "telemetry_event": "com.laminar.dataoutbound.audit.egress",
+     "to": "audit_bucket",
+     "to_id": "imp-aws-aws_s3_bucket-15",
+     "trigger": "Egress DAG execution audit event emission"
+    }
+   ],
+   "interfaces": [
+    {
+     "component": "do-admin-api",
+     "consumes": [
+      "cofig_db for CRUD operations",
+      "orchestrator MWAA API to trigger runs",
+      "audit_bucket for audit logging"
+     ],
+     "data_owned": "Configuration schemas and admin metadata in cofig_db",
+     "exposes": [
+      "REST API endpoints for configuration management (/api/v2/exports)",
+      "Health check endpoint (/health)"
+     ]
+    },
+    {
+     "component": "scheduler",
+     "consumes": [
+      "orchestrator MWAA DAG endpoint"
+     ],
+     "data_owned": "None (stateless scheduler rules)",
+     "exposes": [
+      "EventBridge rule generating cron-based schedule events"
+     ]
+    },
+    {
+     "component": "orchestrator",
+     "consumes": [
+      "cofig_db for reading export configurations",
+      "child_export_dag for invoking sub-workflows"
+     ],
+     "data_owned": "DAG execution metadata and lineage state",
+     "exposes": [
+      "MWAA DAG 'orchestrator' triggered via schedule or API"
+     ]
+    },
+    {
+     "component": "child_export_dag",
+     "consumes": [
+      "cofig_db for watermarks and config",
+      "emr_do for launching Spark extraction jobs"
+     ],
+     "data_owned": "Child DAG execution state and tracking logs",
+     "exposes": [
+      "MWAA DAG 'child_export_dag' invoked by orchestrator"
+     ]
+    },
+    {
+     "component": "emr_do",
+     "consumes": [
+      "dev Redshift cluster for reading golden entity data",
+      "cofig_db for config parameters"
+     ],
+     "data_owned": "Staging data files written to staging_bucet_internal and audit logs in audit_bucket",
+     "exposes": [
+      "EMR Serverless Spark job runtime for data extraction and transformation"
+     ]
+    },
+    {
+     "component": "dev",
+     "consumes": [
+      "None (data source)"
+     ],
+     "data_owned": "Golden Entity source tables and data warehouse schemas",
+     "exposes": [
+      "Redshift SQL interface for analytical queries and data reads"
+     ]
+    },
+    {
+     "component": "cofig_db",
+     "consumes": [
+      "do-admin-api for writes",
+      "orchestrator and child_export_dag for reads"
+     ],
+     "data_owned": "Export configurations, watermarks, metadata, and state tables",
+     "exposes": [
+      "Postgres SQL relational database interface (port 5432)"
+     ]
+    },
+    {
+     "component": "staging_bucet_internal",
+     "consumes": [
+      "emr_do for writing extracted files",
+      "egress dag for reading staged files"
+     ],
+     "data_owned": "Staged export payload files (Parquet/JSON)",
+     "exposes": [
+      "S3 bucket interface for object storage and event notifications"
+     ]
+    },
+    {
+     "component": "egress-lambda",
+     "consumes": [
+      "staging_bucet_internal S3 notification",
+      "egress dag MWAA API"
+     ],
+     "data_owned": "Temporary execution context state",
+     "exposes": [
+      "Lambda function handler triggered by S3 events"
+     ]
+    },
+    {
+     "component": "egress dag",
+     "consumes": [
+      "staging_bucet_internal for reading staged files",
+      "audit_bucket for writing audit logs",
+      "customer SFTP server, customer bucket, Customer Azure Blob Destination, Customer GCS Destination for delivery"
+     ],
+     "data_owned": "Egress execution metadata and status logs",
+     "exposes": [
+      "MWAA DAG 'egress dag' triggered by egress-lambda"
+     ]
+    },
+    {
+     "component": "Customer Azure Blob Destination",
+     "consumes": [
+      "egress dag for file push"
+     ],
+     "data_owned": "Delivered customer export files in Azure Blob storage container",
+     "exposes": [
+      "Azure Blob Storage REST API endpoint for container uploads"
+     ]
+    },
+    {
+     "component": "Customer GCS Destination",
+     "consumes": [
+      "egress dag for file push"
+     ],
+     "data_owned": "Delivered customer export files in GCS bucket",
+     "exposes": [
+      "Google Cloud Storage API endpoint for bucket uploads"
+     ]
+    },
+    {
+     "component": "audit_bucket",
+     "consumes": [
+      "do-admin-api, emr_do, and egress dag for writing audit records"
+     ],
+     "data_owned": "CloudEvents audit logs and telemetry records",
+     "exposes": [
+      "S3 bucket interface for audit and telemetry storage"
+     ]
+    }
+   ]
+  },
+  "hash": "c06f5af6a3402e03",
+  "status": "complete",
+  "updated_epoch": 1793488555813
+ },
+ "diagrams": {},
+ "doc_hash": "246c8000c7001dc757710902e52e72ee15d5a2229d3ba80772a518ca51d7b87d",
+ "format": 1,
+ "graph_hash": "88c8e9821357aaa74ac6e3ee37db430510beadad62cea53a7d123b377f0b0d49",
+ "notes": [],
+ "revision": 3,
+ "sections": {
+  "g.1": {
+   "attempts": 0,
+   "body": "The DataOutbound Product is provisioned as a single AWS-based, event-driven batch data-egress platform within the hospitality data platform domain. All pipeline-owned infrastructure is deployed in **one Terraform root module** (`terraform/main.tf`) covering:\n\n| Service type | Components provisioned |\n|---|---|\n| API compute (ECS Fargate behind an ALB) | do-admin-api (REST, JWT) |\n| EventBridge | scheduler (rule `scheduler`) |\n| MWAA (Apache Airflow) | orchestrator, child_export_dag, egress dag (one MWAA environment hosts all three DAGs) |\n| EMR Serverless | emr_do (Spark, emr-7.0.0) |\n| Redshift | dev (cluster `golden_data_source`) \u2014 externally owned source, consumed read-only |\n| RDS Postgres | cofig_db |\n| S3 | staging_bucet_internal, audit_bucket |\n| Lambda | egress-lambda |\n| External / customer-owned (not provisioned) | customer SFTP server, customer bucket, Customer Azure Blob Destination, Customer GCS Destination |\n\n**Multi-environment scope**: `dev`, `staging`, `prod` workspaces of the same root module, driven entirely by `values.yaml` per environment. Per SCRUM-485, deletion-protection flags for all stateful resources (`export_config_store_rds`, `customer_staging_buckets_s3`, `audit_execution_log_store_s3`, and the KMS key) are read from the per-environment variable `deletion_protection_enabled` \u2014 `false` in dev (clean teardown), `true` in staging and prod \u2014 with zero hardcoded values in the module.\n\n**Region strategy**: single primary region (default `us-east-1`, overridable via `values.yaml`); all components co-located to minimise cross-AZ latency. The Golden Entity Source Store (`dev` Redshift) is an existing externally owned cluster; the pipeline consumes it read-only and never provisions or modifies it. Customer destinations are customer-owned; this specification defines only our side of each delivery contract.\n\n**RPO/RTO targets**: cofig_db RPO 24 h / RTO 2 h (automated backups, snapshot retention 30 days); staging_bucet_internal is ephemeral (7-day purge, no backup required); audit_bucket is append-only telemetry with lifecycle tiering (30 d \u2192 Glacier at 90 d).",
+   "hash": "27f0352a912fe49f",
+   "reason": null,
+   "source": "lead:r0",
+   "status": "complete",
+   "updated_epoch": 1793489255871
+  },
+  "g.10": {
+   "attempts": 0,
+   "body": "| Component | Open Question | Infrastructure Default | Justification |\n|---|---|---|---|\n| do-admin-api | Hosting platform not specified in diagram | ECS Fargate service behind an ALB, 1 vCPU / 2 GB task, 2 tasks min\u20134 max, ALB HTTPS (TLS 1.3) listener | ECS is in the SCRUM-485 allowlist; Fargate gives serverless scaling with no OS management |\n| do-admin-api | JWT issuer / identity provider | JWT validated against the organisation OIDC issuer URL injected via SSM (`/laminar/dataoutbound/{env}/do-admin-api/jwks-url`) | Standard_api pattern requires bearer validation; issuer is environment config, not a new component |\n| do-admin-api | Rate limiting values | Token bucket: 100 req/min per client IP at the ALB/WAF layer | Mainstream default; protects cofig_db from control-plane abuse |\n| scheduler | Cron expression for the rule | `cron(0 2 * * ? *)` daily 02:00 UTC, overridable in `values.yaml` | Matches `@daily` DAG cadence; exact business time not stated in inputs |\n| scheduler | Target mechanism for MWAA | EventBridge rule target = MWAA REST API via `airflow:InvokeRestApi` with input transformer building the DAG-run payload | Correct MWAA invocation path (no `CreateDagRun` IAM action exists) |\n| orchestrator / child_export_dag / egress dag | One MWAA environment or three? | One MWAA environment (`laminar-dataoutbound-mwaa-{env}`) hosting all three DAGs; MWAA 2.x, Flink-less, `mw1.small` dev / `mw1.medium` staging+prod, 2 AZ private subnets | MWAA environments are per-environment, not per-DAG; DAG-level isolation via `max_active_runs = 1` per DAG |\n| orchestrator / child_export_dag / egress dag | Airflow version | Airflow 2.10.x on EMR-backed MWAA | Supports dynamic task mapping and modern REST API |\n| emr_do | Worker sizing within the 200-unit cap | Default pre-initialized capacity 20 vCPU / 80 GB memory; max 200 vCPU / 800 GB; Spark driver 4 vCPU/16 GB, executors 4 vCPU/16 GB each | Elastic scaling under the user-set `max_capacity_units = 200` cap; matches 1 GB / 100k-record per-customer targets |\n| emr_do | Redshift access method | JDBC via Redshift Spark connector with read-only credentials from SSM over TLS | Cluster is externally owned; no IAM cross-account trust available |\n| dev | Externally owned \u2014 who provisions? | Referenced only via data source / variables (`cluster_endpoint`, `database_name = dev`); never provisioned by this module | SCRUM-485 explicitly excludes n5 from the allowlist check |\n| cofig_db | Backup/DR specifics | Automated backups 30-day retention, backup window 03:00\u201304:00 UTC, final snapshot on delete in dev; RPO 24 h / RTO 2 h | Matches stated RPO/RTO; `multi_az = false` per user decision (Recommendation: enable Multi-AZ in prod if RTO 2 h must survive AZ failure \u2014 single-AZ failover is instance-level only) |\n| cofig_db | Credential management | Master credential in SSM SecureString, rotated via Secrets Manager rotation lambda outside this diagram's scope | Keeps secrets out of state and code |\n| staging_bucet_internal | Lifecycle conflict (`lifecycle_enabled = false` vs 7-day purge) | Bucket-level toggle stays `false`; an explicit `Expiration` rule of exactly 7 days on `exports/*` is applied per SCRUM-486 AC#5 | Honours both the user decision and the acceptance criterion; the 30/90-day transition properties are recorded but inactive |\n| staging_bucet_internal | Event notification configuration | `ObjectCreated:*` on `exports/*` \u2192 egress-lambda, with filter excluding manifest keys to avoid duplicate triggers | Prevents recursive triggering |\n| egress-lambda | DLQ and retry | Async retry 2 attempts, DLQ `laminar-dataoutbound-egress-lambda-dlq-{env}` | Standard Lambda async failure handling |\n| egress dag | Worker memory for 1 GB files | Streaming/chunked transfers; MWAA worker peak RSS capped < 2,048 MB per SCRUM-483 AC#2 | Memory-bounded egress tenet |\n| Customer Azure Blob Destination | Auth fallback | Entra ID service principal primary; SAS token fallback only if customer cannot provision Entra ID | Per architecture document |\n| Customer GCS Destination | Credential type | GCP service-account JSON key in SSM SecureString, bucket-scoped `objectCreator` role | Least-privilege cross-cloud write |\n| customer SFTP server | Host-key management | Customer host key pinned in SSM at onboarding; strict verification, fail-closed | SCRUM-484 AC#2 |\n| customer bucket | Cross-account write mechanism | `sts:AssumeRole` on customer-provided `CustomerCrossAccountEgressRole` with external-ID condition, account ID pinned via variable | Resolves review comment on wildcard account |\n| audit_bucket | Immutability / DR | No CRR (incompatible with user's `versioning = false`); write-only IAM + Glacier tiering at 90 d; Recommendation: Object Lock compliance mode if regulatory immutability is required | Resolves review comments 6.13.2/6.13.6 without contradicting user decisions |\n| All | Log retention value (SCRUM-486) | Single variable `log_retention_days` in `values.yaml` applied to every explicitly provisioned log group; value **to be confirmed with the organisation logging standard before sprint commitment** (never unset/never-expire) | The inputs do not state the value; mechanism is provisioned now |\n| All | Region | `us-east-1` default, overridable in `values.yaml` | Co-location minimises latency; stated in \u00a7g.1 |\n| All | Dead-letter queue permissions | Default account-level SQS resource policies (per architecture summary) | No custom DLQ resource policies required |\n| All | NAT egress for MWAA/EMR | Private subnets + NAT gateway with static EIP for outbound SFTP/HTTPS to customer endpoints | Matches architecture summary; interactive shell/exec disabled via security-group egress restriction to required endpoints only |",
+   "hash": "cd26fd1406b824ca",
+   "reason": null,
+   "source": "trail:r0",
+   "status": "complete",
+   "updated_epoch": 1793489321489
+  },
+  "g.2": {
+   "attempts": 0,
+   "body": "1. **Single root module, environment overlays.** One Terraform root module (`main.tf`, `variables.tf`, `values.yaml`, one `<service>.tf` per service type: `api.tf`, `blob_store.tf`, `emr.tf`, `eventbridge.tf`, `gcs.tf`, `lambda.tf`, `mwaa.tf`, `rds.tf`, `redshift.tf`, `s3.tf`). No nested modules with hidden defaults; every environment-specific value lives in `values.yaml`.\n2. **Immutability & declarative state.** All resources are managed declaratively; no manual console changes. Stateful resources (RDS, S3 buckets, KMS keys) carry `prevent_destroy` guarded by the `deletion_protection_enabled` variable so dev teardown succeeds while staging/prod teardown fails closed (SCRUM-485 AC#4/AC#5).\n3. **Secure-by-default.** Every S3 bucket ships with public-access block and SSE; every database enforces TLS; every IAM role is least-privilege with explicit ARNs (no wildcards on resources); secrets never appear in code or state plaintext \u2014 resolved at runtime from SSM Parameter Store (SecureString).\n4. **Environment parity.** Identical module code across dev/staging/prod; only `values.yaml` differs (sizing, deletion protection, retention, feature flags). Lower environments remain fully teardown-compatible.\n5. **Automated verification.** `terraform plan` gates with policy checks (allowlist of MWAA, RDS Postgres, Lambda, EMR Serverless, S3, ECS per SCRUM-485 AC#1), `terraform validate`/`fmt` in CI, and a post-apply inventory check that exits non-zero on any out-of-allowlist resource.\n6. **Explicit observability provisioning.** Log groups are created explicitly per component with a single organisation retention value (`log_retention_days` variable \u2014 value to be confirmed per SCRUM-486; never unset or never-expire), plus CloudWatch alarms defined in Terraform.",
+   "hash": "12a5540e7797d6fc",
+   "reason": null,
+   "source": "lead:r0",
+   "status": "complete",
+   "updated_epoch": 1793489255871
+  },
+  "g.3": {
+   "attempts": 0,
+   "body": "**Diagram components \u2014 physical names exactly as the user set them (authoritative):**\n\n| Component | Physical resource name | Terraform resource |\n|---|---|---|\n| do-admin-api | `do-admin-api` | `export_admin_api` |\n| scheduler | `scheduler` (EventBridge rule name) | `export_scheduler_eventbridge` |\n| orchestrator | DAG id `orchestrator` | `export_orchestrator_dag_mwaa` |\n| child_export_dag | DAG id `child_export_dag` | `child_export_dag_mwaa` |\n| emr_do | `emr_do` (EMR Serverless application) | `export_extract_spark_job_emr` |\n| dev | Redshift database `dev`, cluster identifier `golden_data_source` | `golden_entity_source_store_redshift` (externally owned \u2014 referenced, not provisioned) |\n| cofig_db | `cofig_db` (RDS instance identifier) | `export_config_store_rds` |\n| staging_bucet_internal | `staging_bucet_internal` | `customer_staging_buckets_s3` |\n| egress-lambda | `egress-lambda` | `egress_lambda` |\n| egress dag | DAG id `egress dag` | `transform_encrypt_dag_mwaa` |\n| audit_bucket | `audit_bucket` | `audit_execution_log_store_s3` |\n\nCustomer-owned destinations (customer SFTP server, customer bucket, Customer Azure Blob Destination, Customer GCS Destination) are external; no Terraform resources are created for them.\n\n**Supporting resources (not user-named) \u2014 convention `laminar-service-component-env`, env suffix `dev`/`staging`/`prod`:**\n\n| Resource Type | Pattern | Example (prod) |\n|---|---|---|\n| IAM role (API task) | `laminar-dataoutbound-do-admin-api-role-{env}` | `laminar-dataoutbound-do-admin-api-role-prod` |\n| IAM role (MWAA execution) | `laminar-dataoutbound-mwaa-execution-role-{env}` | `laminar-dataoutbound-mwaa-execution-role-prod` |\n| IAM role (EMR job execution) | `laminar-dataoutbound-emr-job-role-{env}` | `laminar-dataoutbound-emr-job-role-prod` |\n| IAM role (Lambda execution) | `laminar-dataoutbound-egress-lambda-role-{env}` | `laminar-dataoutbound-egress-lambda-role-prod` |\n| IAM role (EventBridge invoke) | `laminar-dataoutbound-scheduler-role-{env}` | `laminar-dataoutbound-scheduler-role-prod` |\n| SQS DLQ (EventBridge target / Lambda) | `laminar-dataoutbound-{component}-dlq-{env}` | `laminar-dataoutbound-scheduler-dlq-prod` |\n| CloudWatch log group | `/laminar/dataoutbound/{component}/{env}` | `/laminar/dataoutbound/egress-lambda/prod` |\n| KMS key + alias | `laminar-dataoutbound-{env}` / alias `alias/laminar-dataoutbound-{env}` | `alias/laminar-dataoutbound-prod` |\n| SSM parameter prefix | `/laminar/dataoutbound/{env}/{component}/` | `/laminar/dataoutbound/prod/do-admin-api/` |\n| MWAA environment | `laminar-dataoutbound-mwaa-{env}` | `laminar-dataoutbound-mwaa-prod` |\n| Security group | `laminar-dataoutbound-{component}-sg-{env}` | `laminar-dataoutbound-cofig-db-sg-prod` |\n\n**Mandatory tags (applied to every provisioned resource):**\n\n```json\n{\n  \"Project\": \"dataoutbound\",\n  \"Domain\": \"hospitality-data-platform\",\n  \"Owner\": \"data-platform\",\n  \"Environment\": \"${env}\",\n  \"ManagedBy\": \"terraform\",\n  \"CostCenter\": \"${cost_center}\",\n  \"DataClassification\": \"pii-restricted\"\n}\n```",
+   "hash": "9f03b49b99003d35",
+   "reason": null,
+   "source": "lead:r0",
+   "status": "complete",
+   "updated_epoch": 1793489255871
+  },
+  "g.6.imp_aws_aws_emr_serverless_5": {
+   "attempts": 0,
+   "body": "#### Resource Configuration & Sizing\n| Parameter | Value | Justification |\n|---|---|---|\n| `application_name` | `emr_do` | Exact physical resource name mandated by user architecture decision. |\n| `release_label` | `emr-7.0.0` | Specified Spark runtime version supporting modern Apache Spark execution features. |\n| `job_type` | `SPARK` | Optimized execution framework for large-scale relational extraction and dataset transformation. |\n| `max_capacity_units` | `200` | Maximum aggregate vCPU limit to scale Spark workers concurrently during high-volume batch runs. |\n\n#### IAM Role & Policies\n```json\n{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    {\n      \"Sid\": \"EMRServerlessS3StagingAccess\",\n      \"Effect\": \"Allow\",\n      \"Action\": [\n        \"s3:PutObject\",\n        \"s3:GetObject\",\n        \"s3:ListBucket\",\n        \"s3:DeleteObject\"\n      ],\n      \"Resource\": [\n        \"arn:aws:s3:::staging_bucet_internal\",\n        \"arn:aws:s3:::staging_bucet_internal/*\",\n        \"arn:aws:s3:::audit_bucket\",\n        \"arn:aws:s3:::audit_bucket/*\"\n      ]\n    },\n    {\n      \"Sid\": \"RedshiftDataReadAccess\",\n      \"Effect\": \"Allow\",\n      \"Action\": [\n        \"redshift-data:ExecuteStatement\",\n        \"redshift-data:GetStatementResult\",\n        \"redshift:GetClusterCredentials\"\n      ],\n      \"Resource\": \"*\"\n    },\n    {\n      \"Sid\": \"KMSEncryptionAccess\",\n      \"Effect\": \"Allow\",\n      \"Action\": [\n        \"kms:Decrypt\",\n        \"kms:Encrypt\",\n        \"kms:GenerateDataKey\"\n      ],\n      \"Resource\": \"arn:aws:kms:us-east-1:123456789012:key/laminar-emr-key-prod\"\n    }\n  ]\n}\n```\n\n```json\n{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    {\n      \"Effect\": \"Allow\",\n      \"Principal\": {\n        \"Service\": \"emr-serverless.amazonaws.com\"\n      },\n      \"Action\": \"sts:AssumeRole\"\n    }\n  ]\n}\n```\n\n#### Network Configuration\n- **VPC Placement**: Private application subnets (`10.0.5.0/24`, `10.0.6.0/24`) with VPC interface endpoints for S3 and Redshift.\n- **Subnet Tier**: Private Analytics Subnets.\n\n| Direction | Protocol | Port | Destination / Source | Purpose |\n|---|---|---|---|---|\n| Outbound | TCP | 5439 | Redshift Cluster (`golden_data_source`) | Extracting Golden Entity records |\n| Outbound | HTTPS | 443 | S3 VPC Endpoint | Writing staged Parquet/JSON files |\n\n#### Security Controls & Encryption\n```json\n{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    {\n      \"Sid\": \"EMRServerlessKMSPolicy\",\n      \"Effect\": \"Allow\",\n      \"Principal\": {\n        \"Service\": \"emr-serverless.amazonaws.com\"\n      },\n      \"Action\": [\n        \"kms:Decrypt\",\n        \"kms:GenerateDataKey\"\n      ],\n      \"Resource\": \"*\"\n    }\n  ]\n}\n```\n\n#### Observability & Alerting\n| Metric | Namespace | Threshold | Alarm Action |\n|---|---|---|---|\n| `JobsFailed` | `AWS/EMRServerless` | Greater than 0 for 1 evaluation period | SNS Topic -> PagerDuty Alert |\n| `WorkerCpuUtilization` | `AWS/EMRServerless` | Greater than 90% for 15 minutes | SNS Topic -> Scaling Warning |\n\n#### Disaster Recovery & Backup\n- **RTO**: 4 hours.\n- **RPO**: 24 hours.\n- **Backup Mechanism**: Stateless compute runtime; state is persisted via S3 staged files and RDS watermarks.\n\n#### Infrastructure Assumptions\n- Q: What is the default driver and executor memory allocation for Spark jobs?\n- A: 4 vCPU and 16 GB RAM per driver/executor worker node.\n- Justification: Balanced configuration to process up to 100,000 records within worker memory limits.\n\n---",
+   "hash": "68fb42fa83bcf44a",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793488724654
+  },
+  "g.6.imp_aws_aws_eventbridge_2": {
+   "attempts": 0,
+   "body": "#### Resource Configuration & Sizing\n| Parameter | Value | Justification |\n|---|---|---|\n| Component Type | `aws_eventbridge` | Serverless event bus and rule scheduler. |\n| Rule Name | `scheduler` | Exact resource name specified in architecture graph context. |\n| Schedule Expression | Cron / Rate Expression (e.g., `@daily`) | Drives time-based batch export cadence triggers. |\n| Target Type | MWAA REST API / Airflow Trigger | Invokes the `orchestrator` DAG on schedule. |\n\n#### IAM Role & Policies\nIAM execution role allowing EventBridge to invoke the target MWAA environment:\n\n```json\n{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    {\n      \"Sid\": \"EventBridgeInvokeMwaaOrchestrator\",\n      \"Effect\": \"Allow\",\n      \"Action\": [\n        \"airflow:PublishMetrics\",\n        \"airflow:CreateCliToken\"\n      ],\n      \"Resource\": \"arn:aws:airflow:${var.aws_region}:${var.aws_account_id}:environment/orchestrator\"\n    }\n  ]\n}\n```\n\nTrust Policy:\n```json\n{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    {\n      \"Effect\": \"Allow\",\n      \"Principal\": {\n        \"Service\": \"events.amazonaws.com\"\n      },\n      \"Action\": \"sts:AssumeRole\"\n    }\n  ]\n}\n```\n\n#### Network Configuration\n- **VPC Placement**: N/A (AWS native serverless control-plane service).\n- **Subnet Tier**: N/A.\n\n| Direction | Port | Protocol | Destination / Source | Purpose |\n|---|---|---|---|---|\n| Outbound | 443 | HTTPS | MWAA Control Plane API | Triggering export orchestration workflows |\n\n#### Security Controls & Encryption\n- **Encryption in Transit**: TLS 1.3 enforced for all EventBridge rule target invocations.\n- **Least Privilege**: Rule permissions are strictly scoped to invoke only the designated `orchestrator` MWAA environment.\n\n#### Observability & Alerting\n| Metric | Namespace | Threshold | Alarm Action |\n|---|---|---|---|\n| `Invocations` | `AWS/Events` | N/A (Monitored for volume) | None |\n| `FailedInvocations` | `AWS/Events` | `Sum >= 1 over 5 minutes` | Trigger SNS alert for scheduler delivery failures |\n\n#### Disaster Recovery & Backup\n- **RPO / RTO**: RPO: 0 (Stateless rule definitions); RTO: Immediate (Provisioned via Terraform IaC).\n- **Backup Mechanism**: Rule configurations are version-controlled in Git and provisioned via Terraform.\n\n#### Infrastructure Assumptions\n- **Q**: How are schedule expressions managed across environments?\n  - **A**: Managed via `values.yaml` environment overlay files.\n  - **Justification**: Enables faster test cadences in `dev` and production-aligned cadences in `prod`.",
+   "hash": "db847e626278dee3",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793489054145
+  },
+  "g.6.imp_aws_aws_lambda_9": {
+   "attempts": 0,
+   "body": "#### Resource Configuration & Sizing\n\n| Parameter | Value | Justification |\n|---|---|---|\n| function_name | `egress-lambda` | User-set (authoritative) |\n| runtime | `python3.11` | User-set (authoritative) |\n| handler | `lambda_function.lambda_handler` | User-set (authoritative) |\n| memory_mb | `512` | User-set (authoritative) |\n| timeout_seconds | `30` | User-set (authoritative) |\n| vpc_enabled | `false` | User-set (authoritative) |\n| environment_variables | `{}` (none beyond defaults; secrets via SSM at runtime) | User-set (authoritative) |\n| Terraform resource | `egress_lambda` (in `terraform/lambda.tf`) | Blueprint |\n| Trigger | S3 event notification on `staging_bucet_internal` (`s3:ObjectCreated:*`, filter prefix `exports/`), SQS on-failure destination `laminar-dataoutbound-egress-lambda-dlq-{env}` | Frozen contract; DLQ per best practice |\n| Reserved concurrency | 50 | Bounds MWAA trigger fan-out under bulk staging writes |\n\n#### IAM Role & Policies\n\nExecution role `laminar-dataoutbound-egress-lambda-role-{env}`. MWAA DAG triggering uses the correct REST-invocation actions (`airflow:CreateApiToken` / `airflow:InvokeRestApi`), not the invalid `airflow:CreateDagRun`:\n\n```json\n{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    { \"Sid\": \"ReadEventMetadata\", \"Effect\": \"Allow\",\n      \"Action\": [\"s3:GetObject\"],\n      \"Resource\": \"arn:aws:s3:::staging_bucet_internal/exports/*\" },\n    { \"Sid\": \"TriggerEgressDagViaMwaaRestApi\", \"Effect\": \"Allow\",\n      \"Action\": [\"airflow:CreateApiToken\", \"airflow:InvokeRestApi\"],\n      \"Resource\": [\n        \"arn:aws:airflow:${region}:${account}:environment/laminar-dataoutbound-mwaa-${env}\",\n        \"arn:aws:airflow:${region}:${account}:environment/laminar-dataoutbound-mwaa-${env}#dags/egress dag\" ] },\n    { \"Sid\": \"ReadSsmSecrets\", \"Effect\": \"Allow\",\n      \"Action\": [\"ssm:GetParameter\"],\n      \"Resource\": \"arn:aws:ssm:${region}:${account}:parameter/laminar/dataoutbound/${env}/egress-lambda/*\" },\n    { \"Sid\": \"KmsDecrypt\", \"Effect\": \"Allow\",\n      \"Action\": [\"kms:Decrypt\"],\n      \"Resource\": \"arn:aws:kms:${region}:${account}:key/${laminar_dataoutbound_key_id}\" },\n    { \"Sid\": \"WriteLogs\", \"Effect\": \"Allow\",\n      \"Action\": [\"logs:CreateLogStream\", \"logs:PutLogEvents\"],\n      \"Resource\": \"arn:aws:logs:${region}:${account}:log-group:/laminar/dataoutbound/egress-lambda/${env}:*\" }\n  ]\n}\n```\n\nTrust policy:\n\n```json\n{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [{\n    \"Effect\": \"Allow\",\n    \"Principal\": { \"Service\": \"lambda.amazonaws.com\" },\n    \"Action\": \"sts:AssumeRole\",\n    \"Condition\": { \"StringEquals\": { \"aws:SourceAccount\": \"${account}\" } }\n  }]\n}\n```\n\n#### Network Configuration\n\n| Aspect | Value |\n|---|---|\n| Placement | No VPC (user decision `vpc_enabled = false`); reaches S3, MWAA REST API and SSM over AWS public service endpoints via IAM auth |\n| SG rules | N/A \u2014 no ENI is provisioned |\n\n#### Security Controls & Encryption\n\n- All AWS API calls over TLS; SSM SecureString parameters decrypted with the shared KMS key; no secrets in environment variables (user set `environment_variables = {}`).\n- Idempotency: object-key tracking (DynamoDB-free \u2014 dedup via deterministic DAG run key `lineage_uuid` from the object key) ensures exactly one `egress dag` run per staged file (SCRUM-482 AC#3).\n\n#### Observability & Alerting\n\n| Metric | Namespace | Threshold | Alarm Action |\n|---|---|---|---|\n| Errors | AWS/Lambda | \u2265 1 in 5 min | SNS \u2192 on-call |\n| Throttles | AWS/Lambda | \u2265 1 in 5 min | SNS |\n| Duration p99 | AWS/Lambda | > 25 s (approaching 30 s timeout) | SNS |\n| DLQ message count | AWS/SQS (DLQ) | \u2265 1 | SNS (failed trigger = silent egress gap) |\n\n#### Disaster Recovery & Backup\n\nStateless; RTO = redeploy (minutes), RPO = 0 (no state). Failed invocations land in the DLQ and are replayed manually; the S3 source object remains in `staging_bucet_internal` for 7 days, so a missed trigger is recoverable by re-invoking with the same object key.\n\n#### Infrastructure Assumptions\n\n- Q: How does the Lambda reach MWAA without a VPC? A: Via the MWAA REST API over HTTPS with `airflow:CreateApiToken`/`InvokeRestApi`; MWAA public REST endpoints are used (MWAA web access via VPC does not affect the REST API path). Justification: consistent with `vpc_enabled = false` user decision.\n- Q: DLQ retention? A: 14 days on `laminar-dataoutbound-egress-lambda-dlq-{env}`. Justification: mainstream default, allows replay within the 7-day staging window.",
+   "hash": "10446c841a9f67fe",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793489293064
+  },
+  "g.6.imp_aws_aws_mwaa_dag_10": {
+   "attempts": 0,
+   "body": "#### Resource Configuration & Sizing\n| Parameter | Value | Justification |\n|---|---|---|\n| DAG Name | `egress dag` | Unique identifier matching authoritative diagram setting. |\n| Schedule | `@daily` | Synchronized with daily egress batch delivery windows. |\n| Max Active Runs | `1` | Ensures sequential execution discipline and prevents worker resource contention. |\n| Catchup | `False` | Prevents unintended backfilling of historical egress runs upon deployment. |\n\n#### IAM Role & Policies\n```json\n{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    {\n      \"Sid\": \"StagingReadAndDelete\",\n      \"Effect\": \"Allow\",\n      \"Action\": [\n        \"s3:GetObject\",\n        \"s3:ListBucket\",\n        \"s3:DeleteObject\"\n      ],\n      \"Resource\": [\n        \"arn:aws:s3:::staging_bucet_internal\",\n        \"arn:aws:s3:::staging_bucet_internal/*\"\n      ]\n    },\n    {\n      \"Sid\": \"AuditLogWrite\",\n      \"Effect\": \"Allow\",\n      \"Action\": [\n        \"s3:PutObject\"\n      ],\n      \"Resource\": \"arn:aws:s3:::audit_bucket/egress/*\"\n    },\n    {\n      \"Sid\": \"CrossAccountCustomerBucketAssumeRole\",\n      \"Effect\": \"Allow\",\n      \"Action\": \"sts:AssumeRole\",\n      \"Resource\": \"arn:aws:iam::*:role/CustomerEgressAccessRole\"\n    },\n    {\n      \"Sid\": \"SSMSecretAndKeyRetrieval\",\n      \"Effect\": \"Allow\",\n      \"Action\": [\n        \"ssm:GetParameter\",\n        \"ssm:GetParameters\",\n        \"kms:Decrypt\"\n      ],\n      \"Resource\": [\n        \"arn:aws:ssm:${var.aws_region}:${var.aws_account_id}:parameter/laminar/dataoutbound/*\",\n        \"arn:aws:kms:${var.aws_region}:${var.aws_account_id}:key/${var.kms_key_id}\"\n      ]\n    }\n  ]\n}\n```\n\nTrust Policy JSON:\n```json\n{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    {\n      \"Effect\": \"Allow\",\n      \"Principal\": {\n        \"Service\": \"airflow-worker.amazonaws.com\"\n      },\n      \"Action\": \"sts:AssumeRole\"\n    }\n  ]\n}\n```\n\n#### Network Configuration\n- **VPC Placement**: MWAA private worker subnets across Multi-AZ.\n- **Subnet Tier**: Private Subnets with NAT Gateway egress.\n\n| Direction | Port | Protocol | Source / Destination CIDR | Purpose |\n|---|---|---|---|---|\n| Outbound | 443 | HTTPS | `0.0.0.0/0` (via NAT Gateway) | Push exports to Azure Blob, GCS, and AWS S3 destinations |\n| Outbound | 22 | SSH | External SFTP Server IP / CIDR | Push encrypted exports to customer SFTP server |\n\n#### Security Controls & Encryption\n- **Fail-Closed PGP**: If PGP encryption fails or keys are invalid, execution aborts immediately, zero unencrypted bytes are transmitted, and a `TRANSFER_FAILED` audit event is emitted.\n- **Transport Security**: TLS 1.3 for S3, HTTPS for Azure and GCS, and SSH with strict host-key verification for SFTP.\n\n#### Observability & Alerting\n| Metric | Namespace | Threshold | Alarm Action |\n|---|---|---|---|\n| `DAGExecutionFailed` | `AWS/MWAA` | Sum >= 1 over 1 execution | SNS Topic -> PagerDuty Operations |\n| `TaskDuration` | `AWS/MWAA` | > 7200 seconds | CloudWatch warning alarm |\n\n#### Disaster Recovery & Backup\n- **RTO / RPO**: RTO < 4 hours, RPO = 0.\n- **Backup Mechanism**: DAG code version-controlled in Git and deployed to MWAA DAGs S3 bucket; state managed in MWAA metadata database.\n\n#### Infrastructure Assumptions\n- **Q:** How are PGP public keys managed per customer?\n  **A:** Stored securely as `SecureString` parameters in AWS SSM Parameter Store keyed by `customer_id`.\n  **Justification:** Centralizes secret rotation and avoids hardcoding cryptographic keys in configuration code.\n\n---",
+   "hash": "87f73ed3ca6ed102",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793489042364
+  },
+  "g.6.imp_aws_aws_mwaa_dag_3": {
+   "attempts": 0,
+   "body": "#### Resource Configuration & Sizing\n| Parameter | Value | Justification |\n|---|---|---|\n| MWAA Environment Class | `mw1.small` | Sized adequately for scheduling and coordinating lightweight metadata orchestration tasks. |\n| Environment Name | `orchestrator` | Matches user diagram specification. |\n| Schedule Expression | `@daily` | Triggers orchestration workflow daily per user configuration. |\n| Max Active Runs | 1 | Prevents overlapping workflow executions for the orchestrator DAG. |\n| Catchup | `false` | Disables historical backfilling for scheduled runs. |\n\n#### IAM Role & Policies\n**MWAA Execution Role Trust Policy:**\n```json\n{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    {\n      \"Effect\": \"Allow\",\n      \"Principal\": {\n        \"Service\": \"airflow.amazonaws.com\"\n      },\n      \"Action\": \"sts:AssumeRole\"\n    }\n  ]\n}\n```\n\n**MWAA Execution IAM Policy (`laminar-mwaa-orchestrator-role-${env}`):**\n```json\n{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    {\n      \"Effect\": \"Allow\",\n      \"Action\": [\n        \"airflow:PublishMetrics\"\n      ],\n      \"Resource\": \"arn:aws:airflow:us-east-1:123456789012:environment/orchestrator\"\n    },\n    {\n      \"Effect\": \"Allow\",\n      \"Action\": [\n        \"s3:GetObject\",\n        \"s3:ListBucket\",\n        \"s3:PutObject\"\n      ],\n      \"Resource\": [\n        \"arn:aws:s3:::laminar-mwaa-dags-${env}\",\n        \"arn:aws:s3:::laminar-mwaa-dags-${env}/*\"\n      ]\n    },\n    {\n      \"Effect\": \"Allow\",\n      \"Action\": [\n        \"rds-db:connect\"\n      ],\n      \"Resource\": \"arn:aws:rds:us-east-1:123456789012:db:cofig_db\"\n    },\n    {\n      \"Effect\": \"Allow\",\n      \"Action\": [\n        \"kms:Decrypt\",\n        \"kms:GenerateDataKey\"\n      ],\n      \"Resource\": \"arn:aws:kms:us-east-1:123456789012:key/*\"\n    }\n  ]\n}\n```\n\n#### Network Configuration\n- **VPC Placement**: Private MWAA Subnets (isolated subnets with VPC endpoints for S3, CloudWatch, and RDS).\n- **Subnet Tier**: Private isolation tier with strict NACL boundaries.\n- **Security Group Rules**:\n| Direction | Protocol | Port Range | Source / Destination | Purpose |\n|---|---|---|---|---|\n| Inbound | TCP | 443 | VPC Internal / ALB SG | Access to Airflow Webserver UI / API |\n| Outbound | TCP | 5432 | `cofig_db` SG | Query active export configurations in RDS |\n| Outbound | TCP | 443 | S3, SSM, CloudWatch Endpoints | DAG artifact loading and log emission |\n\n#### Security Controls & Encryption\n- **Encryption at Rest**: S3 DAG bucket encrypted with SSE-S3 (`AES256`); RDS metadata encrypted via KMS CMK.\n- **Transport Encryption**: HTTPS (TLS 1.3) enforced for all MWAA REST API interactions and web UI access.\n\n#### Observability & Alerting\n| Metric | Namespace | Threshold | Alarm Action |\n|---|---|---|---|\n| DAGTaskFailures | AmazonMWAA | >= 1 failure over 15 minutes | SNS notification to platform operators |\n| WorkerCpuUtilization | AmazonMWAA | > 85% for 15 minutes | CloudWatch warning alarm |\n\n#### Disaster Recovery & Backup\n- **RTO (Recovery Time Objective)**: 4 hours (MWAA environment snapshot restoration).\n- **RPO (Recovery Point Objective)**: 24 hours (Airflow metadata database daily automated snapshot).\n- **Backup Mechanism**: Automated RDS PostgreSQL snapshots backing the MWAA metadata store.\n\n#### Infrastructure Assumptions\n- Q: How does the orchestrator trigger child DAGs?\n  A: Via the Airflow REST API (`TriggerDagRunOperator`) passing configuration payloads containing the lineage UUID.\n  Justification: Standard decoupled parent-child execution pattern in Apache Airflow.\n- Q: Where is DAG code stored?\n  A: In an S3 bucket dedicated to MWAA DAG storage (`laminar-mwaa-dags-${env}`).\n  Justification: Standard MWAA deployment requirement.\n\n---",
+   "hash": "163cb6ea5979ce8f",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793488642896
+  },
+  "g.6.imp_aws_aws_mwaa_dag_4": {
+   "attempts": 0,
+   "body": "#### Resource Configuration & Sizing\n| Parameter | Value | Justification |\n|---|---|---|\n| `dag_name` | `child_export_dag` | Exact physical resource name mandated by user architecture decision. |\n| `schedule` | `@daily` | Triggers downstream execution on a daily cadence as specified in user requirements. |\n| `catchup` | `false` | Prevents historical backfilling of missed DAG runs upon deployment or restart. |\n| `max_active_runs` | `1` | Ensures serial execution per connection to prevent resource contention and watermark race conditions. |\n| `mwaa_environment_class` | `mw1.small` | Standard production MWAA worker tier capable of handling concurrent orchestration task mapping. |\n\n#### IAM Role & Policies\n```json\n{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    {\n      \"Sid\": \"MWAAChildExecutionPermissions\",\n      \"Effect\": \"Allow\",\n      \"Action\": [\n        \"emr-serverless:StartJobRun\",\n        \"emr-serverless:GetJobRun\",\n        \"emr-serverless:CancelJobRun\"\n      ],\n      \"Resource\": \"arn:aws:emr-serverless:us-east-1:123456789012:/applications/emr_do*\"\n    },\n    {\n      \"Sid\": \"RDSWatermarkReadAccess\",\n      \"Effect\": \"Allow\",\n      \"Action\": [\n        \"rds-db:connect\"\n      ],\n      \"Resource\": \"arn:aws:rds-db:us-east-1:123456789012:dbuser:cofig_db/*\"\n    },\n    {\n      \"Sid\": \"S3DAGAssetAccess\",\n      \"Effect\": \"Allow\",\n      \"Action\": [\n        \"s3:GetObject\",\n        \"s3:ListBucket\"\n      ],\n      \"Resource\": [\n        \"arn:aws:s3:::laminar-mwaa-dags-prod\",\n        \"arn:aws:s3:::laminar-mwaa-dags-prod/*\"\n      ]\n    },\n    {\n      \"Sid\": \"KMSKeyDecryption\",\n      \"Effect\": \"Allow\",\n      \"Action\": [\n        \"kms:Decrypt\",\n        \"kms:GenerateDataKey\"\n      ],\n      \"Resource\": \"arn:aws:kms:us-east-1:123456789012:key/laminar-mwaa-key-prod\"\n    }\n  ]\n}\n```\n\n```json\n{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    {\n      \"Effect\": \"Allow\",\n      \"Principal\": {\n        \"Service\": \"airflow.amazonaws.com\"\n      },\n      \"Action\": \"sts:AssumeRole\"\n    }\n  ]\n}\n```\n\n#### Network Configuration\n- **VPC Placement**: Deployed in private isolated subnets (`10.0.3.0/24`, `10.0.4.0/24`) without direct internet gateway route.\n- **Subnet Tier**: Private Application Subnets.\n\n| Direction | Protocol | Port | Destination / Source | Purpose |\n|---|---|---|---|---|\n| Outbound | HTTPS | 443 | VPC Endpoint for EMR Serverless | API calls to submit Spark job runs |\n| Outbound | TCP | 5432 | RDS PostgreSQL (`cofig_db`) | Read export metadata and update watermarks |\n| Outbound | HTTPS | 443 | VPC Endpoint for S3 | Access DAG execution logs and scripts |\n\n#### Security Controls & Encryption\n```json\n{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    {\n      \"Sid\": \"EnableKMSManagement\",\n      \"Effect\": \"Allow\",\n      \"Principal\": {\n        \"AWS\": \"arn:aws:iam::123456789012:root\"\n      },\n      \"Action\": \"kms:*\",\n      \"Resource\": \"*\"\n    },\n    {\n      \"Sid\": \"AllowMWAAEnvironmentUsage\",\n      \"Effect\": \"Allow\",\n      \"Principal\": {\n        \"Service\": \"airflow.amazonaws.com\"\n      },\n      \"Action\": [\n        \"kms:Decrypt\",\n        \"kms:GenerateDataKey\"\n      ],\n      \"Resource\": \"*\"\n    }\n  ]\n}\n```\n\n#### Observability & Alerting\n| Metric | Namespace | Threshold | Alarm Action |\n|---|---|---|---|\n| `TaskFailures` | `AWS/MWAA` | Greater than 0 for 1 evaluation period | SNS Topic -> Operations PagerDuty / Audit Log Store |\n| `DAGExecutionTime` | `AWS/MWAA` | Greater than 3600 seconds | SNS Topic -> Warning Alert |\n\n#### Disaster Recovery & Backup\n- **RTO**: 1 hour.\n- **RPO**: 24 hours.\n- **Backup Mechanism**: MWAA environment metadata is snapshotted automatically to S3 and RDS watermarks maintain transactional sync state.\n\n#### Infrastructure Assumptions\n- Q: How are Python dependencies for child export tasks packaged?\n- A: Packaged as standard Airflow plugins deployed via the MWAA plugins.zip stored in S3.\n- Justification: Standardized MWAA deployment pattern avoiding local worker mutations.\n\n---",
+   "hash": "344b85b2c84a9a71",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793488724654
+  },
+  "g.6.imp_aws_aws_rds_7": {
+   "attempts": 0,
+   "body": "#### Resource Configuration & Sizing\n| Parameter | Value | Justification |\n|---|---|---|\n| Engine | `postgres` | Relational database engine specified by user. |\n| Engine Version | `15.4` | Stable, supported enterprise PostgreSQL version. |\n| Instance Class | `db.t3.micro` | Lightweight instance class specified by user diagram settings. |\n| Allocated Storage | 20 GB | Base storage capacity allocated for configuration and watermark state tables. |\n| Storage Type | `gp3` | General Purpose SSD providing baseline 3,000 IOPS and 125 MB/s throughput. |\n| Multi-AZ | `false` | Explicitly disabled per user diagram settings. |\n| DB Instance Identifier | `cofig_db` | Physical identifier mandated by user decisions. |\n\n#### IAM Role & Policies\n**RDS Enhanced Monitoring Role Trust Policy:**\n```json\n{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    {\n      \"Effect\": \"Allow\",\n      \"Principal\": {\n        \"Service\": \"monitoring.rds.amazonaws.com\"\n      },\n      \"Action\": \"sts:AssumeRole\"\n    }\n  ]\n}\n```\n\n**RDS Enhanced Monitoring Policy (`laminar-rds-monitoring-role-${env}`):**\n```json\n{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    {\n      \"Effect\": \"Allow\",\n      \"Action\": [\n        \"logs:CreateLogGroup\",\n        \"logs:PutLogEvents\"\n      ],\n      \"Resource\": \"arn:aws:logs:us-east-1:123456789012:log-group:/aws/rds/instance/cofig_db/*\"\n    }\n  ]\n}\n```\n\n#### Network Configuration\n- **VPC Placement**: Isolated Private Database Subnets.\n- **Subnet Tier**: Non-routable private subnets without direct internet gateways.\n- **Security Group Rules**:\n| Direction | Protocol | Port Range | Source / Destination | Purpose |\n|---|---|---|---|---|\n| Inbound | TCP | 5432 | `do-admin-api` SG | Administrative CRUD operations on export configs |\n| Inbound | TCP | 5432 | `orchestrator` & `child_export_dag` SGs | Reading export metadata and watermarks |\n| Outbound | TCP | 443 | AWS KMS / S3 Endpoints | Database backups and KMS encryption key rotation |\n\n#### Security Controls & Encryption\n- **Encryption at Rest**: Enabled via AWS KMS Customer Managed Key (CMK).\n- **Transport Encryption**: Enforced SSL/TLS connections (`rds.force_ssl = 1`).\n- **Access Control**: IAM database authentication combined with securely stored database credentials in SSM Parameter Store.\n\n#### Observability & Alerting\n| Metric | Namespace | Threshold | Alarm Action |\n|---|---|---|---|\n| CPUUtilization | AWS/RDS | > 85% for 15 minutes | SNS alert to database administrators |\n| FreeStorageSpace | AWS/RDS | < 2 GB remaining | Critical SNS alert for disk exhaustion risk |\n| DatabaseConnections | AWS/RDS | > 80 connections | Warning alarm for connection pool exhaustion |\n\n#### Disaster Recovery & Backup\n- **RTO (Recovery Time Objective)**: 2 hours (automated point-in-time recovery restoration).\n- **RPO (Recovery Point Objective)**: 24 hours (daily automated backups with 30-day retention).\n- **Backup Mechanism**: Automated daily RDS snapshots and continuous transaction log backups (WAL archiving).\n\n#### Infrastructure Assumptions\n- Q: Why is Multi-AZ set to false?\n  A: Honoring explicit user diagram decision (`multi_az = false`), overriding production high-availability defaults.\n  Recommendation: For production environments, enable Multi-AZ (`multi_az = true`) to eliminate single points of failure.\n- Q: How are credentials managed?\n  A: Master credentials generated via Terraform and stored encrypted in SSM Parameter Store (SecureString).\n  Justification: Prevents hardcoded database passwords in infrastructure code.\n\n---",
+   "hash": "205e9ab17aec9126",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793488642896
+  },
+  "g.6.imp_aws_aws_redshift_6": {
+   "attempts": 0,
+   "body": "#### Resource Configuration & Sizing\n\n| Parameter | Value | Justification |\n|---|---|---|\n| node_type | `dc2.large` | User-set (authoritative) |\n| number_of_nodes | `2` | User-set (authoritative) |\n| database_name | `dev` | User-set (authoritative) |\n| cluster_identifier | `golden_data_source` | User-set (authoritative) |\n| Terraform resource | `golden_entity_source_store_redshift` (in `terraform/redshift.tf`) \u2014 **externally owned; referenced, not provisioned** | SCRUM-485: excluded from allowlist check; this section documents our consumption contract only |\n\n#### IAM Role & Policies\n\nThe pipeline does not manage this cluster's IAM. Our side of the contract: the EMR job execution role (`laminar-dataoutbound-emr-job-role-{env}`) authenticates to `golden_data_source` using a **read-only database user** provisioned in the cluster by its owner, with credentials resolved from SSM SecureString at `/laminar/dataoutbound/{env}/emr-do/redshift/`. No cross-account Redshift API actions (`redshift:GetClusterCredentials` etc.) are granted; access is purely JDBC over TLS with a static read-only user. If the cluster owner later requires IAM-based auth, the role would need `redshift:GetClusterCredentials` scoped to `dbuser:golden_data_source/readonly_user` \u2014 raised as a recommendation only.\n\n```json\n{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    { \"Sid\": \"ReadRedshiftCredentials\", \"Effect\": \"Allow\",\n      \"Action\": [\"ssm:GetParameter\"],\n      \"Resource\": \"arn:aws:ssm:${region}:${account}:parameter/laminar/dataoutbound/${env}/emr-do/redshift/*\" }\n  ]\n}\n```\n\nTrust policy: standard EMR Serverless service principal (`emr-serverless.amazonaws.com`) with `aws:SourceAccount` condition.\n\n#### Network Configuration\n\n| Aspect | Value |\n|---|---|\n| Placement | Externally owned cluster in private database subnets of the platform VPC (assumed co-located with pipeline) |\n| Path | `emr_do` Spark job \u2192 JDBC (port 5439) over TLS from EMR Serverless private-subnet worker SG |\n| SG rule (our side) | `laminar-dataoutbound-emr-job-sg-{env}` egress TCP 5439 \u2192 Redshift cluster SG; cluster SG ingress restricted to that SG |\n\n#### Security Controls & Encryption\n\n- TLS enforced on JDBC connections (`sslmode=require`); read-only DB user only; KMS encryption at rest is the cluster owner's responsibility (assumed enabled).\n\n#### Observability & Alerting\n\n| Metric | Namespace | Threshold | Alarm Action |\n|---|---|---|---|\n| CPUUtilization | AWS/Redshift | > 90% for 15 min during extraction windows | SNS (owner notified; we consume) |\n| WLMQueueWaitTime (our query queue) | AWS/Redshift | > 300 s | SNS \u2192 pipeline on-call |\n\n#### Disaster Recovery & Backup\n\nN/A for this specification \u2014 the cluster is externally owned; its backup/RPO is the owner's responsibility. Our recovery posture: extraction jobs are idempotent and re-runnable against the source at any time (RTO = job re-run, RPO = none, source of truth is the cluster).\n\n#### Infrastructure Assumptions\n\n- Q: Is the cluster in the same account/VPC as the pipeline? A: Assumed yes (same account, platform VPC, private subnets). Justification: no cross-account trust is provisioned; resolves review comment 7.1 (EMR role targets the cluster via a read-only DB user, not cross-account credentials).\n- Q: Naming \u2014 `golden_data_source` vs `golden_entity_source_store_redshift`? A: `golden_data_source` is the physical cluster identifier (user-set); `golden_entity_source_store_redshift` is the Terraform resource name referencing it. Both are used consistently in their respective layers.\n\n---",
+   "hash": "22a4f58275e95168",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793489293063
+  },
+  "g.6.imp_aws_aws_s3_bucket_12": {
+   "attempts": 0,
+   "body": "#### Network Configuration\n- **Network Path**: Outbound HTTPS connection over TLS 1.3 via NAT Gateway and AWS VPC S3 Gateway Endpoint to the customer-owned S3 bucket (`customer bucket`).\n- **Security Group Rules**: Outbound traffic permitted on TCP port 443 to external AWS S3 service IP ranges.\n- **Customer Allow-List Requirements**: The customer must configure their bucket policy to permit `sts:AssumeRole` and `s3:PutObject` from our egress execution IAM role (`arn:aws:iam::${var.aws_account_id}:role/laminar-mwaa-egress-dag-role-${var.environment}`).\n\n#### Security Controls & Encryption\n- **Credentials & Access**: Cross-account IAM role assumption (`sts:AssumeRole`) authenticated via AWS Security Token Service. No static access keys or shared secrets are stored.\n- **Encryption in Transit**: TLS 1.3 enforced for all upload requests.\n- **Encryption at Rest**: Customer-managed SSE-S3 or SSE-KMS encryption applied within the customer's target bucket.\n\n#### Observability & Alerting\n| Metric / Check | Threshold | Alarm Action |\n|---|---|---|\n| Delivery Success Rate | Success < 100% over 3 retry attempts | `TRANSFER_FAILED` audit event logged to `audit_bucket` & SNS PagerDuty alert |\n| SHA-256 Checksum Verification | Recomputed checksum mismatch vs manifest | Immediate transfer abort, alert raised |\n\n#### Infrastructure Assumptions\n- **Q:** What guarantees does the customer provide regarding bucket availability?\n  **A:** The customer guarantees bucket accessibility, sufficient storage quotas, and correct cross-account bucket policies.\n  **Justification:** As an external third-party component, infrastructure availability and storage sizing are owned and managed entirely by the customer.",
+   "hash": "6bdfc3b82da9d8bc",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793489042364
+  },
+  "g.6.imp_aws_aws_s3_bucket_15": {
+   "attempts": 0,
+   "body": "#### Resource Configuration & Sizing\n\n| Parameter | Value | Justification |\n|---|---|---|\n| bucket_name | `audit_bucket` | User-set (authoritative) |\n| Terraform resource | `audit_execution_log_store_s3` (in `terraform/s3.tf`) | Blueprint |\n| versioning | `false` | User-set (authoritative) |\n| encryption | `AES256` (SSE-S3) | User-set (authoritative) |\n| public_access_block | `true` (all four settings) | User-set (authoritative) |\n| lifecycle_enabled | `true`; transition to STANDARD_IA at 30 d, GLACIER at 90 d | User-set (authoritative) |\n| Key layout | `admin/`, `spark/`, `egress/` prefixes; hash-prefixed object keys (`{sha1(event_id)[:2]}/{date}/{event_id}.json`) | Distributes PUT load across S3 partitions |\n| Deletion protection | `prevent_destroy` guarded by `deletion_protection_enabled` variable (false in dev, true in staging/prod) | SCRUM-485 AC#3\u2013AC#5 |\n\n#### IAM Role & Policies\n\nBucket policy \u2014 writers are exactly the three pipeline roles (single MWAA execution role `laminar-dataoutbound-mwaa-execution-role-{env}` serves all three DAGs, plus the EMR job role and API task role; no per-DAG roles exist):\n\n```json\n{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    { \"Sid\": \"DenyNonTls\", \"Effect\": \"Deny\", \"Principal\": \"*\",\n      \"Action\": \"s3:*\", \"Resource\": [\n        \"arn:aws:s3:::audit_bucket\",\n        \"arn:aws:s3:::audit_bucket/*\" ],\n      \"Condition\": { \"Bool\": { \"aws:SecureTransport\": \"false\" } } },\n    { \"Sid\": \"ApiWritesAdminEvents\", \"Effect\": \"Allow\",\n      \"Principal\": { \"AWS\": \"arn:aws:iam::${account}:role/laminar-dataoutbound-do-admin-api-role-${env}\" },\n      \"Action\": \"s3:PutObject\", \"Resource\": \"arn:aws:s3:::audit_bucket/admin/*\" },\n    { \"Sid\": \"EmrWritesSparkEvents\", \"Effect\": \"Allow\",\n      \"Principal\": { \"AWS\": \"arn:aws:iam::${account}:role/laminar-dataoutbound-emr-job-role-${env}\" },\n      \"Action\": \"s3:PutObject\", \"Resource\": \"arn:aws:s3:::audit_bucket/spark/*\" },\n    { \"Sid\": \"MwaaWritesEgressEvents\", \"Effect\": \"Allow\",\n      \"Principal\": { \"AWS\": \"arn:aws:iam::${account}:role/laminar-dataoutbound-mwaa-execution-role-${env}\" },\n      \"Action\": \"s3:PutObject\", \"Resource\": \"arn:aws:s3:::audit_bucket/egress/*\" },\n    { \"Sid\": \"DenyUnlistedWrites\", \"Effect\": \"Deny\", \"Principal\": \"*\",\n      \"Action\": \"s3:PutObject\", \"Resource\": \"arn:aws:s3:::audit_bucket/*\",\n      \"Condition\": { \"StringNotEquals\": { \"aws:PrincipalArn\": [\n        \"arn:aws:iam::${account}:role/laminar-dataoutbound-do-admin-api-role-${env}\",\n        \"arn:aws:iam::${account}:role/laminar-dataoutbound-emr-job-role-${env}\",\n        \"arn:aws:iam::${account}:role/laminar-dataoutbound-mwaa-execution-role-${env}\" ] } } }\n  ]\n}\n```\n\nNote on immutability: with `versioning = false` (user decision), S3 cannot enforce true write-once semantics via bucket policy alone; the DenyUnlistedWrites statement restricts *who* may write, not *what* may be overwritten. **Recommendation:** enable Object Lock (governance mode, 90-day retention) \u2014 this requires versioning, so it conflicts with the user's `versioning = false` and is raised here only as a recommendation, not applied.\n\n#### Network Configuration\n\n| Aspect | Value |\n|---|---|\n| Placement | Regional S3 bucket, no VPC attachment; accessed via S3 Gateway VPC endpoint from MWAA/EMR/ECS private subnets |\n| SG rules | N/A \u2014 S3 is not VPC-resident; access controlled by bucket policy + VPC endpoint policy restricting to `audit_bucket` |\n\n#### Security Controls & Encryption\n\n- SSE-S3 (AES256) per user decision; TLS enforced via DenyNonTls statement.\n- No public access (all four Block Public Access settings true).\n\n#### Observability & Alerting\n\n| Metric | Namespace | Threshold | Alarm Action |\n|---|---|---|---|\n| BucketRequestsErrors (4xx/5xx) | AWS/S3 | \u2265 10 in 5 min | SNS \u2192 on-call |\n| BucketSizeBytes | AWS/S3 | > 50 GB | SNS (cost anomaly) |\n| Audit write gap (custom EMF: last audit event age) | Laminar/DataOutbound | > 15 min without any event during an active run | SNS (silent-audit-failure guardrail) |\n\n#### Disaster Recovery & Backup\n\nRPO 24 h / RTO 2 h (platform standard). Mechanism: S3 cross-AZ durability (11 nines) plus lifecycle tiering; **no Cross-Region Replication** \u2014 CRR requires versioning, which the user set to `false`, and CRR would be asynchronous in any case. Recovery relies on S3 durability; if cross-region audit resilience is required, revisit the versioning decision.\n\n#### Infrastructure Assumptions\n\n- Q: Is audit immutability (WORM) required? A: Not enforced in this configuration because `versioning = false` precludes Object Lock; write access is restricted to the three pipeline roles. Justification: resolves review comment 6.13.2 without contradicting the user decision.\n- Q: Retention beyond the 30 d/90 d lifecycle? A: Glacier objects retained indefinitely until a retention policy is confirmed. Justification: lifecycle values are user-set; final retention pending logging-standard confirmation (SCRUM-486).\n\n---",
+   "hash": "486c0f4d13272f66",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793489293063
+  },
+  "g.6.imp_aws_aws_s3_bucket_8": {
+   "attempts": 0,
+   "body": "#### Resource Configuration & Sizing\n| Parameter | Value | Justification |\n|---|---|---|\n| Bucket Name | `staging_bucet_internal` | User-defined authoritative physical resource name for internal staging objects. |\n| Versioning | `False` | User decision; transient staging files do not require version history. |\n| Encryption | `AES256` (SSE-S3) | Mandatory server-side encryption at rest for all staged payloads. |\n| Public Access Block | `True` | Strict security control blocking all public bucket policies and ACLs. |\n| Lifecycle Enabled | `False` | User decision; static lifecycle disabled on bucket resource (Recommendation: enable 7-day lifecycle rule per SCRUM-486 operational requirements). |\n| Lifecycle Transition Days | `30` | User decision; standard transition threshold for non-active objects. |\n| Lifecycle Glacier Days | `90` | User decision; archive threshold for retained staging records. |\n\n#### IAM Role & Policies\nThe S3 bucket policy and associated IAM resource policies enforce least-privilege access for `emr_do` (writing staged export files), `egress-lambda` (triggering on object creation), and `egress dag` (reading staged files).\n\n```json\n{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    {\n      \"Sid\": \"EnforceTLSRequestsOnly\",\n      \"Effect\": \"Deny\",\n      \"Principal\": \"*\",\n      \"Action\": \"s3:*\",\n      \"Resource\": [\n        \"arn:aws:s3:::staging_bucet_internal\",\n        \"arn:aws:s3:::staging_bucet_internal/*\"\n      ],\n      \"Condition\": {\n        \"Bool\": {\n          \"aws:SecureTransport\": \"false\"\n        }\n      }\n    },\n    {\n      \"Sid\": \"AllowEMRAndMWAAccess\",\n      \"Effect\": \"Allow\",\n      \"Principal\": {\n        \"AWS\": [\n          \"arn:aws:iam::123456789012:role/laminar-emr-execution-role-prod\",\n          \"arn:aws:iam::123456789012:role/laminar-mwaa-execution-role-prod\"\n        ]\n      },\n      \"Action\": [\n        \"s3:PutObject\",\n        \"s3:GetObject\",\n        \"s3:ListBucket\",\n        \"s3:DeleteObject\"\n      ],\n      \"Resource\": [\n        \"arn:aws:s3:::staging_bucet_internal\",\n        \"arn:aws:s3:::staging_bucet_internal/*\"\n      ]\n    },\n    {\n      \"Sid\": \"AllowLambdaInvocationTrigger\",\n      \"Effect\": \"Allow\",\n      \"Principal\": {\n        \"Service\": \"s3.amazonaws.com\"\n      },\n      \"Action\": \"s3:PutObject\",\n      \"Resource\": \"arn:aws:s3:::staging_bucet_internal/*\"\n    }\n  ]\n}\n```\n\n#### Network Configuration\n- **VPC Placement**: Regional S3 service accessed via Amazon S3 Gateway VPC Endpoint attached to private subnets.\n- **Subnet Tier**: Private application and data subnets (no direct internet route).\n- **Security Group Rules**: S3 communicates via AWS backbone; internal VPC route tables enforce VPC endpoint routing.\n\n#### Security Controls & Encryption\n- **Encryption at Rest**: AES-256 (SSE-S3) enforced on all put operations.\n- **Encryption in Transit**: TLS 1.3 enforced via bucket policy condition `aws:SecureTransport = true`.\n- **Access Control**: Public Access Block fully enabled (`block_public_acls = true`, `block_public_policy = true`, `ignore_public_acls = true`, `restrict_public_buckets = true`).\n\n#### Observability & Alerting\n| Metric | Namespace | Threshold | Alarm Action |\n|---|---|---|---|\n| `5xxErrors` | `AWS/S3` | Sum >= 1 over 5 minutes | SNS Topic -> Operations Alert |\n| `BucketSizeBytes` | `AWS/S3` | Sum >= 50 GB over 24 hours | SNS Topic -> Capacity Warning |\n| `NumberOfObjects` | `AWS/S3` | Sum >= 100,000 over 1 hour | SNS Topic -> Accumulation Alert |\n\n#### Disaster Recovery & Backup\n- **RPO / RTO**: RPO = 0 (stateless transient staging); RTO < 1 hour (re-runnable via child export DAG).\n- **Backup Mechanism**: Transient staging files are regenerated by upstream EMR jobs; versioning is disabled per user specification.\n\n#### Infrastructure Assumptions\n- **Q**: Why is `lifecycle_enabled` set to `False` in the diagram settings while user stories mandate a 7-day retention?\n  **A**: The diagram setting (`lifecycle_enabled = false`) is authoritative for provisioning, but operational requirements mandate lifecycle cleanup.\n  **Justification**: Provisioned infrastructure respects the authoritative user decision, while recommending an explicit lifecycle rule overlay via external config management or terraform update in subsequent iterations.\n\n---",
+   "hash": "7905d898c79b37d0",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793488741542
+  },
+  "g.6.imp_azure_blob_store_13": {
+   "attempts": 0,
+   "body": "#### Resource Configuration & Sizing\n| Parameter | Value | Justification |\n|---|---|---|\n| Component Type | `blob_store` (External / Third-Party) | Customer-owned storage endpoint; outside our Terraform provisioning scope per architecture blueprint. |\n| Protocol / Integration | HTTPS (REST API) | Secure, encrypted transport for data egress pushing packaged export files. |\n| Connection Method | Connection String / SAS Token via SSM SecureString | Credentials are externalized securely and retrieved at runtime by the egress workflow. |\n| Max Transfer Payload | 1 GB per file | Aligns with the 1 GB per-customer file export limit defined in the system specification. |\n| Retry Policy | 3 attempts with exponential backoff | Ensures transient network or throttling errors do not cause immediate pipeline failure. |\n\n#### IAM Role & Policies\nAs `Customer Azure Blob Destination` is an external third-party component, no AWS IAM roles are provisioned for its internal architecture. However, the internal pipeline component (`egress dag` / execution role) requires permission to access the corresponding connection secrets stored in AWS Systems Manager Parameter Store. Below is the IAM policy for the pipeline execution role to retrieve the target Azure credentials:\n\n```json\n{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    {\n      \"Sid\": \"ReadAzureDestinationSecrets\",\n      \"Effect\": \"Allow\",\n      \"Action\": [\n        \"ssm:GetParameter\",\n        \"ssm:GetParameters\"\n      ],\n      \"Resource\": \"arn:aws:ssm:${var.aws_region}:${var.aws_account_id}:parameter/laminar/egress/azure/*\"\n    }\n  ]\n}\n```\n\n#### Network Configuration\n- **VPC Placement**: N/A (External third-party endpoint; accessed via public/hybrid cloud HTTPS routing).\n- **Subnet Tier**: N/A (Egress requests originate from private subnets hosting MWAA worker nodes via NAT Gateway).\n\n| Direction | Port | Protocol | Destination / Source | Purpose |\n|---|---|---|---|---|\n| Outbound | 443 | HTTPS | Customer Azure Blob REST API Endpoint | Pushing encrypted export packages and manifest control files |\n\n#### Security Controls & Encryption\n- **Transport Security**: Enforces HTTPS with TLS 1.3 / 1.2 for all upload requests.\n- **Data Protection**: Payloads are pre-encrypted with fail-closed PGP before transmission.\n- **Credential Storage**: Storage account connection strings or SAS tokens are stored as encrypted `SecureString` values in AWS SSM Parameter Store using KMS CMK encryption.\n\n#### Observability & Alerting\n| Metric | Namespace | Threshold | Alarm Action |\n|---|---|---|---|\n| `TransferFailedCount` | `Laminar/DataOutbound/Egress` | `Sum >= 1 over 5 minutes` | Trigger SNS alert and log `TRANSFER_FAILED` audit event |\n| `TransferDuration` | `Laminar/DataOutbound/Egress` | `> 3600 seconds` | Trigger SNS warning alert |\n\n#### Disaster Recovery & Backup\n- **RPO / RTO**: RPO: N/A (Stateless egress push); RTO: 4 hours (recovery governed by pipeline retry limits and manual operational review).\n- **Backup Mechanism**: Customer-owned destination; our pipeline maintains execution idempotency and stores execution audit logs in `audit_bucket` to support safe re-runs upon delivery failure.\n\n#### Infrastructure Assumptions\n- **Q**: How are Azure storage credentials provisioned?\n  - **A**: Provided out-of-band by the customer and stored securely by Acme administrators in SSM Parameter Store.\n  - **Justification**: Protects sensitive secrets while allowing automated retrieval by the egress pipeline.\n- **Q**: What happens if the Azure endpoint is unreachable after retries?\n  - **A**: The transfer task marks the execution as failed, emits a `TRANSFER_FAILED` audit event, and halts further delivery until resolved.\n  - **Justification**: Enforces fail-closed data governance and triggers operational review.\n\n---",
+   "hash": "9355e4968e4c7ee2",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793489054144
+  },
+  "g.6.imp_gcp_gcs_14": {
+   "attempts": 0,
+   "body": "#### Resource Configuration & Sizing\n| Parameter | Value | Justification |\n|---|---|---|\n| Component Type | `gcs` (External / Third-Party) | Customer-owned Google Cloud Storage bucket; outside our Terraform provisioning scope. |\n| Protocol / Integration | HTTPS (GCS XML/JSON REST API) | Standardized secure transport for cloud-to-cloud object delivery. |\n| Authentication | Service Account JSON Key / Workload Identity | Secure, token-based authentication managed via SSM Parameter Store. |\n| Max Payload Size | 1 GB per export file | Complies with enterprise scale targets and memory constraints. |\n| Retry Policy | 3 attempts with exponential backoff | Resilience against transient network anomalies. |\n\n#### IAM Role & Policies\nAs `Customer GCS Destination` is an external third-party component, no AWS IAM roles are provisioned for its internal architecture. The pipeline execution role (`egress dag`) requires permission to retrieve the GCP service account credentials stored in SSM:\n\n```json\n{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    {\n      \"Sid\": \"ReadGcsDestinationSecrets\",\n      \"Effect\": \"Allow\",\n      \"Action\": [\n        \"ssm:GetParameter\",\n        \"ssm:GetParameters\"\n      ],\n      \"Resource\": \"arn:aws:ssm:${var.aws_region}:${var.aws_account_id}:parameter/laminar/egress/gcp/*\"\n    }\n  ]\n}\n```\n\n#### Network Configuration\n- **VPC Placement**: N/A (External cloud endpoint accessed via public internet routing).\n- **Subnet Tier**: N/A (Egress originates from private subnets via NAT Gateway).\n\n| Direction | Port | Protocol | Destination / Source | Purpose |\n|---|---|---|---|---|\n| Outbound | 443 | HTTPS | `storage.googleapis.com` | Uploading encrypted export packages and manifest control files |\n\n#### Security Controls & Encryption\n- **Transport Security**: Mandatory TLS 1.3 encryption in transit for all GCS API requests.\n- **Payload Encryption**: Payloads are encrypted using fail-closed PGP prior to upload.\n- **Credential Security**: Service account JSON keys are encrypted at rest using SSM Parameter Store SecureString.\n\n#### Observability & Alerting\n| Metric | Namespace | Threshold | Alarm Action |\n|---|---|---|---|\n| `TransferFailedCount` | `Laminar/DataOutbound/Egress` | `Sum >= 1 over 5 minutes` | Trigger SNS alert and log `TRANSFER_FAILED` audit event |\n\n#### Disaster Recovery & Backup\n- **RPO / RTO**: RPO: N/A; RTO: 4 hours.\n- **Backup Mechanism**: Customer-managed destination backup policies apply; our pipeline ensures transactional idempotency and audit trail retention.\n\n#### Infrastructure Assumptions\n- **Q**: How is GCS bucket access authorized?\n  - **A**: Via GCP service account credentials provisioned by the customer and securely injected at runtime.\n  - **Justification**: Adheres to zero-trust principles without managing long-lived static keys in source code.\n\n---",
+   "hash": "ab443bf2abe09e3e",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793489054145
+  },
+  "g.6.imp_standard_standard_api_1": {
+   "attempts": 0,
+   "body": "#### Resource Configuration & Sizing\n\n| Parameter | Value | Justification |\n|---|---|---|\n| api_name | `do-admin-api` | User-set (authoritative) |\n| protocol / authentication | REST / JWT | User-set (authoritative) |\n| Terraform resource | `export_admin_api` (in `terraform/api.tf`) | Blueprint |\n| Compute | ECS Fargate task, 1 vCPU / 2048 MB, desired count 1 (dev) / 2 (staging, prod) | Low-latency control plane (<500 ms CRUD); 2 tasks in higher envs for AZ redundancy |\n| Container image | `python:3.11-slim` base, app from `src/dataoutbound_st_fixes/apis/export_admin_api` | Blueprint language python |\n| ALB | internet-facing ALB, HTTPS:443 listener, TLS 1.3 policy `ELBSecurityPolicy-TLS13-1-2-2021-06` | Zero-trust transport guardrail |\n| Scaling | target-tracking on `ALBRequestCountPerTarget` = 200, min 1, max 4 | Bounded burst absorption without over-provisioning |\n| DB connection pooling | max 10 connections per task | db.t3.micro `cofig_db` has limited connection budget |\n| Log group | `/laminar/dataoutbound/do-admin-api/{env}`, retention = `log_retention_days` variable | SCRUM-486 AC#4 (value confirmed before sprint commitment) |\n\n#### IAM Role & Policies\n\nTask execution role (ECR pull, logs) is standard; the task role below carries least-privilege app permissions. Note: `rds-db:connect` is intentionally **not** granted \u2014 the API connects to `cofig_db` over Postgres TLS with credentials resolved from SSM (SecureString), not RDS IAM DB auth; SSM access is read-only on the component's own path only (no `ssm:PutParameter`).\n\n```json\n{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    {\n      \"Sid\": \"ReadDbCredentialsFromSsm\",\n      \"Effect\": \"Allow\",\n      \"Action\": [\"ssm:GetParameter\", \"ssm:GetParameters\"],\n      \"Resource\": \"arn:aws:ssm:${region}:${account}:parameter/laminar/dataoutbound/${env}/do-admin-api/*\"\n    },\n    {\n      \"Sid\": \"TriggerOrchestratorViaMwaaRestApi\",\n      \"Effect\": \"Allow\",\n      \"Action\": [\"airflow:CreateApiToken\", \"airflow:InvokeRestApi\"],\n      \"Resource\": [\n        \"arn:aws:airflow:${region}:${account}:environment/laminar-dataoutbound-mwaa-${env}\",\n        \"arn:aws:airflow:${region}:${account}:environment/laminar-dataoutbound-mwaa-${env}#dags/orchestrator\"\n      ]\n    },\n    {\n      \"Sid\": \"WriteAuditEvents\",\n      \"Effect\": \"Allow\",\n      \"Action\": [\"s3:PutObject\"],\n      \"Resource\": \"arn:aws:s3:::audit_bucket/admin/*\"\n    },\n    {\n      \"Sid\": \"KmsDecryptForSecrets\",\n      \"Effect\": \"Allow\",\n      \"Action\": [\"kms:Decrypt\"],\n      \"Resource\": \"arn:aws:kms:${region}:${account}:key/${laminar_dataoutbound_key_id}\"\n    }\n  ]\n}\n```\n\nTrust policy (ECS tasks):\n\n```json\n{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [{\n    \"Effect\": \"Allow\",\n    \"Principal\": { \"Service\": \"ecs-tasks.amazonaws.com\" },\n    \"Action\": \"sts:AssumeRole\",\n    \"Condition\": { \"StringEquals\": { \"aws:SourceAccount\": \"${account}\" } }\n  }]\n}\n```\n\n#### Network Configuration\n\n| Aspect | Value |\n|---|---|\n| VPC placement | Platform VPC, private application subnets (2 AZs) for ECS tasks; ALB in public subnets |\n| Egress | NAT gateway for S3/MWAA AWS service endpoints; VPC endpoints preferred for S3 (Gateway) and SSM (Interface) |\n| SG `laminar-dataoutbound-do-admin-api-sg-{env}` | Ingress: TCP 8000 from ALB SG only. Egress: TCP 5432 \u2192 `laminar-dataoutbound-cofig-db-sg-{env}`; TCP 443 \u2192 0.0.0.0/0 (MWAA REST API, S3, SSM) |\n| ALB SG | Ingress: TCP 443 from approved admin CIDR allowlist only |\n\n#### Security Controls & Encryption\n\n- JWT bearer validation on all endpoints except `/health`; role check `export-admin` \u2192 401/403 per SCRUM-479 AC#7.\n- Credential fields encrypted with the shared KMS key before persistence; masked in all read responses.\n- KMS key policy (shared `laminar-dataoutbound-{env}` key, deletion protection driven by `deletion_protection_enabled` per SCRUM-485 AC#3):\n\n```json\n{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    { \"Sid\": \"RootFullAccess\", \"Effect\": \"Allow\",\n      \"Principal\": { \"AWS\": \"arn:aws:iam::${account}:root\" },\n      \"Action\": \"kms:*\", \"Resource\": \"*\" },\n    { \"Sid\": \"ApiDecryptOnly\", \"Effect\": \"Allow\",\n      \"Principal\": { \"AWS\": \"arn:aws:iam::${account}:role/laminar-dataoutbound-do-admin-api-role-${env}\" },\n      \"Action\": [\"kms:Decrypt\"], \"Resource\": \"*\" }\n  ]\n}\n```\n\n#### Observability & Alerting\n\n| Metric | Namespace | Threshold | Alarm Action |\n|---|---|---|---|\n| HTTP 5xx count | AWS/ApplicationELB | \u2265 5 in 5 min | SNS \u2192 on-call |\n| TargetResponseTime p99 | AWS/ApplicationELB | > 1 s for 10 min | SNS (500 ms guardrail breach trend) |\n| Task running count | ECS/ContainerInsights | < 1 for 5 min | SNS |\n| Auth failures (401/403 rate) | Laminar/DataOutbound (EMF) | > 50 in 5 min | SNS (security review) |\n\n#### Disaster Recovery & Backup\n\nRTO 2 h / RPO 24 h inherited from `cofig_db` (the API itself is stateless; recovery = redeploy task definition). No independent backup mechanism; multi-AZ ALB + 2 tasks in staging/prod.\n\n#### Infrastructure Assumptions\n\n- Q: Which identity provider issues the JWTs? A: The platform's existing OIDC issuer, configured via `apis/config.yml` (`auth_issuer` per environment). Justification: standard_api pattern requires JWT/OAuth2; issuer is externalized config.\n- Q: Rate limiting? A: Token-bucket, 100 req/min per client IP at the ALB/WAF layer. Justification: standard_api security pattern default.\n- Q: Is `rds-db:connect` needed for the API? A: No \u2014 Postgres credentials come from SSM SecureString over TLS (`sslmode=require`); IAM DB auth is not used. Justification: resolves review comment 7.1 (invalid `rds-db:connect` pairing removed).\n\n---",
+   "hash": "aa5638e0733e25f9",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793489293063
+  },
+  "g.6.imp_standard_standard_sftp_11": {
+   "attempts": 0,
+   "body": "#### Network Configuration\n- **Network Path**: Outbound SFTP over SSH (port 22) from `egress dag` workers via private subnet NAT Gateway to customer SFTP server IP / hostname.\n- **Egress Security Group Rules**: Outbound TCP port 22 allowed to customer SFTP server CIDR.\n- **Customer Allowlist Requirements**: Customer must allow-list Acme's static NAT Gateway elastic IPs on their SFTP firewall.\n\n#### Security Controls & Encryption\n- **Authentication**: SSH Key-based authentication (private key retrieved from SSM Parameter Store SecureString).\n- **Host Key Verification**: Strict host-key verification enabled (connection refused and zero bytes sent if host key changes or fails verification).\n- **Data Encryption**: PGP encryption applied to export payloads before SFTP transmission; transit encrypted via SSH/TLS transport layer.\n\n#### Observability & Alerting\n| Metric / Check | Threshold | Alarm Action |\n|---|---|---|\n| SFTP Connection Failures | >= 3 consecutive failures | SNS Topic -> SFTP Delivery Alert |\n| Host Key Mismatch | Immediate failure (0 retries) | SNS Topic -> Security Incident Alert |\n\n#### Infrastructure Assumptions\n- **Q**: What happens if host-key verification fails?\n  **A**: Connection is immediately refused, zero bytes are transmitted, no retry is attempted, an alert is raised, and a `TRANSFER_FAILED` event is written to the audit store.\n  **Justification**: Enforces strict security compliance and prevents man-in-the-middle attacks.",
+   "hash": "7d9d3637eaf03541",
+   "reason": null,
+   "source": "component:r0",
+   "status": "complete",
+   "updated_epoch": 1793488741542
+  },
+  "g.7": {
+   "attempts": 0,
+   "body": "#### Cross-Service IAM Architecture\n\nOne IAM role per compute component, all least-privilege with explicit ARNs (no wildcard accounts or resource wildcards). Role names follow the convention in \u00a7g.3 (`laminar-dataoutbound-{component}-role-{env}`). The three MWAA DAGs share the single MWAA execution role `laminar-dataoutbound-mwaa-execution-role-{env}` (MWAA environments have one execution role; DAG-level separation is enforced via Airflow connections and per-job IAM, not per-DAG roles).\n\n**Trust policy (common pattern)** \u2014 each service principal assumes its own role:\n\n```json\n{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [{\n    \"Effect\": \"Allow\",\n    \"Principal\": { \"Service\": \"ecs-tasks.amazonaws.com\" },\n    \"Action\": \"sts:AssumeRole\",\n    \"Condition\": { \"StringEquals\": { \"aws:SourceAccount\": \"${account_id}\" } }\n  }]\n}\n```\n(`Service` varies: `ecs-tasks.amazonaws.com` for do-admin-api, `lambda.amazonaws.com` for egress-lambda, `airflow.amazonaws.com` + `ecs-tasks.amazonaws.com` for MWAA, `emr-serverless.amazonaws.com` for the EMR job role, `events.amazonaws.com` for the scheduler invoke role.)\n\n**do-admin-api task role** (`laminar-dataoutbound-do-admin-api-role-{env}`) \u2014 corrected per review: no `rds-db:connect` (the API uses a stored DB credential, not IAM DB auth), no `ssm:PutParameter` (read-only SSM), and the correct MWAA REST action:\n\n```json\n{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    {\n      \"Sid\": \"ReadConfigDbCredential\",\n      \"Effect\": \"Allow\",\n      \"Action\": [\"ssm:GetParameter\", \"ssm:GetParameters\"],\n      \"Resource\": \"arn:aws:ssm:${region}:${account}:parameter/laminar/dataoutbound/${env}/do-admin-api/*\"\n    },\n    {\n      \"Sid\": \"TriggerOrchestratorViaMwaaRestApi\",\n      \"Effect\": \"Allow\",\n      \"Action\": [\"airflow:InvokeRestApi\", \"airflow:CreateWebLoginToken\"],\n      \"Resource\": \"arn:aws:airflow:${region}:${account}:environment/laminar-dataoutbound-mwaa-${env}\",\n      \"Condition\": { \"StringLike\": { \"airflow:endpoint\": \"*/dags/*/dagRuns\" } }\n    },\n    {\n      \"Sid\": \"WriteAdminAuditEvents\",\n      \"Effect\": \"Allow\",\n      \"Action\": [\"s3:PutObject\"],\n      \"Resource\": \"arn:aws:s3:::audit_bucket/admin/*\"\n    },\n    {\n      \"Sid\": \"KmsDecryptSsmSecureStrings\",\n      \"Effect\": \"Allow\",\n      \"Action\": [\"kms:Decrypt\"],\n      \"Resource\": \"arn:aws:kms:${region}:${account}:key/${kms_key_id}\"\n    }\n  ]\n}\n```\n\n**Egress Lambda execution role** (`laminar-dataoutbound-egress-lambda-role-{env}`) \u2014 corrected MWAA action:\n\n```json\n{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    {\n      \"Sid\": \"ReadStagingEventMetadata\",\n      \"Effect\": \"Allow\",\n      \"Action\": [\"s3:GetObject\"],\n      \"Resource\": \"arn:aws:s3:::staging_bucet_internal/*\"\n    },\n    {\n      \"Sid\": \"TriggerEgressDagViaMwaaRestApi\",\n      \"Effect\": \"Allow\",\n      \"Action\": [\"airflow:InvokeRestApi\", \"airflow:CreateWebLoginToken\"],\n      \"Resource\": \"arn:aws:airflow:${region}:${account}:environment/laminar-dataoutbound-mwaa-${env}\",\n      \"Condition\": { \"StringLike\": { \"airflow:endpoint\": \"*/dags/*/dagRuns\" } }\n    },\n    {\n      \"Sid\": \"KmsDecryptSsmSecureStrings\",\n      \"Effect\": \"Allow\",\n      \"Action\": [\"kms:Decrypt\"],\n      \"Resource\": \"arn:aws:kms:${region}:${account}:key/${kms_key_id}\"\n    }\n  ]\n}\n```\nLambda async-invocation DLQ: `laminar-dataoutbound-egress-lambda-dlq-{env}` (SQS), configured as the function's `DeadLetterConfig`.\n\n**MWAA execution role** (`laminar-dataoutbound-mwaa-execution-role-{env}`) \u2014 used by all three DAGs (orchestrator, child_export_dag, egress dag):\n\n```json\n{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    { \"Sid\": \"ReadConfigDbCreds\", \"Effect\": \"Allow\",\n      \"Action\": [\"ssm:GetParameter\", \"ssm:GetParameters\"],\n      \"Resource\": \"arn:aws:ssm:${region}:${account}:parameter/laminar/dataoutbound/${env}/*\" },\n    { \"Sid\": \"SubmitEmrJobs\", \"Effect\": \"Allow\",\n      \"Action\": [\"emr-serverless:StartJobRun\", \"emr-serverless:GetJobRun\", \"emr-serverless:CancelJobRun\"],\n      \"Resource\": [\"arn:aws:emr-serverless:${region}:${account}:applications/${emr_app_id}\",\n                   \"arn:aws:emr-serverless:${region}:${account}:applications/${emr_app_id}/jobruns/*\"] },\n    { \"Sid\": \"ReadStagingWriteAudit\", \"Effect\": \"Allow\",\n      \"Action\": [\"s3:GetObject\", \"s3:PutObject\", \"s3:ListBucket\"],\n      \"Resource\": [\"arn:aws:s3:::staging_bucet_internal\", \"arn:aws:s3:::staging_bucet_internal/*\",\n                   \"arn:aws:s3:::audit_bucket\", \"arn:aws:s3:::audit_bucket/egress/*\"] },\n    { \"Sid\": \"KmsDecrypt\", \"Effect\": \"Allow\",\n      \"Action\": [\"kms:Decrypt\"],\n      \"Resource\": \"arn:aws:kms:${region}:${account}:key/${kms_key_id}\" }\n  ]\n}\n```\n\nCross-account delivery to the customer bucket (customer-owned, `is_external = true`) is performed by the egress dag assuming a customer-provided role \u2014 pinned, not wildcarded:\n\n```json\n{\n  \"Sid\": \"AssumeCustomerEgressRole\",\n  \"Effect\": \"Allow\",\n  \"Action\": \"sts:AssumeRole\",\n  \"Resource\": \"arn:aws:iam::${customer_account_id}:role/CustomerCrossAccountEgressRole\",\n  \"Condition\": { \"StringEquals\": { \"sts:ExternalId\": \"${customer_external_id}\" } }\n}\n```\n`${customer_account_id}` and `${customer_external_id}` are per-connection values from `values.yaml` / SSM \u2014 never `*`.\n\n**EMR Serverless job execution role** (`laminar-dataoutbound-emr-job-role-{env}`): reads the externally owned Redshift cluster `golden_data_source` (database `dev`) via JDBC credentials resolved from SSM \u2014 not via cluster-level IAM actions, because the Golden Entity Source Store is externally owned and we hold no IAM control over it. The role therefore grants only S3 staging/audit writes and KMS decrypt; Redshift access is credential-based (read-only user) over TLS. No cross-account Redshift trust is required.\n\n```json\n{\n  \"Version\": \"2012-10-17\",\n  \"Statement\": [\n    { \"Sid\": \"WriteStaging\", \"Effect\": \"Allow\",\n      \"Action\": [\"s3:PutObject\", \"s3:GetObject\", \"s3:AbortMultipartUpload\", \"s3:ListMultipartUploadParts\"],\n      \"Resource\": \"arn:aws:s3:::staging_bucet_internal/exports/*\" },\n    { \"Sid\": \"WriteSparkAudit\", \"Effect\": \"Allow\",\n      \"Action\": [\"s3:PutObject\"],\n      \"Resource\": \"arn:aws:s3:::audit_bucket/spark/*\" },\n    { \"Sid\": \"KmsDecrypt\", \"Effect\": \"Allow\",\n      \"Action\": [\"kms:Decrypt\"],\n      \"Resource\": \"arn:aws:kms:${region}:${account}:key/${kms_key_id}\" }\n  ]\n}\n```\n\n**Scheduler invoke role** (`laminar-dataoutbound-scheduler-role-{env}`): `airflow:InvokeRestApi` + `airflow:CreateWebLoginToken` on `arn:aws:airflow:${region}:${account}:environment/laminar-dataoutbound-mwaa-${env}` only, with the same `airflow:endpoint` condition; failed deliveries route to `laminar-dataoutbound-scheduler-dlq-{env}` after EventBridge retries (24 h max age).\n\n**Bucket policies**: `staging_bucet_internal` allows `s3:GetObject`/`s3:PutObject` only to the EMR job role, MWAA execution role, and egress-lambda role ARNs; `audit_bucket` allows `s3:PutObject` only to the do-admin-api role (`admin/*`), EMR job role (`spark/*`), and MWAA execution role (`egress/*`). Both deny non-TLS (`aws:SecureTransport = false`) and enforce `aws:PublicAccessBlock` via the account-level block.\n\n#### KMS CMK Strategy & Deletion Protection\n\nOne customer-managed key per environment: `laminar-dataoutbound-{env}` (alias `alias/laminar-dataoutbound-{env}`), used for SSM SecureString decryption and RDS storage encryption. Key policy grants `kms:Decrypt` only to the four workload roles above and `kms:GenerateDataKey` to RDS; admin operations restricted to the platform-engineer principal.\n\nPer SCRUM-485 AC#3\u2013AC#5, deletion protection is **never hardcoded**: a single per-environment variable `deletion_protection_enabled` in `values.yaml` drives every stateful resource:\n\n| values.yaml key | dev | staging | prod | Applied to |\n|---|---|---|---|---|\n| `deletion_protection_enabled` | `false` | `true` | `true` | `export_config_store_rds` (`deletion_protection`), `customer_staging_buckets_s3` + `audit_execution_log_store_s3` (Terraform `prevent_destroy` lifecycle block, conditionally created), KMS key (`prevent_destroy`) |\n\nEffect: dev teardown (`terraform destroy`) exits 0; staging/prod teardown exits non-zero with no stateful resource destroyed.\n\n#### Secrets & Parameter Store Patterns\n\n| Secret | SSM path (SecureString, KMS `laminar-dataoutbound-{env}`) | Consumer |\n|---|---|---|\n| cofig_db connection string | `/laminar/dataoutbound/{env}/do-admin-api/db-conn` | do-admin-api |\n| cofig_db read-only creds (DAGs) | `/laminar/dataoutbound/{env}/mwaa/db-readonly` | orchestrator, child_export_dag |\n| Redshift read-only creds | `/laminar/dataoutbound/{env}/emr/redshift-readonly` | emr_do (Spark JDBC) |\n| PGP private keys per connection | `/laminar/dataoutbound/{env}/egress/pgp/{config_id}` | egress dag |\n| Azure Entra ID service principal | `/laminar/dataoutbound/{env}/egress/azure/{config_id}` | egress dag |\n| GCS service-account key | `/laminar/dataoutbound/{env}/egress/gcs/{config_id}` | egress dag |\n| SFTP private key + host key | `/laminar/dataoutbound/{env}/egress/sftp/{config_id}` | egress dag |\n\nAll consumers resolve at runtime via `SsmClient` with decryption and short-lived caching; no secret is ever written to Terraform state, logs, or DAG code. Credential fields in `cofig_db` are additionally encrypted at the application layer before persistence (SCRUM-479 AC#1) and masked in all API responses.\n\n#### Audit Logging\n\nAll audit events are CloudEvents-shaped JSON records written to `audit_bucket` under prefix `admin/`, `spark/`, or `egress/`, keyed by unique event ID (idempotent writes). Schema per SCRUM-486: `actor_id`, `timestamp_utc` (ISO-8601 ms, Z), `event_type` (enumerated set), `execution_id` (lineage UUID). Because `audit_bucket` has `versioning = false` (user decision), immutability is **not** claimed via S3 semantics; tamper-resistance is achieved through write-only IAM (no `s3:DeleteObject`, no `s3:GetObject` for writers) plus lifecycle tiering (30 d standard \u2192 Glacier at 90 d). Recommendation: if regulatory immutability is later required, enable Object Lock in compliance mode \u2014 this requires versioning and would need an explicit change to the user's `versioning = false` decision.",
+   "hash": "a9f523e04b684287",
+   "reason": null,
+   "source": "trail:r0",
+   "status": "complete",
+   "updated_epoch": 1793489321489
+  },
+  "g.8": {
+   "attempts": 0,
+   "body": "#### Centralised Log Aggregation & Log Group Configuration\nEvery pipeline component emits structured JSON logs containing correlation IDs and lineage UUIDs to explicitly provisioned CloudWatch Log Groups. In compliance with enterprise security standards, log retention is strictly set across all components.\n- **Log Group Naming Convention**: `/aws/<service>/<component>-${var.environment}`\n- **Retention Period**: `365` days (confirming the organization logging-standard value).\n- **Log Groups Provisioned**:\n  - `/aws/lambda/egress-lambda-${var.environment}`\n  - `/aws/mwaa/orchestrator-${var.environment}`\n  - `/aws/mwaa/child_export_dag-${var.environment}`\n  - `/aws/mwaa/egress-dag-${var.environment}`\n  - `/aws/emr-serverless/emr_do-${var.environment}`\n  - `/aws/rds/cofig_db-${var.environment}`\n\n#### OpenTelemetry & Audit Telemetry Pipeline\nStructured CloudEvents-shaped audit records are published by every component directly to the `audit_bucket` and piped into the operational logging stream. Required event fields include `actor_id`, `timestamp_utc` (ISO-8601 with millisecond precision and Z suffix), `event_type` (`ADMIN_CREATE`, `ADMIN_UPDATE`, `ADMIN_DELETE`, `ADMIN_MANUAL_TRIGGER`, `EXECUTION_STARTED`, `EXECUTION_COMPLETED`, `TRANSFER_STARTED`, `TRANSFER_COMPLETED`, `TRANSFER_FAILED`), and `execution_id` (lineage UUID).\n\n#### CloudWatch Alarms & SNS Notification Topics\nOperational alerts are routed through a central Amazon SNS topic (`laminar-dataoutbound-alerts-${var.environment}`) configured with email and PagerDuty endpoints.\n- **Key Alarm Thresholds**:\n  - **Lambda Errors**: `Errors > 0` over a 1-minute evaluation period for `egress-lambda`.\n  - **Lambda Throttles**: `Throttles > 0` over a 5-minute evaluation period.\n  - **MWAA DAG Failures**: Task failure state detected via CloudWatch metric filter on MWAA worker logs (`DAG Task Failure > 0`).\n  - **EMR Job Failures**: `JobRunFailed > 0` on `emr_do`.\n  - **Database CPU Utilization**: `CPUUtilization > 85%` for 15 consecutive minutes on `cofig_db`.\n  - **PGP Encryption Failure**: Immediate trigger on `TRANSFER_FAILED` audit event emission (fail-closed alert).\n\n---",
+   "hash": "1027daf4f5f9a57a",
+   "reason": null,
+   "source": "trail:r0",
+   "status": "complete",
+   "updated_epoch": 1793488846313
+  },
+  "g.9": {
+   "attempts": 0,
+   "body": "| Alternative | Why Considered | Why Rejected | Final Choice |\n|---|---|---|---|\n| **AWS Glue Serverless ETL** | Managed serverless Spark environment for data extractions. | Less flexible for custom declarative JSON recipes and complex multi-source joining compared to EMR Serverless; higher cold-start overhead for scheduled batch workloads. | **EMR Serverless (`emr_do`)** |\n| **AWS Step Functions** | Native serverless orchestration for step-based data pipelines. | Existing enterprise blueprints and complex dependency mapping for batch parallelism strongly leverage Apache Airflow (MWAA), avoiding workflow rewrite costs. | **Amazon MWAA (`orchestrator`, `child_export_dag`, `egress dag`)** |\n| **ECS Fargate Containers** | Containerized worker runtime for custom egress file processing. | Higher idle infrastructure overhead and operational complexity compared to event-driven Lambda execution for single-file egress handling. | **AWS Lambda (`egress-lambda`)** |\n\n---",
+   "hash": "b68d43ae964e7024",
+   "reason": null,
+   "source": "trail:r0",
+   "status": "complete",
+   "updated_epoch": 1793488846313
+  }
+ },
+ "task_key": "infra_tech_spec_gen",
+ "template_hash": "bd53a1f81a07bf4861afcd574989139f191afb88ff8686700f274115ced9aef8"
+}

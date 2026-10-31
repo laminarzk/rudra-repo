@@ -65,6 +65,14 @@ Structure versions: `api` v1, `dag` v1, `foundation` v1, `lambda` v1, `spark` v1
 │       │   └── export_extract_spark_job
 │       │       ├── config
 │       │       │   ├── recipes
+│       │       │   │   ├── contact_method_subscription_recipe.json
+│       │       │   │   ├── enriched_campaign_reactions_recipe.json
+│       │       │   │   ├── enriched_campaigns_recipe.json
+│       │       │   │   ├── pii_restricted_profile_recipe.json
+│       │       │   │   ├── restaurant_reservation_recipe.json
+│       │       │   │   ├── room_stay_reservation_recipe.json
+│       │       │   │   ├── spa_treatment_reservation_recipe.json
+│       │       │   │   └── tee_time_reservation_recipe.json
 │       │       │   └── config.yaml
 │       │       ├── helper
 │       │       │   └── spark_session_helper.py
@@ -163,6 +171,14 @@ Module type `spark` · generated as `module_bundle` · root `src/dataoutbound_se
 | `src/dataoutbound_section_tree/spark_emr/export_extract_spark_job/config` | folder | Job configuration and declarative recipes. |
 | `src/dataoutbound_section_tree/spark_emr/export_extract_spark_job/config/config.yaml` | file | Job configuration per environment: sources, sinks, Spark conf, recipe directory, PII policy references. |
 | `src/dataoutbound_section_tree/spark_emr/export_extract_spark_job/config/recipes` | folder (fluid) | Declarative extract/transform recipes (one JSON per product/dataset) interpreted by the processors. |
+| `src/dataoutbound_section_tree/spark_emr/export_extract_spark_job/config/recipes/contact_method_subscription_recipe.json` | file | Declarative extract/transform recipe for the Contact Method Subscription Golden Entity, naming source table, projection and output layout. |
+| `src/dataoutbound_section_tree/spark_emr/export_extract_spark_job/config/recipes/enriched_campaign_reactions_recipe.json` | file | Declarative extract/transform recipe for the Enriched Campaign Reactions Golden Entity, naming source table, projection and output layout. |
+| `src/dataoutbound_section_tree/spark_emr/export_extract_spark_job/config/recipes/enriched_campaigns_recipe.json` | file | Declarative extract/transform recipe for the Enriched Campaigns Golden Entity, naming source table, projection and output layout. |
+| `src/dataoutbound_section_tree/spark_emr/export_extract_spark_job/config/recipes/pii_restricted_profile_recipe.json` | file | Declarative extract/transform recipe for the Pii Restricted Profile Golden Entity, declaring the PII masking rules applied to restricted attributes. |
+| `src/dataoutbound_section_tree/spark_emr/export_extract_spark_job/config/recipes/restaurant_reservation_recipe.json` | file | Declarative extract/transform recipe for the Restaurant reservation item dataset, naming source table, projection and output layout. |
+| `src/dataoutbound_section_tree/spark_emr/export_extract_spark_job/config/recipes/room_stay_reservation_recipe.json` | file | Declarative extract/transform recipe for the Room stay reservation item dataset, naming source table, projection and output layout. |
+| `src/dataoutbound_section_tree/spark_emr/export_extract_spark_job/config/recipes/spa_treatment_reservation_recipe.json` | file | Declarative extract/transform recipe for the Spa treatment reservation item dataset, naming source table, projection and output layout. |
+| `src/dataoutbound_section_tree/spark_emr/export_extract_spark_job/config/recipes/tee_time_reservation_recipe.json` | file | Declarative extract/transform recipe for the Tee time reservation item dataset, naming source table, projection and output layout. |
 | `src/dataoutbound_section_tree/spark_emr/export_extract_spark_job/helper` | folder | Spark runtime helpers (session construction, Spark conf) with no job logic. |
 | `src/dataoutbound_section_tree/spark_emr/export_extract_spark_job/helper/spark_session_helper.py` | file | get_spark_session(app_name, config) applying Spark conf, Hive/Glue catalog and S3 committer settings. |
 | `src/dataoutbound_section_tree/spark_emr/export_extract_spark_job/io` | folder (fluid) | All reads and writes against external systems, one module per system. No business logic; returns/accepts DataFrames. |
@@ -252,3 +268,14 @@ One root module; resources grouped by service type, configured per environment t
 | export scheduler eventbridge | `export_scheduler_eventbridge` | `terraform/eventbridge.tf` |
 | golden entity source store redshift | `golden_entity_source_store_redshift` | `terraform/redshift.tf` |
 | Transform & Encrypt DAG (MWAA) | `transform_encrypt_dag_mwaa` | `terraform/mwaa.tf` |
+
+## Files named for this architecture
+
+- `src/dataoutbound_section_tree/spark_emr/export_extract_spark_job/config/recipes/contact_method_subscription_recipe.json` (Export Extract Spark Job (EMR Serverless))
+- `src/dataoutbound_section_tree/spark_emr/export_extract_spark_job/config/recipes/enriched_campaign_reactions_recipe.json` (Export Extract Spark Job (EMR Serverless))
+- `src/dataoutbound_section_tree/spark_emr/export_extract_spark_job/config/recipes/enriched_campaigns_recipe.json` (Export Extract Spark Job (EMR Serverless))
+- `src/dataoutbound_section_tree/spark_emr/export_extract_spark_job/config/recipes/pii_restricted_profile_recipe.json` (Export Extract Spark Job (EMR Serverless))
+- `src/dataoutbound_section_tree/spark_emr/export_extract_spark_job/config/recipes/restaurant_reservation_recipe.json` (Export Extract Spark Job (EMR Serverless))
+- `src/dataoutbound_section_tree/spark_emr/export_extract_spark_job/config/recipes/room_stay_reservation_recipe.json` (Export Extract Spark Job (EMR Serverless))
+- `src/dataoutbound_section_tree/spark_emr/export_extract_spark_job/config/recipes/spa_treatment_reservation_recipe.json` (Export Extract Spark Job (EMR Serverless))
+- `src/dataoutbound_section_tree/spark_emr/export_extract_spark_job/config/recipes/tee_time_reservation_recipe.json` (Export Extract Spark Job (EMR Serverless))

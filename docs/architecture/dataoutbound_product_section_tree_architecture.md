@@ -7,15 +7,7 @@
 
 ## Table of Contents
 - **1.** Executive Summary / Overview
-    - **1.1** System Purpose
-    - **1.2** Architectural Principles Governing the Whole System
-    - **1.3** End-to-End Workflow
-    - **1.4** Key Assumptions & Follow-up Resolutions
 - **2.** Architecture Tenets
-    - **2.1** Deterministic Orchestration and Traceability
-    - **2.2** Fail-Closed Security and Least Privilege
-    - **2.3** Serverless Compute Isolation and Cost-Optimized Scaling
-    - **2.4** Immutable Audit Logging and Automated Lifecycle Governance
 - **3.** Architecture Diagram
 - **4.** Component Details: do-admin-api
   - **4.1.** Functional Overview
@@ -173,16 +165,8 @@
   - **18.4.** Security and Compliance
   - **18.5.** Assumptions & Follow-up Resolutions
 - **19.** Architectural Assumptions and Design Decisions
-    - **19.1** A1. Approved AWS Stack Conformance
-    - **19.2** A2. Environment-Driven Deletion Protection
-    - **19.3** A3. Organisation Logging-Standard Retention Value
-    - **19.4** A4. Audit Schema and Event Counting Contract
-    - **19.5** A5. Fail-Closed Encryption Posture
-    - **19.6** A6. Delivery-Only Semantics and Integrity Standard
-    - **19.7** A7. Staging Lifecycle and Temporary Data Hygiene
-    - **19.8** A8. Lineage UUID as the Sole Correlation Identifier
-    - **19.9** A9. Credential Protection at Rest
-    - **19.10** A10. Scheduling Tolerance and Cadence Semantics
+    - **19.1** Architectural Assumptions
+    - **19.2** Key Design Decisions
 - **20.** Security & Compliance Assumptions
 - **21.** Operational Assumptions
   - **21.1.** Operational Tenets
@@ -196,73 +180,21 @@
 
 ## 1. Executive Summary / Overview
 <a id="laminar-sec-g.exec"></a>
-#### 1.1 System Purpose
+The DataOutbound Product is an enterprise-grade, scheduled batch outbound data-synchronization platform operating within the hospitality data domain. Its primary architectural mandate is to extract, transform, format, and securely deliver Golden Entity datasets—encompassing Unified Identity Profiles, Pii Restricted Profiles, Contact Method Subscriptions, Enriched Campaigns, Enriched Campaign Reactions, and reservation items (Room stay, Restaurant reservation, Tee time, Spa treatment)—from an authoritative Redshift data source store (`dev`) to diverse customer-owned endpoints.
 
-This architecture defines the **Customer Data Export Platform** for Acme's hospitality data domain: a production-grade, event-driven batch pipeline that extracts Golden Entity datasets from the enterprise data warehouse, stages and transforms them into customer-ready export packages, and delivers them to heterogeneous customer destinations (S3, Azure Blob, GCS, sFTP, and Acme's internal inspection staging) with end-to-end integrity verification, fail-closed encryption, and complete auditability.
-
-The platform serves two primary actors:
-
-- **Authorized Administrators / Data Platform Administrators**, who manage export connection configurations, trigger and stop runs on demand, and rely on the platform to synchronize customer datasets accurately across daily, weekly, bi-weekly, monthly, and hourly fast-batch cadences.
-- **Data Engineers / Security & Operations Engineers**, who operate the pipeline, verify compliance with the approved AWS stack, and depend on the audit trail and lifecycle guarantees for traceability and cost hygiene.
-
-#### 1.2 Architectural Principles Governing the Whole System
-
-1. **Orchestration–Compute Separation (MWAA + EMR Serverless)** — Airflow DAGs (Export Orchestrator DAG n3, Child Export DAG n14, Transform & Encrypt DAG n7) only orchestrate; all heavy data movement runs in EMR Serverless (Export Extract Spark Job n4) or Lambda (Egress Lambda n15). *Rationale:* keeps the control plane lightweight, scales compute independently per workload, and aligns with the approved AWS allowlist (MWAA, RDS Postgres, Lambda, EMR Serverless, S3, ECS). *Guardrail:* no data processing inside Airflow workers; DAG top-level code stays instantaneous.
-
-2. **Configuration-as-Data (Export Config Store, RDS Postgres n6)** — every connection (target type, dataset, mode, cron schedule, split thresholds, GZIP/PGP flags, credentials) is persisted configuration, never code. *Rationale:* enables CRUD via the Export Admin API (n1) without deployments and makes per-connection behavior fully data-driven. *Guardrail:* credential fields are encrypted at rest and never returned in plaintext; deletion protection on the store is driven by per-environment Terraform variables, never hardcoded.
-
-3. **Event-Driven Decoupling with a Single Lineage UUID** — the Export Scheduler (n2) raises cadence events; the Orchestrator selects active connections within ±10 minutes of schedule, generates one RFC 4122 v4 lineage UUID per run, and fans out one Child Export DAG run per connection. The lineage UUID threads through every downstream artifact: file names, manifests, audit events, and DAG run configurations. *Rationale:* decouples scheduling from execution, isolates per-connection failures, and makes every record traceable end-to-end. *Guardrail:* exactly one UUID per run; exactly one Transform & Encrypt DAG run per staged-file S3 event.
-
-4. **Fail-Closed Security** — PGP encryption, when enabled, is a hard gate: a missing, corrupt, or failing key aborts the transfer, writes an audit error entry within 5 seconds, raises an alert, and passes **zero bytes** to any destination. sFTP host-key verification failures likewise refuse the connection with zero bytes sent and no retry. *Rationale:* customer data must never leak in plaintext; integrity failures are treated as security events, not transient errors.
-
-5. **Verified Delivery, Delivery-Only Semantics** — every destination receives the data file(s) plus a `manifest_<lineage_uuid>.json` control file; integrity is proven by an application-level SHA-256 recomputed from a read-back of each delivered object and compared to the manifest. Transient failures retry up to 3 times; final failure is recorded only after the third retry. *Rationale:* uniform integrity standard across S3 (TLS 1.3), Azure/GCS (HTTPS), and sFTP (SSH), independent of each provider's native checksums (which are requested as additional transport checks where supported).
-
-6. **Environment-Driven Lifecycle & Compliance** — staging objects in Customer Staging Buckets (n8) expire after exactly 7 days via S3 lifecycle rules; every log group is explicitly provisioned with the single organisation logging-standard retention value (to be confirmed in days before sprint commitment); all stateful resources (n6, n8, n13, encryption keys) read deletion-protection flags from per-environment configuration (dev/staging/prod), enabling lower-environment teardown while protecting production. *Rationale:* prevents temporary data accumulation, guarantees log compliance, and makes environment posture a configuration decision rather than a code decision.
-
-#### 1.3 End-to-End Workflow
-
-1. **Configuration** — Administrators create, retrieve, update, and delete export connections through the **Export Admin API (n1)**, which validates payloads (connection name, target type ∈ {s3, azure_blob, gcs, sftp}, dataset, mode ∈ {initial, incremental}, 5-field cron, credentials), persists them to the **Export Config Store (n6)** with encrypted credentials, and emits `ADMIN_*` audit events to the **Audit & Execution Log Store (n13)**.
-
-2. **Scheduling & Orchestration** — the **Export Scheduler (n2)** raises cadence events; the **Export Orchestrator DAG (n3)** on MWAA reads active connection metadata from n6, selects connections whose cron matches within ±10 minutes, generates the lineage UUID, and submits one **Child Export DAG (n14)** per connection. Manual trigger and stop requests enter through n1 (HTTP 202, run state transitions verified via the Airflow REST API within 30 seconds).
-
-3. **Extraction & Staging** — each Child Export DAG submits the **Export Extract Spark Job (n4)** on EMR Serverless, which reads Golden Entity data (Unified Identity Profile, Pii Restricted Profile, Contact Method Subscription, Enriched Campaigns, Enriched Campaign Reactions, and reservation items — Room stay, Restaurant reservation, Tee time, Spa treatment) from the **Golden Entity Source Store (n5)** in full or incremental mode (strictly-greater-than watermark filtering) and writes staged files to the **Customer Staging Buckets (n8)**.
-
-4. **Transform & Encrypt** — an S3 event on n8 invokes the **Egress Lambda (n15)**, which triggers exactly one **Transform & Encrypt DAG (n7)** run carrying the lineage UUID. The DAG applies connection-defined formatting: configurable record-split thresholds (e.g., 500,000 records/file with peak worker RSS below 2,048 MB), optional GZIP compression **before** PGP encryption, and generation of the JSON manifest (record count, file sizes, SHA-256 checksums). The processed package is handed back to the Egress Lambda for delivery.
-
-5. **Egress Delivery** — the **Egress Lambda (n15)** delivers the package and manifest to each configured destination — **Customer sFTP Destination (n9)**, **Customer S3 Destination (n10)**, **Customer Azure Blob Destination (n11)**, **Customer GCS Destination (n12)** — or to Acme's internal inspection staging (also n8), verifying SHA-256 integrity on read-back, retrying transient failures up to 3 times, and recording `TRANSFER_STARTED` / `TRANSFER_COMPLETED` / `TRANSFER_FAILED` audit events throughout.
-
-6. **Audit & Operations** — the **Audit & Execution Log Store (n13)**, as parent of explicitly provisioned per-component log groups, captures every administrative, execution, and transfer event under the defined schema (`actor_id`, `timestamp_utc` ISO-8601 millisecond UTC, `event_type` from the enumerated set, `execution_id`), with expected event counts per run fully deterministic (admin operations + 2 per connection execution + 2 per transfer).
-
-#### 1.4 Key Assumptions & Follow-up Resolutions
-
-- The organisation logging-standard retention value (in days) is **not stated in the inputs and must be confirmed before sprint commitment**; all log groups will carry that single value once confirmed — no group may be unset or never-expire.
-- The Golden Entity Source Store (n5) is an existing, externally owned source, and customer destinations (n9–n12) are customer-owned; both are excluded from the approved-allowlist verification and are listed explicitly in the test report.
-- The approved AWS stack is MWAA, RDS Postgres, Lambda, EMR Serverless, S3, and ECS; the Export Admin API (n1) and Export Scheduler (n2) are hosted within this allowlist, and no pipeline-owned resource may run outside it in any environment.
-- Delivery semantics are delivery-only: the platform does not manage or reconcile downstream customer-side retention, processing, or acknowledgement beyond verified delivery.
+The end-to-end execution lifecycle is orchestrated through a robust, event-driven pipeline:
+1. **Administration & Configuration**: Authorized administrators manage export rules, cadences, and destination credentials via the `do-admin-api`, which persists configurations securely into the `cofig_db` (RDS PostgreSQL instance). Credential fields are strictly encrypted at rest, and all administrative actions generate immutable audit records.
+2. **Orchestration & Scheduling**: The `scheduler` (Amazon EventBridge) raises cadence-based events, while the `orchestrator` (Amazon MWAA DAG) evaluates active connection metadata against the schedule window, generates a unique RFC 4122 v4 lineage UUID for traceability, and spawns execution runs.
+3. **Extraction Workloads**: The `child_export_dag` (Amazon MWAA) triggers the `emr_do` job (EMR Serverless Spark runtime). This job extracts incremental or full datasets from the `dev` Redshift cluster using watermark tracking tables stored in `cofig_db`, writing normalized output files into internal S3 staging buckets (`staging_bucet_internal`).
+4. **Transform, Encryption & Egress**: Staging bucket event notifications trigger `egress-lambda`, which initiates the `egress dag` (Amazon MWAA). This workflow applies optional GZIP compression followed by strict, fail-closed PGP encryption based on connection recipes. The processed export packages and JSON manifest control files (containing SHA-256 checksums) are delivered to designated endpoints—including `customer bucket` (S3), `Customer Azure Blob Destination`, `Customer GCS Destination`, and `customer SFTP server`—or internal inspection staging.
+5. **Auditing & Telemetry**: Every administrative action, execution milestone, and transfer attempt emits a structured CloudEvents-compliant record directed to the `audit_bucket` (S3). Stateful resources incorporate environment-driven deletion protection to facilitate clean ephemeral teardowns in non-production environments while safeguarding production data assets.
 
 ## 2. Architecture Tenets
 <a id="laminar-sec-g.tenets"></a>
-The DataOutbound data-sync capability is governed by core architectural tenets that ensure domain alignment, predictable scale, stringent security, and operational reliability across all platform components (`do-admin-api`, `scheduler`, `orchestrator`, `child_export_dag`, `emr_do`, `dev`, `cofig_db`, `staging_bucet_internal`, `egress-lambda`, `egress dag`, `Customer Azure Blob Destination`, `Customer GCS Destination`, and `audit_bucket`).
-
-#### 2.1 Deterministic Orchestration and Traceability
-- **Principle**: End-to-end lineage propagation and idempotent workflow execution.
-- **Rationale**: Batch data synchronization across distributed serverless compute environments requires absolute accountability and reproducibility. By generating a cryptographic lineage UUID at the orchestration boundary (`orchestrator`) and propagating it through every downstream stage (`child_export_dag`, `emr_do`, `staging_bucet_internal`, `egress-lambda`, `egress dag`, and external sinks), the system guarantees that every execution artifact, payload, manifest, and audit log can be deterministically correlated.
-- **Guardrails**: Engineers must ensure that no workload executes without a valid lineage context. All state transitions, retry attempts, and failures must be explicitly captured and published to `audit_bucket` within defined SLAs.
-
-#### 2.2 Fail-Closed Security and Least Privilege
-- **Principle**: Zero-trust access controls with cryptographic fail-closed enforcement.
-- **Rationale**: Handling sensitive hospitality Golden Entity profiles and customer credentials requires strict isolation. Encryption keys and secrets are externalized via AWS SSM Parameter Store (SecureString) and referenced securely. Furthermore, PGP encryption for outbound transfers is strictly fail-closed: if encryption fails, the transfer pipeline aborts immediately, raising an automated alert and transmitting zero unencrypted bytes.
-- **Guardrails**: Hardcoded credentials or secrets are strictly prohibited across all application modules, DAGs, and Terraform configurations. IAM execution roles must adhere strictly to the principle of least privilege, restricting data store read/write permissions to exact resource ARNs.
-
-#### 2.3 Serverless Compute Isolation and Cost-Optimized Scaling
-- **Principle**: On-demand elasticity with strict tenant and network boundary isolation.
-- **Rationale**: Leveraging serverless compute engines such as EMR Serverless (`emr_do`), Amazon MWAA (`orchestrator`, `child_export_dag`, `egress dag`), and AWS Lambda (`egress-lambda`) eliminates idle capacity overhead while scaling automatically to meet peak loads of up to 100,000 records per export. All compute resources execute within private VPC subnets with outbound traffic routed through NAT gateways.
-- **Guardrails**: Over-allocation of static compute resources is prohibited. Stateful resources (such as `cofig_db`, `staging_bucet_internal`, and `audit_bucket`) must have their deletion protection flags driven dynamically by environment configuration (`dev`, `staging`, `prod`) to allow clean lower-environment teardowns.
-
-#### 2.4 Immutable Audit Logging and Automated Lifecycle Governance
-- **Principle**: Comprehensive operational visibility paired with automated ephemeral data pruning.
-- **Rationale**: Compliance and auditing require that every administrative action, schedule trigger, execution state change, and transfer attempt is durably recorded in `audit_bucket` using a standardized JSON schema. Simultaneously, temporary staging artifacts residing in `staging_bucet_internal` must not accumulate indefinitely; automated S3 lifecycle rules enforce strict 7-day expiration policies to optimize storage costs and mitigate data leakage risks.
-- **Guardrails**: Log retention periods must strictly align with organizational compliance standards. Staging buckets must never disable automated lifecycle expiration rules in production environments.
+1. **Lineage-Bound Traceability and Auditing**: Every export execution—from administrative trigger to final destination delivery—is bound to a single, immutable lineage UUID. Every state transition, start event, completion, and failure must emit a structured audit record to the `audit_bucket`, ensuring complete non-repudiation and end-to-end traceability across the distributed pipeline.
+2. **Fail-Closed Security Posture**: Security controls, particularly cryptographic operations, operate on a strict fail-closed principle. PGP encryption and credential handling must never default to plaintext. If a PGP key is missing, corrupt, or encryption fails during the `egress dag` execution, the transfer aborts instantly, preventing any unencrypted data egress while raising an immediate operational alert.
+3. **Decoupled Orchestration and Elastic Compute**: Control plane logic (scheduling via `scheduler`, workflow coordination via `orchestrator`, `child_export_dag`, and `egress dag`) is strictly isolated from heavy compute tasks (`emr_do` Spark jobs) and lightweight event routing (`egress-lambda`). Orchestration engines manage state and scheduling only, delegating high-throughput processing to ephemeral serverless runtimes.
+4. **Declarative, Environment-Driven Configuration**: All system behavior, export recipes, connection rules, and infrastructure lifecycle policies (such as deletion protection and log retention) are externalized via declarative configuration files and environment variables. Infrastructure-as-Code and runtime loaders ensure zero hardcoded secrets or tuning parameters, enabling consistent deployments across development, staging, and production tiers.
 
 ## 3. Architecture Diagram
 <a id="laminar-sec-g.diagram"></a>
@@ -320,68 +252,121 @@ flowchart TD
 ## 4. Component Details: do-admin-api
 <a id="laminar-sec-c.imp_standard_standard_api_1"></a>
 
+<!-- laminar:diagram-settings:imp-standard-standard_api-1 -->
+**Diagram settings (user decisions — authoritative)**
+
+| Setting | Value |
+| --- | --- |
+| `protocol` | `REST` |
+| `authentication` | `JWT` |
+| `api_name` | `do-admin-api` |
+
+<!-- /laminar:diagram-settings -->
+
+
 ### 4.1. Functional Overview
 <a id="laminar-sec-c.imp_standard_standard_api_1.fo"></a>
-The **do-admin-api** component serves as the bounded RESTful API entrypoint for authorized Acme administrators to manage customer export configurations and trigger operational workflows. Operating within a containerized runtime, it exposes endpoints for creating, retrieving, updating, and deleting export definitions—such as target destination types, dataset selections, synchronization modes, and cron schedules—while securely persisting sensitive credentials and emitting audit trails.
+- **Architectural Principle**: Bounded Domain Gateway & Separation of Concerns.
+- **Rationale**: The `do-admin-api` serves as the sole authoritative REST entrypoint for Acme administrators to manage, inspect, and lifecycle-control customer export configurations without requiring manual database interventions or direct infrastructure access. By decoupling the administrative interface from execution engines (MWAA DAGs and EMR Serverless), administrative operations remain responsive, secure, and isolated from heavy data processing workloads.
+- **Guardrails**: Engineers must ensure that all route handlers delegate strictly to service layers (`export_admin_service.py`), never perform direct database operations or business logic in route definitions, and enforce strict input validation against Pydantic schemas before persistence.
 
 ### 4.2. Component Tenets
 <a id="laminar-sec-c.imp_standard_standard_api_1.tn"></a>
-* **Principle**: Bounded Context API Gateway & Least Privilege Control.
-* **Rationale**: Centralizing administrative operations through a secure API gateway decouples configuration management from execution engines, ensuring that data modification is strictly authenticated, authorized, and audited.
-* **Guardrails**: All endpoints require valid JWT bearer token authentication and `export-admin` role authorization. Direct database access for administrative tasks is prohibited; all mutations must flow through validated service boundaries.
+- **Architectural Principle**: Contract-First REST Design & Least-Privilege Authorization.
+- **Rationale**: Enforcing RESTful conventions with OpenAPI-compliant contracts guarantees predictable client interactions and robust machine-to-machine integration. Role-based access control (RBAC) paired with JWT bearer token validation ensures that only authorized administrators can mutate export configurations, preventing unauthorized data exfiltration or pipeline disruption.
+- **Guardrails**: All endpoints must return standardized error envelopes (`{ "error": { "code": "STRING_CODE", "message": "...", "details": [] } }`) with semantic status codes (`200`, `201`, `204`, `400`, `401`, `403`, `404`, `409`, `422`, `500`). Secrets (such as client connection credentials or API keys) must never be returned in plaintext upon retrieval.
 
 ### 4.3. Configuration Approach
 <a id="laminar-sec-c.imp_standard_standard_api_1.cfg"></a>
-* **Principle**: Externalized Environment-Driven Configuration.
-* **Rationale**: Configuration parameters are decoupled from code to support seamless promotion across development, staging, and production environments without rebuilding deployment artifacts.
-* **Guardrails**: Only configuration properties explicitly required by the architecture are overridden.
-  * `protocol`: `REST` — Chosen to provide standard, stateless HTTP interface semantics.
-  * `authentication`: `JWT` — Enforces cryptographically verified token-based identity propagation.
-  * `api_name`: `do-admin-api` — Standard service identifier for logging and telemetry correlation.
+- **Architectural Principle**: Externalized Declarative Configuration.
+- **Rationale**: Configuration parameters are externalized through config loaders and environment variables, ensuring environment parity across development, staging, and production tiers.
+- **Configuration Properties Set/Overridden**:
+  - `protocol`: `REST` (enforces HTTP/HTTPS protocol standard).
+  - `authentication`: `JWT` (mandates bearer token validation on all protected routes).
+  - `api_name`: `do-admin-api` (identifies the service domain boundary).
+- **Guardrails**: Never hardcode endpoints, database connection strings, or authentication secrets within the application source code; always resolve sensitive references via `common.clients.ssm` or encrypted secrets management.
 
 ### 4.4. Input Schema
 <a id="laminar-sec-c.imp_standard_standard_api_1.in"></a>
-* **Principle**: Contract-First Strict Boundary Validation.
-* **Rationale**: Enforcing strict schema validation at the HTTP boundary prevents malformed payloads from corrupting downstream configuration stores or triggering invalid pipeline executions.
-* **Guardrails**: Incoming JSON payloads must conform to OpenAPI 3.0 specifications, defining required fields (`connection_name`, `target_type`, `dataset`, `mode`, `cron_schedule`, and `credentials`) with strict type constraints.
+- **Architectural Principle**: Strict Boundary Validation.
+- **Rationale**: Validating all incoming payloads at the API boundary prevents malformed or malicious data from reaching downstream persistent storage (`cofig_db`) or triggering invalid orchestration workflows.
+- **Payload Structure**:
+  - `connection_name`: `string` (1–100 characters, unique per tenant).
+  - `target_type`: `string` (enum: `s3`, `azure_blob`, `gcs`, `sftp`).
+  - `dataset`: `string` (enum: `identity_profiles`, `subscription_statuses`, `campaigns_reactions`, `reservation_items`).
+  - `mode`: `string` (enum: `initial`, `incremental`).
+  - `cron_schedule`: `string` (valid 5-field cron expression).
+  - `credentials`: `object` / `string` (encrypted target access keys or key references).
+- **Guardrails**: Any payload missing required fields or containing invalid enum values must immediately return HTTP `400 Bad Request` with an error body detailing every violating field.
 
 ### 4.5. Output/Side Effects
 <a id="laminar-sec-c.imp_standard_standard_api_1.out"></a>
-* **Principle**: Transactional Persistence and Asynchronous Orchestration.
-* **Rationale**: Administrative write operations must durably persist state to the configuration store and reliably trigger downstream orchestration or audit logging without blocking client connections unnecessarily.
-* **Guardrails**: Successful mutations return standardized HTTP status codes (`201 Created`, `200 OK`, `204 No Content`), persist encrypted secrets to **cofig_db**, trigger workflow execution in **orchestrator**, and write audit records to **audit_bucket**.
+- **Architectural Principle**: Immutable Auditability & Transactional Consistency.
+- **Rationale**: Every administrative modification (Create, Update, Delete) must atomically update the persistence store and emit a corresponding audit record to guarantee non-repudiation and traceability.
+- **Side Effects**:
+  - Persists or modifies encrypted records in `cofig_db`.
+  - Triggers workflow execution runs on the MWAA `orchestrator` via REST/CLI triggers.
+  - Emits structured audit events (`ADMIN_CREATE`, `ADMIN_UPDATE`, `ADMIN_DELETE`, `ADMIN_MANUAL_TRIGGER`) to `audit_bucket`.
+- **Guardrails**: Side effects against external orchestration or audit sinks must be executed within transactional boundaries or handled with idempotent retry patterns to prevent ghost state.
 
 ### 4.6. Telemetry Event Schema
 <a id="laminar-sec-c.imp_standard_standard_api_1.tel"></a>
-* **Principle**: Unified Event-Driven Observability.
-* **Rationale**: Every administrative action must be traceable to an authenticated actor and execution context for auditing and regulatory compliance.
-* **Guardrails**: Emits CloudEvents-shaped audit records (`actor_id`, `timestamp_utc`, `event_type` such as `ADMIN_CREATE`, `ADMIN_UPDATE`, `ADMIN_DELETE`, `ADMIN_MANUAL_TRIGGER`, and `execution_id`) directly to **audit_bucket**.
+- **Architectural Principle**: Centralized CloudEvents-Compliant Telemetry.
+- **Rationale**: Standardizing telemetry data across all components ensures that monitoring platforms and audit log stores can parse, index, and correlate administrative actions without custom parsing logic.
+- **Telemetry Schema Fields**:
+  - `actor_id`: Authenticated Acme user identifier (`string`).
+  - `timestamp_utc`: ISO-8601 timestamp with millisecond precision and Z suffix (`string`).
+  - `event_type`: `ADMIN_CREATE`, `ADMIN_UPDATE`, `ADMIN_DELETE`, or `ADMIN_MANUAL_TRIGGER`.
+  - `execution_id`: Lineage UUID associated with the operation (`string`, null for pure config CRUD, populated on manual trigger).
+- **Guardrails**: Never log sensitive credential values or personally identifiable information (PII) within telemetry streams or application logs.
 
 ### 4.7. Error Handling Strategy
 <a id="laminar-sec-c.imp_standard_standard_api_1.err"></a>
-* **Principle**: Standardized Error Envelopes and Semantic Status Codes.
-* **Rationale**: Providing uniform error responses enables client applications to reliably parse failure reasons while maintaining security by omitting internal stack traces.
-* **Guardrails**: Return uniform error structures (`{ "error": { "code": "STRING_CODE", "message": "...", "details": [] } }`) accompanied by appropriate semantic HTTP status codes (`400 Bad Request`, `401 Unauthorized`, `403 Forbidden`, `404 Not Found`, `409 Conflict`, `500 Internal Server Error`).
+- **Architectural Principle**: Fail-Fast Semantic Error Mapping.
+- **Rationale**: Translating internal domain exceptions into standardized HTTP error responses prevents information leakage (such as stack traces or internal database errors) while providing clients with actionable remediation details.
+- **Error Mapping**:
+  - `AuthError` -> HTTP `401 Unauthorized` or `403 Forbidden`.
+  - `ValidationError` -> HTTP `400 Bad Request` or `422 Unprocessable Entity`.
+  - `NotFoundError` -> HTTP `404 Not Found`.
+  - `ConflictError` -> HTTP `409 Conflict`.
+  - Unexpected errors -> HTTP `500 Internal Server Error`.
+- **Guardrails**: All caught exceptions must be structured, logged via `common.logging.logger`, and accompanied by a unique request tracing ID.
 
 ### 4.8. Security and Compliance
 <a id="laminar-sec-c.imp_standard_standard_api_1.sec"></a>
-* **Principle**: Defense-in-Depth Identity and Data Protection.
-* **Rationale**: Administrative interfaces represent high-value attack vectors that require rigorous authentication, role-based access control, and encrypted secret storage.
-* **Guardrails**: Enforce JWT/OAuth2 bearer token validation, restrict route access to authorized roles, enforce TLS transport encryption, and ensure credential fields are stored encrypted in **cofig_db**.
+- **Architectural Principle**: Zero-Trust Security & Encrypted Credential Persistence.
+- **Rationale**: Administrative interfaces represent high-value attack targets. Enforcing JWT authentication, role-based access control, and encrypted credential storage protects tenant configurations from unauthorized compromise.
+- **Guardrails**: Credentials submitted via API payloads must never be stored in plaintext; they must be encrypted before database insertion using KMS-backed envelope encryption or stored as secure references in SSM Parameter Store. TLS 1.3 must be enforced on all incoming connections.
 
 ### 4.9. Performance Metrics
 <a id="laminar-sec-c.imp_standard_standard_api_1.perf"></a>
-* **Principle**: Low-Latency Control Plane Responsiveness.
-* **Rationale**: Administrative APIs must remain snappy and responsive to support operator workflows and script automation without resource starvation.
-* **Guardrails**: Target response latency under 200ms for standard CRUD operations; apply sliding-window rate limiting per client IP or tenant to prevent abuse.
+- **Architectural Principle**: Low-Latency Responsiveness & Horizontal Scalability.
+- **Rationale**: Administrative APIs must remain performant to ensure administrative tasks do not bottleneck platform operations.
+- **Target Metrics**:
+  - p95 response time < 200ms for read operations and < 500ms for write/mutation operations.
+  - Audit event publication latency ≤ 5 seconds from transaction commit.
+- **Guardrails**: Avoid heavy computations or synchronous blocking I/O (such as large file parsing or direct database reporting queries) inside API worker threads.
 
 ### 4.10. Assumptions & Follow-up Resolutions
 <a id="laminar-sec-c.imp_standard_standard_api_1.asm"></a>
-* **Assumption**: JWT token issuers and public keys are managed by the enterprise identity provider and made available to the API runtime via environment configuration.
-* **Assumption**: Rate limiting thresholds are configured via the shared config loader to handle expected administrative concurrency without external distributed cache complexity.
+- **Architectural Principle**: Pragmatic Defaulting & Assumption Transparency.
+- **Rationale**: Documenting assumptions explicitly eliminates ambiguity during engineering handoff and ensures production defaults align with enterprise standards.
+- **Assumptions**:
+  - Requests lacking valid bearer credentials or possessing insufficient roles receive HTTP 401/403 with security events logged to the audit store within 5 seconds.
+  - Authentication is delegated to an enterprise Identity Provider (IdP) issuing signed JWTs verified locally or via JWKS endpoints by the API middleware.
 
 ## 5. Component Details: scheduler
 <a id="laminar-sec-c.imp_aws_aws_eventbridge_2"></a>
+
+<!-- laminar:diagram-settings:imp-aws-aws_eventbridge-2 -->
+**Diagram settings (user decisions — authoritative)**
+
+| Setting | Value |
+| --- | --- |
+| `rule_name` | `scheduler` |
+
+<!-- /laminar:diagram-settings -->
+
 
 ### 5.1. Functional Overview
 <a id="laminar-sec-c.imp_aws_aws_eventbridge_2.fo"></a>
@@ -466,146 +451,208 @@ Defaults deliberately not overridden: event envelope fields, rule naming convent
 ## 6. Component Details: orchestrator
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_3"></a>
 
+<!-- laminar:diagram-settings:imp-aws-aws_mwaa_dag-3 -->
+**Diagram settings (user decisions — authoritative)**
+
+| Setting | Value |
+| --- | --- |
+| `schedule` | `@daily` |
+| `catchup` | `false` |
+| `max_active_runs` | `1` |
+| `dag_name` | `orchestrator` |
+
+<!-- /laminar:diagram-settings -->
+
+
 ### 6.1. Functional Overview
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_3.fo"></a>
-The **orchestrator** component (Export Orchestrator DAG in Amazon MWAA) acts as the central time-based and event-driven workflow coordinator. On scheduled cadences or manual triggers, it queries **cofig_db** for active connection metadata, evaluates schedule alignment ($\pm 10$ minutes), generates a unique RFC 4122 v4 lineage UUID for end-to-end tracing, and dispatches child execution workloads.
+- **Architectural Principle**: Event-Driven Workflow Orchestration.
+- **Rationale**: The `orchestrator` MWAA DAG serves as the control-plane brain of the export pipeline. Triggered by cadence events from the `scheduler` (EventBridge) or manual API requests, it queries `cofig_db` for active export configurations, filters connections matching the current schedule window (+/- 10 minutes), generates an immutable lineage UUID, and fans out execution to child export workflows.
+- **Guardrails**: Orchestrator DAGs must contain lightweight top-level code (no network calls, database queries, or heavy computation outside operators) to prevent Airflow scheduler heartbeat blocking and parsing latency.
 
 ### 6.2. Component Tenets
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_3.tn"></a>
-* **Principle**: Lightweight Orchestration-Only Control Plane.
-* **Rationale**: Airflow and MWAA must be strictly reserved for workflow orchestration, state coordination, and dependency management, offloading all heavy data processing to specialized compute engines.
-* **Guardrails**: Top-level DAG python files must execute instantaneously without network calls, database queries, or heavy computations outside operator execution methods.
+- **Architectural Principle**: Idempotent Scheduling & Lineage Propagation.
+- **Rationale**: Every execution run must be uniquely identifiable and reproducible. Generating a single RFC 4122 v4 lineage UUID at the orchestrator root and passing it down to all child tasks and files ensures end-to-end audit traceability across distributed storage and serverless runtimes.
+- **Guardrails**: Concurrency must be strictly controlled (`max_active_runs=1`) to prevent overlapping execution runs for the same schedule window and avoid race conditions on incremental watermark tables.
 
 ### 6.3. Configuration Approach
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_3.cfg"></a>
-* **Principle**: Declarative Workflow Scheduling.
-* **Rationale**: Externalizing DAG parameters ensures consistent execution behavior and reproducible scheduling across environments.
-* **Guardrails**: Only architecture-mandated properties are explicitly configured:
-  * `schedule`: `@daily` — Aligns batch orchestration cadences with daily data synchronization requirements.
-  * `catchup`: `False` — Prevents unintended backfilling of historical DAG runs upon deployment or restart.
-  * `max_active_runs`: `1` — Ensures single-threaded execution per schedule window to prevent overlapping data extractions.
-  * `tags`: `{}` — Provisioned with metadata tags for operational categorization.
-  * `dag_name`: `orchestrator` — Unique identifier matching the workflow definition module.
+- **Architectural Principle**: Declarative Workflow Scheduling.
+- **Rationale**: Hardcoding schedules or DAG parameters inside Python files limits deployment flexibility. Externalizing configurations per environment ensures clean promotion pipelines.
+- **Configuration Properties Set/Overridden**:
+  - `schedule`: `@daily` (cadence expression for orchestration evaluation).
+  - `catchup`: `False` (prevents unintended historical DAG runs upon deployment).
+  - `max_active_runs`: `1` (ensures single active execution stream per schedule window).
+  - `tags`: `{}` (metadata tag set configured per environment).
+  - `dag_name`: `orchestrator` (unique Airflow DAG identifier).
+- **Guardrails**: DAG configuration values must be loaded exclusively via `ConfigLoader` merging base YAML and environment overlays.
 
 ### 6.4. Input Schema
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_3.in"></a>
-* **Principle**: Event-Driven Workflow Parameterization.
-* **Rationale**: Workflows receive execution triggers from the **scheduler** or manual invocation requests from **do-admin-api**, carrying contextual configuration parameters.
-* **Guardrails**: Inputs must contain validated connection metadata references and optional manual override flags.
+- **Architectural Principle**: Payload-Driven Workflow Initialization.
+- **Rationale**: Workflows accept standardized runtime configuration JSON containing execution metadata, forced connection IDs (for manual triggers), and scheduled execution timestamps.
+- **Guardrails**: Input run configurations must be validated against expected JSON schemas before initiating downstream child tasks.
 
 ### 6.5. Output/Side Effects
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_3.out"></a>
-* **Principle**: Deterministic Lineage Propagation and Task Dispatch.
-* **Rationale**: Every workflow execution must establish a unique lineage identifier and reliably trigger downstream child tasks while recording lifecycle state changes.
-* **Guardrails**: Generates a single RFC 4122 v4 lineage UUID per run, reads active connection records from **cofig_db**, invokes **child_export_dag**, and writes audit events to **audit_bucket**.
+- **Architectural Principle**: Cascading Workflow Dispatch.
+- **Rationale**: The orchestrator outputs execution triggers to downstream child workflows (`child_export_dag`) and writes execution lifecycle milestones to `audit_bucket`.
+- **Side Effects**:
+  - Spawns `child_export_dag` runs via Airflow REST API or internal triggering mechanisms.
+  - Records `EXECUTION_STARTED` and `EXECUTION_COMPLETED` audit events in `audit_bucket`.
+- **Guardrails**: Downstream child triggers must include the generated lineage UUID in their run configuration conf dictionary.
 
 ### 6.6. Telemetry Event Schema
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_3.tel"></a>
-* **Principle**: Comprehensive Workflow Lifecycle Auditing.
-* **Rationale**: Operational visibility requires tracking workflow initialization, success, and failure states with precise timestamps and lineage correlation.
-* **Guardrails**: Publishes standardized CloudEvents-shaped telemetry records (`EXECUTION_STARTED`, `EXECUTION_COMPLETED`) containing the lineage UUID and system actor (`system:orchestrator`) to **audit_bucket**.
+- **Architectural Principle**: Standardized Execution Telemetry.
+- **Rationale**: Emitting CloudEvents-compliant telemetry ensures operational visibility into pipeline health and scheduling punctuality.
+- **Telemetry Schema Fields**:
+  - `actor_id`: `system:orchestrator` (`string`).
+  - `timestamp_utc`: ISO-8601 UTC timestamp (`string`).
+  - `event_type`: `EXECUTION_STARTED` or `EXECUTION_COMPLETED` (`string`).
+  - `execution_id`: Lineage UUID (`string`).
+- **Guardrails**: Telemetry publishing helpers must never raise exceptions into the caller's execution flow.
 
 ### 6.7. Error Handling Strategy
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_3.err"></a>
-* **Principle**: Bounded Retries and Fail-Fast Alerting.
-* **Rationale**: Transient infrastructure issues should trigger automated retries, while persistent failures must immediately halt execution propagation and alert operators.
-* **Guardrails**: Configure bounded task retry attempts with exponential backoff; unhandled DAG failures trigger callback notifications and log failure events to **audit_bucket**.
+- **Architectural Principle**: Resilient Task Retries with Fail-Safe Alerting.
+- **Rationale**: Transient database connection glitches or Airflow scheduler hiccups should not cause permanent pipeline failure. Configuring exponential backoff retries ensures resilience against temporary infrastructure faults.
+- **Guardrails**: If schedule evaluation or database polling fails after exhaustion of retry attempts, the DAG run must fail cleanly, trigger an operational alert, and emit a `TRANSFER_FAILED` or execution failure audit record.
 
 ### 6.8. Security and Compliance
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_3.sec"></a>
-* **Principle**: Network Isolation and Least Privilege Execution.
-* **Rationale**: Orchestration engines handle sensitive connection metadata and credentials, requiring robust perimeter and access controls.
-* **Guardrails**: MWAA environments operate exclusively within private VPC subnets with outbound traffic routed through NAT gateways; IAM execution roles adhere strictly to least privilege principles.
+- **Architectural Principle**: Least-Privilege IAM & Secret Isolation.
+- **Rationale**: MWAA execution roles must possess permissions strictly limited to reading configuration tables in `cofig_db`, invoking child DAGs, and writing to the audit bucket.
+- **Guardrails**: Database connection strings and encryption keys must be retrieved dynamically from SSM Parameter Store / Secrets Manager; never hardcode credentials in DAG definitions.
 
 ### 6.9. Performance Metrics
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_3.perf"></a>
-* **Principle**: Deterministic Schedule Adherence.
-* **Rationale**: Orchestration triggers must evaluate active connections and dispatch child workloads within defined time windows to satisfy downstream SLAs.
-* **Guardrails**: Schedule evaluation must occur within $\pm 10$ minutes of scheduled times; concurrency limits (`max_active_runs = 1`) prevent resource contention.
+- **Architectural Principle**: Efficient Scheduler Parsing & Bounded Resource Utilization.
+- **Rationale**: Keeping top-level DAG code instantaneous prevents scheduler bottlenecks, allowing hundreds of connections to be evaluated efficiently.
+- **Target Metrics**:
+  - DAG parsing time < 2 seconds.
+  - Connection selection and child submission latency < 15 seconds from schedule event ingestion.
+- **Guardrails**: Avoid executing heavy SQL queries or API calls outside operator `execute()` methods.
 
 ### 6.10. Assumptions & Follow-up Resolutions
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_3.asm"></a>
-* **Assumption**: MWAA worker capacity is provisioned adequately to handle concurrent DAG parse cycles and task scheduling without queuing delays.
-* **Assumption**: Airflow REST API authentication tokens are securely managed via internal IAM instance profiles and secrets manager references.
+- **Architectural Principle**: Explicit Boundary Assumptions.
+- **Rationale**: Clear assumptions ensure seamless integration with the EventBridge scheduler and Airflow REST API.
+- **Assumptions**:
+  - The orchestrator selects active connections whose scheduled cron time falls within +/- 10 minutes of the event raising time.
+  - Exactly one RFC 4122 v4 lineage UUID is generated per orchestrator execution run and propagated to all child tasks.
 
 ## 7. Component Details: child_export_dag
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_4"></a>
 
+<!-- laminar:diagram-settings:imp-aws-aws_mwaa_dag-4 -->
+**Diagram settings (user decisions — authoritative)**
+
+| Setting | Value |
+| --- | --- |
+| `schedule` | `@daily` |
+| `catchup` | `false` |
+| `max_active_runs` | `1` |
+| `dag_name` | `child_export_dag` |
+
+<!-- /laminar:diagram-settings -->
+
+
 ### 7.1. Functional Overview
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_4.fo"></a>
-**Architectural principle: Orchestration-only DAGs with delegated compute.** The Child Export DAG (n14) is a per-connection MWAA DAG whose sole job is to coordinate one connection's export execution: it receives the lineage UUID and its connection JSON in run conf from the Export Orchestrator DAG (n3), submits the Export Extract Spark Job (n4) on EMR Serverless, and hands the resulting staged output in the Customer Staging Buckets (n8) to the downstream Transform & Encrypt flow. It performs no data processing itself — heavy work is delegated to EMR Serverless per the MWAA tenet of offloading compute.
-
-**Rationale and trade-offs.** Splitting orchestration (n3) from per-connection execution (n14) isolates failure domains: one connection's failure cannot stall the fan-out of others, and a stop request (SCRUM-480 AC#6) can terminate a run without affecting sibling child runs. The trade-off is one more DAG hop and one more audit boundary, accepted because per-connection isolation and independent retry are explicit acceptance criteria.
-
-**Guardrails:** top-level DAG code must be instantaneous (no network calls or queries outside `execute()`); every task must be idempotent so a re-run for the same lineage UUID produces the same result; the DAG must carry the lineage UUID end-to-end and never regenerate it (SCRUM-480 AC#3/AC#4).
+- **Architectural Principle**: Isolated Execution Concurrency.
+- **Rationale**: The `child_export_dag` represents the discrete unit of work for a single customer export connection. It receives the lineage UUID and connection parameters from the orchestrator, retrieves incremental watermark metadata from `cofig_db`, and submits the `emr_do` Spark job to extract datasets from Redshift (`dev`) into internal staging buckets (`staging_bucet_internal`).
+- **Guardrails**: Child DAGs must execute independently so that a failure in one customer export connection does not impact concurrent exports for other tenants.
 
 ### 7.2. Component Tenets
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_4.tn"></a>
-* **Principle**: Isolated Task Delegation and Fault Containment.
-* **Rationale**: Isolating individual customer export executions into child DAGs ensures that a failure in one customer's extraction does not abort concurrent runs for other tenants.
-* **Guardrails**: Child DAGs must act strictly as orchestrators—submitting compute jobs and checking status without performing heavy data processing within worker processes.
+- **Architectural Principle**: Idempotent Task Design & Delegation of Compute.
+- **Rationale**: Airflow tasks within the child DAG must be purely orchestrational; all heavy compute and data transformation is delegated to EMR Serverless, ensuring Airflow worker nodes remain lightweight and responsive.
+- **Guardrails**: Every execution must be fully idempotent, leveraging incremental watermark tables in `cofig_db` to safely re-run extractions without duplicating historical data.
 
 ### 7.3. Configuration Approach
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_4.cfg"></a>
-* **Principle**: Consistent Workflow Configuration Standards.
-* **Rationale**: Child workflows must mirror organizational orchestration standards while supporting parameterized tenant execution.
-* **Guardrails**: Only architecture-mandated properties are explicitly set:
-  * `schedule`: `@daily` — Aligned with batch extraction cadences.
-  * `catchup`: `False` — Prevents historical backfill storms upon deployment.
-  * `max_active_runs`: `1` — Ensures single-threaded execution per child pipeline to prevent resource conflicts.
-  * `tags`: `{}` — Provisioned with metadata tags.
-  * `dag_name`: `child_export_dag` — Unique workflow identifier.
+- **Architectural Principle**: Declarative Workflow Parameters.
+- **Rationale**: Standardizing child DAG configurations ensures consistent execution semantics across all customer connections.
+- **Configuration Properties Set/Overridden**:
+  - `schedule`: `@daily` (cadence inheritance from connection configuration).
+  - `catchup`: `False` (prevents backfilling historical DAG runs).
+  - `max_active_runs`: `1` (prevents concurrent overlapping runs for the same child connection).
+  - `tags`: `{}` (metadata tag set).
+  - `dag_name`: `child_export_dag` (Airflow DAG identifier).
+- **Guardrails**: All connection-specific overrides must be passed via DAG run configuration JSON rather than hardcoded in Python DAG files.
 
 ### 7.4. Input Schema
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_4.in"></a>
-* **Principle**: Parameterized Tenant Run Configuration.
-* **Rationale**: Child DAGs require explicit input parameters passed from the parent orchestrator to identify the target customer connection and lineage.
-* **Guardrails**: Run configuration payloads must include the lineage UUID, connection ID, dataset type, and extraction mode (initial vs. incremental).
+- **Architectural Principle**: Parameterized Task Injection.
+- **Rationale**: The child DAG expects a structured run configuration containing the lineage UUID and complete connection metadata JSON (target type, dataset, extraction mode, schedules, and encrypted secret references).
+- **Guardrails**: Input configurations must be validated at DAG start to ensure all required extraction parameters are present.
 
 ### 7.5. Output/Side Effects
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_4.out"></a>
-**Principle: The DAG's outputs are orchestration facts, not data.** Outputs and side effects:
-
-1. **EMR Serverless job submission** — one Export Extract Spark Job (n4) run per child DAG execution, with a dedicated least-privilege job execution role scoped to the source (n5) and staging buckets (n8).
-2. **Staged files** — written by n4 (not the DAG) into Customer Staging Buckets (n8), partitioned per entity type and lineage UUID; these S3 writes are the trigger for the Egress Lambda (n15) → Transform & Encrypt DAG (n7) chain.
-3. **Audit events** — `EXECUTION_STARTED` and `EXECUTION_COMPLETED` (or failure) records in the Audit & Execution Log Store (n13) with the lineage UUID, `actor_id = system:child-export-dag`, and ISO-8601 UTC timestamps (SCRUM-486).
-4. **Run state** — observable via the Airflow REST API, which is the measurement interface for SCRUM-480 AC#4–AC#6.
-
-**Guardrails:** the DAG must not write to customer destinations (n9–n12) — delivery is exclusively via the Egress path; on stop, it must ensure no further child work is started for that execution after termination; exactly one audit record per lifecycle event.
-
----
+- **Architectural Principle**: Compute Job Submission & State Persistence.
+- **Rationale**: The child DAG invokes the EMR Serverless Spark application (`emr_do`) and updates extraction watermarks in `cofig_db`.
+- **Side Effects**:
+  - Submits EMR Serverless job run (`emr_do`) with argument parameters.
+  - Updates watermark state in `cofig_db`.
+  - Publishes audit events (`EXECUTION_STARTED`, `EXECUTION_COMPLETED`) to `audit_bucket`.
+- **Guardrails**: Job submission failures must trigger immediate retries up to configured limits before marking the DAG run as failed.
 
 ### 7.6. Telemetry Event Schema
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_4.tel"></a>
-* **Principle**: Granular Execution Telemetry.
-* **Rationale**: Every child workflow execution must emit start, success, and failure events to provide end-to-end observability per tenant.
-* **Guardrails**: Publishes CloudEvents-shaped records (`EXECUTION_STARTED`, `EXECUTION_COMPLETED`, `EXECUTION_FAILED`) carrying the lineage UUID and connection ID to **audit_bucket**.
+- **Architectural Principle**: Standardized Milestone Auditing.
+- **Rationale**: Emitting telemetry events at each phase of the child export lifecycle ensures precise tracking of data extraction duration and record counts.
+- **Telemetry Schema Fields**:
+  - `actor_id`: `system:child_export_dag` (`string`).
+  - `timestamp_utc`: ISO-8601 UTC timestamp (`string`).
+  - `event_type`: `EXECUTION_STARTED` or `EXECUTION_COMPLETED` (`string`).
+  - `execution_id`: Lineage UUID (`string`).
+- **Guardrails**: Telemetry emission failures must be caught and logged locally without crashing the orchestration task.
 
 ### 7.7. Error Handling Strategy
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_4.err"></a>
-* **Principle**: Graceful Failure Propagation and Alerting.
-* **Rationale**: Extraction failures must be captured cleanly, updating execution status and notifying operations without crashing the broader platform.
-* **Guardrails**: Configure bounded task retries with exponential backoff; persistent failures trigger failure audit records and operational alerts.
+- **Architectural Principle**: Fail-Safe Propagation & Automatic Cleanup.
+- **Rationale**: If EMR Serverless job execution fails or Redshift connectivity is lost, the child DAG catches the exception, logs structured error details, emits a `TRANSFER_FAILED` audit record, and alerts operations.
+- **Guardrails**: Never suppress spark job failures; ensure error states propagate up to trigger operational notifications.
 
 ### 7.8. Security and Compliance
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_4.sec"></a>
-* **Principle**: VPC Isolation and Least Privilege IAM.
-* **Rationale**: Child workflows interact with database secrets and compute clusters, requiring strict network and permission boundaries.
-* **Guardrails**: Executed within private VPC subnets with IAM roles restricted to interacting only with approved EMR Serverless applications, RDS databases, and audit storage.
+- **Architectural Principle**: Encrypted Parameter Transmission & Least Privilege.
+- **Rationale**: Passing connection metadata and secrets between orchestration tasks requires secure parameter transmission channels.
+- **Guardrails**: Sensitive credential properties must be passed via secure parameter references rather than plaintext JSON strings in Airflow UI logs.
 
 ### 7.9. Performance Metrics
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_4.perf"></a>
-* **Principle**: Scalable Parallel Tenant Execution.
-* **Rationale**: The child orchestration layer must support concurrent execution across multiple customer connections within SLA limits.
-* **Guardrails**: Task polling intervals optimized to balance responsiveness with MWAA resource utilization.
+- **Architectural Principle**: Low Overhead Orchestration.
+- **Rationale**: Child DAG polling and job submission overhead must remain minimal to maximize throughput across parallel tenant exports.
+- **Target Metrics**:
+  - Job submission latency < 5 seconds from task start.
+- **Guardrails**: Avoid polling loops with aggressive intervals; use asynchronous job status checkers where supported.
 
 ### 7.10. Assumptions & Follow-up Resolutions
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_4.asm"></a>
-* **Assumption**: MWAA worker memory and CPU allocations scale dynamically based on the number of active child DAG runs.
-* **Assumption**: EMR Serverless application warm pools are configured to minimize job submission latency.
+- **Architectural Principle**: Explicit Workflow Assumptions.
+- **Rationale**: Documenting assumptions guarantees consistency across multi-tenant extraction runs.
+- **Assumptions**:
+  - The child export DAG successfully extracts initial full sets or incremental delta records based on the configured mode and watermark state stored in RDS Postgres.
+  - The lineage UUID received from the orchestrator is carried through all downstream EMR job arguments and staging file metadata.
 
 ## 8. Component Details: emr_do
 <a id="laminar-sec-c.imp_aws_aws_emr_serverless_5"></a>
+
+<!-- laminar:diagram-settings:imp-aws-aws_emr_serverless-5 -->
+**Diagram settings (user decisions — authoritative)**
+
+| Setting | Value |
+| --- | --- |
+| `release_label` | `emr-7.0.0` |
+| `job_type` | `SPARK` |
+| `max_capacity_units` | `200` |
+| `application_name` | `emr_do` |
+
+<!-- /laminar:diagram-settings -->
+
 
 ### 8.1. Functional Overview
 <a id="laminar-sec-c.imp_aws_aws_emr_serverless_5.fo"></a>
@@ -670,6 +717,19 @@ The **orchestrator** component (Export Orchestrator DAG in Amazon MWAA) acts as 
 ## 9. Component Details: dev
 <a id="laminar-sec-c.imp_aws_aws_redshift_6"></a>
 
+<!-- laminar:diagram-settings:imp-aws-aws_redshift-6 -->
+**Diagram settings (user decisions — authoritative)**
+
+| Setting | Value |
+| --- | --- |
+| `node_type` | `dc2.large` |
+| `number_of_nodes` | `2` |
+| `database_name` | `dev` |
+| `cluster_identifier` | `golden_data_source` |
+
+<!-- /laminar:diagram-settings -->
+
+
 ### 9.1. Functional Overview
 <a id="laminar-sec-c.imp_aws_aws_redshift_6.fo"></a>
 - **Principle**: High-Performance Analytical Data Warehousing.
@@ -732,6 +792,21 @@ The **orchestrator** component (Export Orchestrator DAG in Amazon MWAA) acts as 
 
 ## 10. Component Details: cofig_db
 <a id="laminar-sec-c.imp_aws_aws_rds_7"></a>
+
+<!-- laminar:diagram-settings:imp-aws-aws_rds-7 -->
+**Diagram settings (user decisions — authoritative)**
+
+| Setting | Value |
+| --- | --- |
+| `engine` | `postgres` |
+| `engine_version` | `15.4` |
+| `instance_class` | `db.t3.micro` |
+| `allocated_storage` | `20` |
+| `multi_az` | `false` |
+| `db_instance_identifier` | `cofig_db` |
+
+<!-- /laminar:diagram-settings -->
+
 
 ### 10.1. Functional Overview
 <a id="laminar-sec-c.imp_aws_aws_rds_7.fo"></a>
@@ -797,6 +872,22 @@ The **orchestrator** component (Export Orchestrator DAG in Amazon MWAA) acts as 
 
 ## 11. Component Details: staging_bucet_internal
 <a id="laminar-sec-c.imp_aws_aws_s3_bucket_8"></a>
+
+<!-- laminar:diagram-settings:imp-aws-aws_s3_bucket-8 -->
+**Diagram settings (user decisions — authoritative)**
+
+| Setting | Value |
+| --- | --- |
+| `versioning` | `false` |
+| `encryption` | `AES256` |
+| `public_access_block` | `true` |
+| `lifecycle_enabled` | `false` |
+| `lifecycle_transition_days` | `30` |
+| `lifecycle_glacier_days` | `90` |
+| `bucket_name` | `staging_bucet_internal` |
+
+<!-- /laminar:diagram-settings -->
+
 
 ### 11.1. Functional Overview
 <a id="laminar-sec-c.imp_aws_aws_s3_bucket_8.fo"></a>
@@ -882,192 +973,296 @@ The **orchestrator** component (Export Orchestrator DAG in Amazon MWAA) acts as 
 ## 12. Component Details: egress-lambda
 <a id="laminar-sec-c.imp_aws_aws_lambda_9"></a>
 
+<!-- laminar:diagram-settings:imp-aws-aws_lambda-9 -->
+**Diagram settings (user decisions — authoritative)**
+
+| Setting | Value |
+| --- | --- |
+| `runtime` | `python3.11` |
+| `handler` | `lambda_function.lambda_handler` |
+| `memory_mb` | `512` |
+| `timeout_seconds` | `30` |
+| `vpc_enabled` | `false` |
+| `function_name` | `egress-lambda` |
+
+<!-- /laminar:diagram-settings -->
+
+
 ### 12.1. Functional Overview
 <a id="laminar-sec-c.imp_aws_aws_lambda_9.fo"></a>
-- **Principle**: Event-Driven Serverless Integration.
-- **Rationale**: The **egress-lambda** function acts as a lightweight event bridge, consuming S3 object creation notifications from **staging_bucet_internal** and triggering the **egress dag** workflow.
-- **Guardrails**: The function must remain stateless and delegate heavy processing to MWAA and Spark compute layers.
+**Architectural principle: Single-purpose, event-driven egress gateway with delivery-only semantics.** The Egress Lambda is the sole component permitted to write to customer destinations. It is invoked by S3 event notifications from the Customer Staging Buckets (n8), triggers exactly one Transform & Encrypt DAG (n7) run carrying the lineage UUID from the event, and — after the DAG produces the transformed/encrypted package and manifest — delivers the data file and manifest control file to the configured destination (Customer S3 Destination, Customer Azure Blob Destination, Customer GCS Destination, Customer sFTP server, or the internal Acme inspection staging path in Customer Staging Buckets).
+
+**Rationale.** Concentrating all outbound transfer logic in one stateless, serverless component gives a single enforcement point for the fail-closed encryption rule (no unencrypted byte ever leaves the platform when PGP is enabled), a single place to implement the uniform SHA-256 read-back integrity check, and one audit surface for TRANSFER_STARTED / TRANSFER_COMPLETED / TRANSFER_FAILED events. The trade-off is that Lambda's 15-minute execution ceiling and memory limits constrain transfer size; this is mitigated by the upstream file-splitting threshold (≤500,000 records per file) in the Transform & Encrypt DAG, which keeps individual packages within Lambda-transferable bounds. Alternatives considered — ECS-based transfer workers (heavier to operate, breaks the approved allowlist minimality) and direct DAG-to-destination writes (would scatter credentials and integrity logic across Airflow workers, weakening the fail-closed guarantee) — were rejected.
+
+**Guardrails.** The Lambda must (1) be idempotent per lineage UUID + destination, so S3 event redelivery cannot cause duplicate deliveries; (2) never write to any destination before confirming the package is encrypted when the connection config requires it; (3) recompute SHA-256 by reading back every delivered object/file and compare against the manifest value before declaring TRANSFER_COMPLETED; (4) carry the lineage UUID in every audit record it emits to the Audit & Execution Log Store (n13).
 
 ### 12.2. Component Tenets
 <a id="laminar-sec-c.imp_aws_aws_lambda_9.tn"></a>
-- **Principle**: Low-Latency Execution and Reliable Invocation.
-- **Rationale**: Ensures rapid notification handling and workflow orchestration without maintaining idle server infrastructure.
-- **Guardrails**: Timeout and memory configurations must be tuned to prevent throttling or execution failure during peak event surges.
+**Principle: least-privilege, config-driven, fail-closed egress.** Tenets the implementation must abide by:
+
+- **Delivery-only semantics** — the Lambda never mutates, re-formats, or re-encrypts payloads; transformation belongs to the Transform & Encrypt DAG. Rationale: separation of concerns keeps the integrity chain (manifest checksums) verifiable end-to-end.
+- **Configuration from the Export Config Store (n6)** — destination type, bucket/prefix or host/path, encryption flags, and credentials are read per connection, never hardcoded. Rationale: SCRUM-479/481 make connections admin-managed data, not code.
+- **Uniform integrity standard** — application-level SHA-256 recomputed by read-back on every destination, with native transport checksums (S3 ChecksumSHA256, Azure Content-MD5, GCS CRC32C) requested additionally where supported. Rationale: one verification contract across heterogeneous destinations simplifies acceptance tests and audit.
+- **Bounded retry** — up to 3 retries per transfer for transient failures; host-key verification failure on sFTP is never retried. Rationale: SCRUM-484 AC#1/#2 mandate exactly this; final failure is recorded only after the third failed retry.
+- **Fail-closed on encryption** — if PGP is enabled and encryption failed upstream, the Lambda aborts with zero bytes sent and raises TRANSFER_FAILED. Rationale: SCRUM-482 AC#5.
+- **Observability** — every transfer attempt, retry, and final failure writes an audit record with lineage UUID, destination, file names, checksum, status, and timestamp to n13.
 
 ### 12.3. Configuration Approach
 <a id="laminar-sec-c.imp_aws_aws_lambda_9.cfg"></a>
-- **Principle**: Right-Sized Serverless Resource Allocation.
-- **Rationale**: Allocating adequate memory and timeout ensures efficient event parsing and API invocation without over-provisioning.
-- **Guardrails**: The architecture sets the following properties: `function_name` = `egress-lambda`, `runtime` = `python3.11`, `handler` = `lambda_function.lambda_handler`, `memory_mb` = `512`, `timeout_seconds` = `30`, `vpc_enabled` = `False`, `environment_variables` = `{}`, and `tags` = `{}`.
+**Principle: environment variables + runtime config lookup, no secrets in code or environment.** Only the properties the architecture actually sets are documented:
+
+- **Runtime / handler** — Python runtime (per blueprint language), handler matching the deployed entry point; minimal dependencies to bound cold start. Rationale: blueprint standard; cold-start latency directly affects the ≤30 s trigger-to-DAG-run expectation.
+- **Memory & timeout** — sized for streaming read-back verification of split files (≤500k records per file); timeout within the 15-minute Lambda ceiling. Rationale: read-back of large objects is the dominant cost; the upstream split threshold keeps this feasible. Default: 512 MB memory, 900 s timeout — stated as the production default; adjust from observed duration percentiles.
+- **Environment variables** — Export Config Store connection reference, Audit & Execution Log Store log-group name, staging bucket names, retry count (3), and environment identifier. No credentials in environment variables; destination credentials are decrypted at runtime from the encrypted fields in n6 via the platform KMS key.
+- **IAM execution role** — least privilege: read the triggering staging bucket, read n6, write to n13 log group, and per-connection destination access mediated through the connection's stored credentials (for customer S3 destinations, an assumed cross-account role if the customer provides one). Rationale: SCRUM-485 allowlist and least-privilege principle.
+- **S3 event trigger** — `s3:ObjectCreated:*` on the staging bucket prefix, with the Lambda itself deduplicating on lineage UUID. Rationale: SCRUM-482 AC#3 requires exactly one DAG run per staged file.
+
+**Guardrail:** no deletion-protection or environment-specific value may be hardcoded (SCRUM-485 AC#3); all environment variance flows from per-environment Terraform variables.
 
 ### 12.4. Input Schema
 <a id="laminar-sec-c.imp_aws_aws_lambda_9.in"></a>
-- **Principle**: Standardized S3 Event Notification Contract.
-- **Rationale**: Consumes standard Amazon S3 event notification JSON payloads containing bucket names, object keys, and event timestamps.
-- **Guardrails**: Incoming event structures must be validated before triggering downstream DAG orchestration.
+**Principle: contract-first, minimal event envelope.** The Lambda consumes two input contracts:
+
+1. **S3 event notification** (trigger): bucket name, object key, event time, and event ID. The object key must embed the lineage UUID (naming convention enforced by the Child Export DAG / Spark job). The Lambda validates the key pattern and extracts the lineage UUID; malformed keys are rejected and logged as a security event to n13. Rationale: the lineage UUID is the join key across the whole execution (SCRUM-486 schema); deriving it from the event rather than a lookup keeps the trigger stateless.
+2. **Transform & Encrypt DAG output package** (via the DAG run it triggers): data file(s) plus `manifest_<lineage_uuid>.json` listing record count, total size, and SHA-256 checksum per output file, and the connection JSON (destination type, target path, GZIP/PGP flags). Rationale: the manifest is the single source of truth for integrity verification.
+
+**Guardrails:** the Lambda must strictly validate that the manifest's lineage UUID matches the event's lineage UUID before any transfer; mismatch aborts with an audit entry. Payloads are read from staging, never passed inline through the event (claim-check pattern — S3 events carry references, not data).
 
 ### 12.5. Output/Side Effects
 <a id="laminar-sec-c.imp_aws_aws_lambda_9.out"></a>
-- **Principle**: Workflow Trigger Side Effect.
-- **Rationale**: Invokes the MWAA **egress dag** via REST API, passing the lineage UUID and object metadata in the run configuration.
-- **Guardrails**: Invocation calls must be retried with exponential backoff upon encountering transient HTTP errors.
+**Principle: verifiable, auditable, idempotent side effects only.** Outputs:
+
+- **Delivered files at the configured destination**: data file(s) and manifest control file at the connection-defined bucket/key path (S3, Azure Blob, GCS), remote path (sFTP), or staging prefix (internal Acme inspection). Each delivery is followed by a read-back SHA-256 recomputation compared to the manifest; only a match yields TRANSFER_COMPLETED.
+- **Native transport checksums** requested where supported (S3 ChecksumSHA256, Azure Content-MD5, GCS CRC32C) as additional in-transit checks.
+- **One Transform & Encrypt DAG run** triggered per staging event, carrying the lineage UUID.
+- **Audit records** to n13: TRANSFER_STARTED, TRANSFER_COMPLETED, TRANSFER_FAILED, and per-retry attempt records, all with the SCRUM-486 schema fields.
+- **Alerts** on final failure (after third retry) or host-key verification failure.
+
+**Guardrails:** no partial delivery may be reported as success — the manifest and all data files must be present and checksum-verified before completion; a failed multi-file delivery leaves no unencrypted file at any destination (delete-on-failure of any partially written object is required for S3-family destinations; for sFTP, transfer to a temporary name and atomic rename is the guardrail, stated as the production default).
 
 ### 12.6. Telemetry Event Schema
 <a id="laminar-sec-c.imp_aws_aws_lambda_9.tel"></a>
-- **Principle**: Structured CloudWatch Logging and Tracing.
-- **Rationale**: Emits JSON-formatted logs containing request IDs, execution duration, and success/failure metrics to CloudWatch.
-- **Guardrails**: Logs must never contain PII or plaintext credentials.
+**Principle: single organisation-wide audit schema, exactly-once per event.** Every business audit event emitted by the Lambda conforms to the SCRUM-486 schema:
+
+- `actor_id`: `system:egress-lambda` for all transfer events.
+- `timestamp_utc`: ISO-8601 with millisecond precision and `Z` suffix.
+- `event_type`: `TRANSFER_STARTED`, `TRANSFER_COMPLETED`, `TRANSFER_FAILED` (plus retry-attempt records per SCRUM-482 AC#7).
+- `execution_id`: the lineage UUID from the triggering event.
+- Extended fields per SCRUM-482 AC#7: destination, file names, checksum, status.
+
+Events are written to the Lambda's explicitly provisioned log group under the Audit & Execution Log Store (n13), with `retention_in_days` set to the single organisation logging-standard value (to be confirmed; see Assumptions). **Guardrails:** event count per run must equal the expected formula (2 per transfer, or start + TRANSFER_FAILED on abort); timestamps must be generated in UTC at emission time, never reconstructed; structured JSON logging only, no free-text audit lines.
 
 ### 12.7. Error Handling Strategy
 <a id="laminar-sec-c.imp_aws_aws_lambda_9.err"></a>
-- **Principle**: Dead-Letter Queue and Retry Resilience.
-- **Rationale**: Failed event processing attempts are retried synchronously up to configured limits before being routed to a dead-letter queue for investigation.
-- **Guardrails**: Errors must be fully captured with stack traces in CloudWatch Logs.
+**Principle: classify-then-retry, fail-closed, alert-on-terminal.** Strategy:
+
+- **Transient failures** (HTTP 4xx/5xx from S3 PutObject, unreachable bucket, network errors on Azure/GCS, non-host-key sFTP connection failures): retry up to 3 times with exponential backoff; final failure recorded only after the third failed retry, then alert raised and TRANSFER_FAILED written to n13. Rationale: SCRUM-484 AC#1/#2 and SCRUM-482 AC#6.
+- **Non-retryable security failures**: sFTP host-key verification failure — connection refused, zero bytes sent, no retry, immediate alert and audit entry. Rationale: retrying against an unverified host is a man-in-the-middle risk; SCRUM-484 AC#2 mandates this.
+- **Encryption-integrity failures**: if the package arrives without required PGP encryption (per connection config) or the manifest is missing/mismatched, abort with zero bytes delivered, TRANSFER_FAILED, and alert. Rationale: fail-closed principle (SCRUM-482 AC#5).
+- **Lambda-level failures** (timeout, unhandled exception): the invocation fails; the S3 event's built-in retry plus the Lambda's idempotency key (lineage UUID + destination) prevent duplicate deliveries on re-invocation. Unprocessable events after repeated failures are surfaced via CloudWatch alarm on error metrics.
+
+**Guardrails:** every error path must still emit an audit record; no error may be swallowed silently; retry state is per-transfer, never global.
 
 ### 12.8. Security and Compliance
 <a id="laminar-sec-c.imp_aws_aws_lambda_9.sec"></a>
-- **Principle**: Least-Privilege IAM Execution Role.
-- **Rationale**: The Lambda function executes under an IAM role restricted strictly to reading event metadata and invoking the designated MWAA DAG.
-- **Guardrails**: Network access and environment variables must be secured against unauthorized extraction.
+**Principle: least privilege, encrypted transit, no credential sprawl.** Controls:
+
+- **IAM**: dedicated execution role; permissions limited to reading staging buckets, reading n6, writing the n13 log group, and invoking the MWAA DAG trigger. Destination access uses per-connection credentials decrypted from n6 at runtime (KMS-encrypted at rest per SCRUM-479 AC#1).
+- **Transit encryption**: TLS 1.3 for customer S3, HTTPS for Azure Blob and GCS, SSH with key-based authentication and strict host-key verification for sFTP. Rationale: SCRUM-484 technical context.
+- **Payload protection**: PGP encryption applied upstream (Transform & Encrypt DAG) is fail-closed; the Lambda refuses to deliver unencrypted data when the connection requires encryption.
+- **Network**: Lambda runs in private subnets with NAT/egress restricted to the configured destination endpoints; no public ingress (it is event-triggered only).
+- **Auditability**: all transfer events recorded per the SCRUM-486 schema; security-relevant rejections (malformed keys, host-key failures) logged as security events within 5 s.
+
+**Guardrails:** credentials must never appear in logs, environment variables, or error messages; host keys are pinned from the connection config, never accepted interactively (TOFU is prohibited).
 
 ### 12.9. Performance Metrics
 <a id="laminar-sec-c.imp_aws_aws_lambda_9.perf"></a>
-- **Principle**: Cold-Start Minimization and Fast Execution.
-- **Rationale**: Monitored via invocation duration, memory consumption, and concurrency metrics.
-- **Guardrails**: Execution duration should remain well below the 30-second timeout threshold.
+**Principle: bounded latency driven by the upstream split threshold.** Key metrics and expectations:
+
+- **Trigger-to-DAG-run latency**: the Lambda must trigger the Transform & Encrypt DAG run promptly after the S3 event (SCRUM-482 AC#3 implies near-immediate handoff); cold-start time is minimised via slim dependencies.
+- **Transfer duration per file**: dominated by read-back verification; sized so a maximum split file (≤500k records) transfers and verifies within the timeout with headroom.
+- **Retry backoff**: exponential with jitter, bounded so three retries complete within the execution window.
+- **CloudWatch monitoring**: invocation errors, throttles, duration p95, and memory usage alarmed; X-Ray tracing enabled for cross-component latency visibility (Lambda → MWAA → destination).
+
+**Guardrails:** if observed p95 duration approaches the timeout, the correct architectural response is to lower the split threshold in n6 — not to raise Lambda memory indefinitely; concurrency limits (account-level ~1000 soft limit) must be reviewed against expected staging-event rates.
 
 ### 12.10. Assumptions & Follow-up Resolutions
 <a id="laminar-sec-c.imp_aws_aws_lambda_9.asm"></a>
-- **Principle**: Asynchronous Event Coupling Assumption.
-- **Rationale**: Assumes S3 event notifications arrive reliably and in order, with MWAA handling duplicate event deduplication if necessary.
-- **Guardrails**: Idempotency keys must be enforced across workflow triggers.
+- **Organisation logging-standard retention value** (SCRUM-486): not stated in inputs; assumed to be confirmed before sprint commitment and applied uniformly to all pipeline log groups and the audit store. Default until confirmed: 365 days. Rationale: AC#4 requires a single explicit value; 365 days is a common compliance-grade default.
+- **Customer S3 destination access model**: assumed cross-account IAM role assumption where the customer supports it, falling back to stored access keys (encrypted in n6) otherwise. Rationale: role assumption is the AWS-recommended cross-account pattern; keys are the universal fallback.
+- **Idempotency window**: assumed deduplication on lineage UUID + destination with a 24-hour lookback, sufficient given the 7-day staging retention and event redelivery behaviour.
+- **sFTP temporary-name atomic rename**: assumed supported by customer sFTP servers; if a server does not support rename, the fallback is upload-then-verify-then-delete-partial, documented per connection.
+- **Alerting channel** (email/PagerDuty/etc.): outside this architecture's scope; the architecture assumes a standard platform alerting hook invoked on terminal failure.
+
+---
 
 ## 13. Component Details: egress dag
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_10"></a>
 
+<!-- laminar:diagram-settings:imp-aws-aws_mwaa_dag-10 -->
+**Diagram settings (user decisions — authoritative)**
+
+| Setting | Value |
+| --- | --- |
+| `schedule` | `@daily` |
+| `catchup` | `false` |
+| `max_active_runs` | `1` |
+| `dag_name` | `egress dag` |
+
+<!-- /laminar:diagram-settings -->
+
+
 ### 13.1. Functional Overview
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_10.fo"></a>
-- **Principle**: Orchestrated Workflow Dependency and Delivery Management.
-- **Rationale**: The **egress dag** coordinates downstream packaging, GZIP compression, strict fail-closed PGP encryption, manifest generation, and multi-destination delivery (S3, Azure Blob, GCS, sFTP).
-- **Guardrails**: Engineers must ensure all data transformation steps execute sequentially and atomically before dispatching files to external endpoints.
+**Architectural principle: orchestration-only DAG with fail-closed transformation pipeline.** The Transform & Encrypt DAG (n7), running on the existing MWAA environment alongside the Export Orchestrator and Child Export DAGs, is triggered by the Egress Lambda (n15) via the Airflow REST API for each staged export package. It reads the staged file(s) from the Customer Staging Buckets (n8), applies the connection-defined steps from the Export Config Store (n6) — configurable file splitting (e.g., 500,000 records per file), optional GZIP compression, optional strict fail-closed PGP encryption — produces the manifest control file `manifest_<lineage_uuid>.json` (record count, total size, SHA-256 per output file), and hands the package to the Egress Lambda for delivery.
+
+**Rationale.** Keeping transformation in Airflow rather than in the Lambda preserves the Lambda's single-purpose delivery role and lets memory-intensive streaming transforms run in a worker environment sized for them, while Airflow's retry/scheduling semantics give the transform step durable, observable execution. The trade-off is an extra trigger hop (Lambda → MWAA REST → DAG run); this is accepted because SCRUM-482 AC#3 explicitly mandates the S3-event → Lambda → DAG trigger chain. Heavy work is delegated to task execution, never run in top-level DAG code (MWAA best practice).
+
+**Guardrails:** the DAG must be idempotent per lineage UUID (re-runs produce identical outputs); the lineage UUID must appear in every output file name and in the manifest; GZIP must run before PGP when both are enabled (SCRUM-483 AC#3); if PGP is enabled and the key is missing, corrupt, or fails, the DAG aborts, writes an error entry to n13 within 5 s, raises an alert, and passes zero bytes onward (SCRUM-483 AC#4).
 
 ### 13.2. Component Tenets
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_10.tn"></a>
-- **Principle**: Resilient Delivery-Only Semantics with Retries.
-- **Rationale**: External deliveries are subject to network volatility; the DAG enforces robust retry policies to handle transient destination outages without data corruption.
-- **Guardrails**: Top-level DAG code must remain lightweight and free of heavy computation or blocking network calls.
+- **Idempotency** — every task, re-executed for the same lineage UUID, yields byte-identical outputs. Rationale: S3 event redelivery and Airflow retries must not corrupt the integrity chain.
+- **Streaming, memory-bounded processing** — records are processed in bounded batches so peak worker RSS stays below 2,048 MB even at 1.2M records (SCRUM-483 AC#2). Rationale: worker memory limits; the split threshold is the primary control.
+- **Fail-closed encryption** — PGP is a hard gate: no output proceeds to egress unless encryption succeeded when enabled. Rationale: SCRUM-483 AC#4, SCRUM-482 AC#5.
+- **Config-driven behaviour** — split threshold, GZIP flag, PGP flag, and key reference come from the connection JSON in n6, read at run start and pinned for the run. Rationale: admin-managed configuration must not change mid-run.
+- **Lineage propagation** — the lineage UUID is carried in the run conf, every output file name, the manifest, and every audit record. Rationale: SCRUM-486 traceability.
+- **Lightweight top-level DAG code** — no I/O at parse time; all reads/writes occur inside operator execution. Rationale: MWAA scheduler performance best practice.
 
 ### 13.3. Configuration Approach
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_10.cfg"></a>
-- **Principle**: Deterministic Schedule and Concurrency Control.
-- **Rationale**: Restricting active runs and scheduling windows prevents overlapping data egress operations for the same target datasets.
-- **Guardrails**: The architecture sets the following properties: `dag_name` = `egress dag`, `schedule` = `@daily`, `catchup` = `False`, `max_active_runs` = `1`, and `tags` = `{}`.
+Only the properties the architecture sets or overrides:
+
+- **DAG registration** — deployed in the MWAA DAG folder (`transform_encrypt_dag.py` per blueprint layout) on the existing MWAA environment shared with n3/n14; no separate environment. Rationale: SCRUM-485 allowlist minimality.
+- **Trigger mechanism** — Airflow REST API DAG-run trigger with conf payload `{lineage_uuid, staging_bucket, staging_key, connection_id}`; the Egress Lambda's MWAA invocation permission is scoped to this DAG only. Rationale: SCRUM-482 AC#3 exactly-one-run requirement.
+- **Task structure** — sequential stages: read/validate staged file → split (per configured threshold) → optional GZIP → optional PGP → manifest generation → handoff signal to Egress Lambda. Each stage is a separate task so failures are attributable and retries are stage-scoped. Rationale: SCRUM-482 AC#7 requires per-stage audit events.
+- **Worker sizing** — MWAA worker environment sized so peak RSS for the largest configured split stays under 2,048 MB; enforced by the split threshold default of 500,000 records. Rationale: SCRUM-483 AC#2.
+- **Logging** — dedicated CloudWatch log group under n13 with the organisation retention value; Airflow task logs routed there explicitly.
+
+**Guardrails:** no schedule (`schedule=None`) — the DAG is event-triggered only; no hardcoded environment values (SCRUM-485 AC#3); PGP key material referenced via n6 encrypted fields, never in DAG code or Airflow variables in plaintext.
 
 ### 13.4. Input Schema
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_10.in"></a>
-- **Principle**: Context-Driven Payload Inspection.
-- **Rationale**: Receives staging bucket object references and connection configuration metadata containing destination types, compression flags, and encryption parameters.
-- **Guardrails**: Input configuration must be validated against schema definitions prior to task execution.
+**Principle: explicit, validated run conf as the sole contract.** The DAG run conf carries:
+
+- `lineage_uuid` (RFC 4122 v4) — validated against the format; mismatch aborts the run.
+- `staging_bucket` / `staging_key` — location of the staged export file in n8.
+- `connection_id` — key into the Export Config Store (n6); the DAG resolves the connection JSON (dataset, mode, split threshold, GZIP flag, PGP flag and key reference, destination binding) at run start.
+
+The staged file itself is read from n8 (claim-check pattern — the conf carries references, not data). **Guardrails:** the DAG must verify the staged object exists and its size matches expectations before processing; the connection JSON used is pinned in the run conf for audit comparison (SCRUM-480 AC#2 pattern applied to n7 as well).
 
 ### 13.5. Output/Side Effects
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_10.out"></a>
-- **Principle**: Secure Multi-Destination Egress Delivery.
-- **Rationale**: Delivers encrypted or raw export packages alongside SHA-256 JSON manifest control files to customer-owned destinations and internal audit sinks.
-- **Guardrails**: Zero unencrypted files may be transmitted when PGP encryption is enabled.
+- **Transformed package in n8** (or a dedicated output prefix): split data files (JSON/TXT per dataset format), each named with the lineage UUID; optional `.gz` then `.gz.pgp` suffixes applied in that order when enabled.
+- **Manifest control file** `manifest_<lineage_uuid>.json`: record count, total file size, SHA-256 checksum per output file (SCRUM-483 AC#1).
+- **Handoff to Egress Lambda**: completion signals the Lambda to begin delivery; the Lambda is the only component that writes to customer destinations.
+- **Audit records to n13**: EXECUTION_STARTED, transform start/finish, and on failure an error entry within 5 s plus alert (SCRUM-483 AC#4, SCRUM-482 AC#7).
+
+**Guardrails:** on PGP failure, zero unencrypted bytes may be passed to the Lambda or written anywhere deliverable; partial outputs from a failed run are cleaned from the output prefix to keep the staging area consistent with the 7-day lifecycle rule.
 
 ### 13.6. Telemetry Event Schema
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_10.tel"></a>
-- **Principle**: Comprehensive Workflow Audit Logging.
-- **Rationale**: Emits lifecycle events (`TRANSFER_STARTED`, `TRANSFER_COMPLETED`, `TRANSFER_FAILED`) capturing lineage UUIDs, checksums, and timestamps.
-- **Guardrails**: All telemetry records must be written immutably to the audit execution log store.
+Same organisation-wide SCRUM-486 schema: `actor_id` = `system:transform-encrypt-dag`; `timestamp_utc` ISO-8601 ms/Z; `event_type` from the enumerated set (EXECUTION_STARTED, EXECUTION_COMPLETED, plus transform start/finish and error records per SCRUM-482 AC#7); `execution_id` = lineage UUID. Extended fields: file names, checksums, status. Written to the DAG's explicitly provisioned log group under n13 with the organisation retention value. **Guardrails:** exactly one record per event occurrence; timestamps emitted at event time in UTC; structured JSON only.
 
 ### 13.7. Error Handling Strategy
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_10.err"></a>
-- **Principle**: Fail-Closed Cryptographic and Transfer Abort.
-- **Rationale**: If PGP encryption fails or host-key verification fails on sFTP, the transfer aborts immediately, zero bytes are transmitted, and an alert is raised.
-- **Guardrails**: Transient destination errors are retried up to 3 times before recording a final failure event.
+**Principle: stage-scoped retries, fail-closed on encryption, alert within 5 s on terminal failure.**
+
+- **Transient I/O errors** (S3 read failures, MWAA worker loss): Airflow task-level retry with exponential backoff; idempotency makes retries safe.
+- **PGP failure (missing/corrupt key or encryption error)**: no retry of the encryption step against the same key; the run aborts, error entry written to n13 within 5 s, alert raised, zero bytes forwarded (SCRUM-483 AC#4).
+- **Validation failures** (malformed lineage UUID, missing staged object, manifest mismatch): fail the run immediately as non-retryable; audit entry with status.
+- **DAG-level failure**: surfaced via Airflow run state and a CloudWatch alarm on task failures; the Egress Lambda detects the failed run and records TRANSFER_FAILED for the affected lineage UUID so the transfer chain is never left silently open.
+
+**Guardrails:** every failure path writes an audit record; partial outputs are cleaned up; no failure may leave the package in a state where the Lambda could deliver it.
 
 ### 13.8. Security and Compliance
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_10.sec"></a>
-- **Principle**: Transport-Layer Security and Strict Verification.
-- **Rationale**: Enforces TLS 1.3 for S3, HTTPS for Azure and GCS, and SSH with strict host-key verification for sFTP to ensure absolute data protection in transit.
-- **Guardrails**: Missing or corrupt PGP keys must trigger immediate workflow termination and incident alerting.
+- **Least-privilege MWAA execution role**: read n8 staging prefix, read n6, write n13 log group, invoke the Egress Lambda handoff; no direct customer-destination permissions (delivery is Lambda-only).
+- **Encryption**: staged data read over TLS; PGP applied per connection config with keys held encrypted in n6 (KMS); GZIP-before-PGP ordering preserved.
+- **Fail-closed enforcement** is architectural: the DAG is the last gate before egress and must refuse to emit unencrypted output when encryption is enabled.
+- **Audit**: all lifecycle events per SCRUM-486 schema; log group retention explicitly set (organisation value).
+- **Network**: MWAA environment in private subnets per platform standard; no public exposure of the Airflow REST API beyond the authorised trigger path.
 
 ### 13.9. Performance Metrics
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_10.perf"></a>
-- **Principle**: Bounded Memory and Throughput Optimization.
-- **Rationale**: File splitting and streaming compression techniques prevent worker memory exhaustion when processing large export packages.
-- **Guardrails**: Peak memory usage must remain within standard worker tier boundaries.
+- **Throughput target**: process 1.2M records with a 500k split threshold within the worker memory ceiling (peak RSS < 2,048 MB) — SCRUM-483 AC#2 is the binding constraint.
+- **Latency**: transform start-to-finish per package sized so the end-to-end staging→delivery flow meets the audit/alert SLAs (≤5 s error recording, ≤5 m alert visibility per SCRUM-482 AC#5).
+- **Monitoring**: Airflow task duration, worker memory utilisation, and task retry counts alarmed; run state observable via the Airflow REST API (consistent with SCRUM-480 measurement convention).
+- **Guardrail**: if memory pressure appears, lower the split threshold in n6 rather than scaling workers indefinitely; splitting is the designed control.
 
 ### 13.10. Assumptions & Follow-up Resolutions
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_10.asm"></a>
-- **Principle**: Standardized Operational Assumptions.
-- **Rationale**: Assumes customer-provided PGP public keys and destination connection parameters are pre-configured and valid within the export configuration store.
-- **Guardrails**: Invalid keys or unreachable endpoints fail during pre-flight checks.
+- **Organisation logging-standard retention value**: not stated; assumed confirmed before sprint commitment, default 365 days until then (same resolution as the Egress Lambda — one organisation-wide value).
+- **PGP key management**: assumed keys are admin-provisioned per connection and stored encrypted in n6; no dedicated HSM/KMS-key-per-customer hierarchy is introduced in this architecture.
+- **Output location**: assumed transformed packages are written to a distinct output prefix within the Customer Staging Buckets (n8) so the 7-day lifecycle rule covers both staged inputs and transformed outputs pending delivery.
+- **Handoff mechanism** from DAG to Lambda: assumed an Airflow-triggered Lambda invocation (or equivalent supported operator) using the same MWAA execution role; the exact operator choice is a design-document decision.
+- **TXT output format** for non-JSON datasets: assumed fixed-width/CSV-style plain text as produced by the Spark extract recipes; exact formatting is a design-document concern.
+
+---
 
 ## 14. Component Details: Customer Azure Blob Destination
 <a id="laminar-sec-c.imp_azure_blob_store_13"></a>
 
 ### 14.1. Functional Overview
 <a id="laminar-sec-c.imp_azure_blob_store_13.fo"></a>
-The Customer Azure Blob Destination component represents an external, customer-owned Azure Blob Storage container utilized as a terminal sink for outbound data synchronization packages.
-* **Principle**: External cloud-native object store integration.
-* **Rationale**: Decoupling the destination infrastructure from core platform processing allows customers to receive data in their preferred cloud environment securely, leveraging native object storage paradigms without requiring custom ingress logic on the platform side.
-* **Guardrails**: The platform interacts with this component strictly via egress delivery mechanisms, pushing encrypted or raw export packages and manifest control files into pre-provisioned customer containers.
+**Integration boundary only — external, customer-owned Azure Blob Storage.** The Customer Azure Blob Destination (n11) is a container in the customer's Azure storage account. The platform's only interaction is: the Egress Lambda (n15) uploads the delivered data file(s) and manifest control file over HTTPS, optionally setting Content-MD5 as an additional transport check, then performs an application-level read-back to recompute SHA-256 against the manifest value before declaring TRANSFER_COMPLETED. The platform does not provision, configure, or lifecycle-manage this destination.
+
+**Rationale for the boundary.** As with all customer destinations (SCRUM-485 exclusion list), the platform treats n11 as an untrusted endpoint: integrity is proven by the platform's own manifest + read-back verification, not by customer-side controls. The trade-off is no visibility into customer-side retention or encryption; accepted because delivery-only semantics require no post-delivery guarantees.
+
+**Guardrails:** credentials come from the connection config in n6 (encrypted at rest); retries up to 3 times on transient failures, then alert and TRANSFER_FAILED to n13; no upload when the package is unencrypted against connection config.
 
 ### 14.2. Component Tenets
 <a id="laminar-sec-c.imp_azure_blob_store_13.tn"></a>
-- **Principle**: Secure, encrypted external cloud storage delivery.
-- **Rationale**: The **Customer Azure Blob Destination** component represents an external, customer-owned Azure Blob Storage or ADLS Gen2 endpoint. The platform delivers packaged export files to this endpoint adhering strictly to external integration contracts and security standards.
-- **Guardrails**: Transport must enforce HTTPS exclusively for all Azure Blob transfers (per requirements SCRUM-484). Public anonymous access must remain strictly disabled at both container and storage account levels, and authentication must utilize managed identity or secure SAS tokens provided via SSM Parameter Store.
+- **Untrusted destination** — all integrity guarantees originate platform-side (manifest SHA-256 + read-back). Rationale: the platform cannot rely on customer-side configuration.
+- **HTTPS-only transport** — secure transfer is required for every upload; no fallback to unencrypted HTTP. Rationale: SCRUM-484 technical context.
+- **Credential isolation** — per-connection credentials decrypted at runtime from n6; never logged or cached beyond the invocation.
+- **Bounded retry** — 3 retries for transient failures; final failure recorded only after the third retry, then alert + audit entry.
+- **Delivery-only** — the platform never deletes, overwrites, or reorganises customer blobs beyond delivering the current package (and cleaning a partially written blob on failed delivery, stated as the production default).
 
 ### 14.3. Configuration Approach
 <a id="laminar-sec-c.imp_azure_blob_store_13.cfg"></a>
-* **Principle**: Parameterized external destination mapping.
-* **Rationale**: Storage account names, container paths, and authentication tokens vary per customer and are dynamically resolved from the export configuration store at runtime.
-* **Guardrails**: The architecture sets and enforces secure transfer requirements (`https_only = true`), disables public blob access, and utilizes general-purpose v2 storage account configurations supplied by the customer.
+The platform sets nothing on the customer resource. The connection configuration held in n6 defines, per SCRUM-479: connection name, `target_type: azure_blob`, dataset, mode, schedule, and encrypted credential fields (assumed: storage account name, container name, key/path prefix, and credential — SAS token or account key, stored encrypted). **Guardrail:** the platform documents the required customer-side prerequisites (container exists, credential has write + read scope, secure transfer enabled on the account) as onboarding requirements; it cannot enforce them and compensates with read-back verification.
 
 ### 14.4. Input Schema
 <a id="laminar-sec-c.imp_azure_blob_store_13.in"></a>
-* **Principle**: Standardized payload containerization.
-* **Rationale**: Incoming payloads from the egress pipeline must conform to the agreed export package structure to ensure predictable delivery and parsing at the destination.
-* **Guardrails**: Accepts GZIP-compressed, PGP-encrypted files (`.gz.pgp`) or raw JSON/TXT files accompanied by a mandatory SHA-256 JSON manifest control file.
+Per delivery, the container receives: the data file(s) (raw JSON/TXT, or `.gz`/`.gz.pgp` when enabled) and `manifest_<lineage_uuid>.json`, at the blob path prefix configured in the connection; blob names carry the lineage UUID. Uploads arrive over HTTPS from the Egress Lambda using the connection's credentials; Content-MD5 is set on uploads where supported as an additional transport check. **Guardrail:** the platform writes only the package files; no metadata, index, or control objects beyond the manifest are written.
 
 ### 14.5. Output/Side Effects
 <a id="laminar-sec-c.imp_azure_blob_store_13.out"></a>
-* **Principle**: Write-once deliverable sink.
-* **Rationale**: Serves as a terminal endpoint for outbound data flows; persistence in this container completes the delivery lifecycle for the specific export run.
-* **Guardrails**: Side effects are limited strictly to object creation and modification within the customer's designated container path; no downstream platform triggers or callbacks are initiated from this component.
+Side effects on the platform are the upload and read-back responses: success (verified SHA-256 match) yields TRANSFER_COMPLETED; transient failure drives the 3-retry path; terminal failure raises an alert and writes TRANSFER_FAILED with destination, file names, checksum, status, and timestamp to n13 (SCRUM-482 AC#7). The container emits nothing consumed by the platform. **Guardrail:** a successful upload whose read-back verification fails is treated as a failed transfer and retried within the 3-retry budget.
 
 ### 14.6. Telemetry Event Schema
 <a id="laminar-sec-c.imp_azure_blob_store_13.tel"></a>
-* **Principle**: Unified transfer auditing.
-* **Rationale**: To ensure end-to-end traceability, all delivery attempts must emit standardized telemetry events regardless of the target cloud provider.
-* **Guardrails**: Emits `TRANSFER_STARTED`, `TRANSFER_COMPLETED`, and `TRANSFER_FAILED` CloudEvents-shaped audit records to the audit bucket, capturing lineage UUIDs, timestamps, actor identifiers, and cryptographic checksum validation results.
+All transfer events against this destination follow the SCRUM-486 schema emitted by the Egress Lambda: `actor_id` = `system:egress-lambda`, `timestamp_utc` ISO-8601 ms/Z, `event_type` TRANSFER_STARTED / TRANSFER_COMPLETED / TRANSFER_FAILED (+ retry records), `execution_id` = lineage UUID, extended fields: destination (`azure_blob:<connection_name>`), file names, checksum, status. **Guardrails:** exactly the expected event count per transfer (2, or start + TRANSFER_FAILED on abort); structured JSON; no credential material in any field.
 
 ### 14.7. Error Handling Strategy
 <a id="laminar-sec-c.imp_azure_blob_store_13.err"></a>
-* **Principle**: Resilient retry with fail-closed delivery.
-* **Rationale**: External network anomalies or temporary Azure storage throttling should not cause immediate job failure, but persistent errors must be handled safely without data corruption.
-* **Guardrails**: Failed transfer attempts are retried up to 3 times with exponential backoff. Upon exhausting retries, a terminal `TRANSFER_FAILED` event is recorded, an operational alert is raised, and the failure is logged for review.
+- **Transient failures** (HTTP 5xx, throttling, network errors): retry up to 3 times with exponential backoff; final failure only after the third retry, then alert + TRANSFER_FAILED to n13.
+- **Authentication/authorisation failures** (401/403): treated as configuration errors — retried within the budget (they may be transient token issues) but alerted immediately as likely misconfiguration.
+- **Verification failure** (read-back SHA-256 mismatch): treated as a failed transfer within the retry budget; on terminal failure, any partially written blob is deleted (production default) and the failure is audited.
+- **Guardrails:** no silent failure; every attempt audited; no unencrypted delivery under any error condition.
 
 ### 14.8. Security and Compliance
 <a id="laminar-sec-c.imp_azure_blob_store_13.sec"></a>
-* **Principle**: Transport security and least-privilege authorization.
-* **Rationale**: Protects sensitive customer data during transit across cloud boundaries and ensures access is restricted solely to authorized export pipelines.
-* **Guardrails**: Enforces HTTPS transport, utilizes Microsoft Entra ID or securely managed SAS tokens retrieved from encrypted parameter stores, and verifies object integrity via post-upload SHA-256 comparisons.
+- **Transit**: HTTPS enforced; Content-MD5 requested as an additional transport check where the platform supports it (SCRUM-484 technical context).
+- **Credentials**: encrypted at rest in n6 (SCRUM-479 AC#1); decrypted only in Lambda memory; never logged.
+- **Payload protection**: PGP encryption applied upstream is fail-closed; the Lambda refuses delivery of unencrypted packages when the connection requires encryption.
+- **Audit**: full transfer traceability in n13 per the SCRUM-486 schema.
+- **Guardrail**: the platform cannot enforce customer-side controls (Defender for Storage, network rules, anonymous-access disablement); these are documented onboarding requirements, with read-back verification as the platform-side compensating control.
 
 ### 14.9. Performance Metrics
 <a id="laminar-sec-c.imp_azure_blob_store_13.perf"></a>
-* **Principle**: SLA-bound throughput monitoring.
-* **Rationale**: Outbound deliveries must complete within the platform's 24-hour overall delivery SLA for payloads up to 1 GB and 100,000 records.
-* **Guardrails**: Monitor upload duration, HTTP status codes, and throughput bandwidth to detect degradation or throttling against Azure storage limits.
+- **Upload + verify duration per file**: bounded by the split threshold (≤500k records/file) so transfers complete within the Lambda execution window with retry headroom.
+- **Retry backoff**: exponential with jitter, three attempts within the window.
+- **Monitoring**: per-destination transfer duration and failure rate alarmed via CloudWatch on the Lambda metrics, dimensioned by destination type.
+- **Guardrail**: sustained latency growth on this destination is an operational signal to the customer (their endpoint), not a platform scaling problem — the platform's response is alerting, not resizing.
 
 ### 14.10. Assumptions & Follow-up Resolutions
 <a id="laminar-sec-c.imp_azure_blob_store_13.asm"></a>
-* **Principle**: External dependency boundary.
-* **Rationale**: The platform assumes the customer maintains valid container permissions, sufficient storage quota, and continuous network reachability on their Azure environment.
-* **Guardrails**: This component is outside the scope of platform Terraform infrastructure provisioning and lifecycle management.
+- **Credential type**: assumed SAS token or storage account key stored encrypted in n6; Microsoft Entra ID–based service-principal credentials are the preferred alternative if the customer supports them (aligns with blob-store best practice), but the platform accepts key-based credentials as the universal default.
+- **Container prerequisites**: assumed the customer pre-provisions the container and grants the credential write + read permissions on the configured prefix; onboarding checklist documents secure-transfer-required and anonymous-access-disabled as customer responsibilities.
+- **Partial-write cleanup**: assumed blob delete permission is included in the credential scope so failed deliveries can be cleaned; if not granted, partial blobs are reported in the audit record instead.
+- **Content-MD5 support**: assumed available on standard Azure Blob endpoints; absence degrades gracefully to the application-level SHA-256 read-back check alone.
 
 ---
 
@@ -1076,311 +1271,435 @@ The Customer Azure Blob Destination component represents an external, customer-o
 
 ### 15.1. Functional Overview
 <a id="laminar-sec-c.imp_gcp_gcs_14.fo"></a>
-The Customer GCS Destination component represents an external, customer-owned Google Cloud Storage (GCS) bucket acting as a terminal delivery endpoint for scheduled data exports.
-* **Principle**: Multi-cloud outbound interoperability.
-* **Rationale**: Accommodates enterprise customers operating within the Google Cloud ecosystem by delivering export packages directly to their designated GCS buckets.
-* **Guardrails**: The platform interacts with this destination solely via secure HTTPS push operations executed by the egress pipeline.
+**Integration boundary only — external, customer-owned Google Cloud Storage bucket.** The Customer GCS Destination (n12) is a bucket in the customer's GCP project. The platform's only interaction is: the Egress Lambda (n15) uploads the delivered data file(s) and manifest control file over HTTPS, optionally requesting CRC32C as an additional transport check, then performs an application-level read-back to recompute SHA-256 against the manifest value before declaring TRANSFER_COMPLETED. The platform does not provision, configure, or lifecycle-manage this destination.
+
+**Rationale for the boundary.** Consistent with the other customer destinations (SCRUM-485 exclusion list), n12 is treated as an untrusted endpoint: the platform proves integrity via its own manifest + read-back verification. The trade-off is no platform-side control over customer retention or encryption-at-rest; accepted under delivery-only semantics.
+
+**Guardrails:** credentials from the connection config in n6 (encrypted at rest); up to 3 retries on transient failures, then alert and TRANSFER_FAILED to n13; no upload of unencrypted packages when the connection requires PGP.
 
 ### 15.2. Component Tenets
 <a id="laminar-sec-c.imp_gcp_gcs_14.tn"></a>
-* **Principle**: Secure cloud-to-cloud boundary transmission.
-* **Rationale**: Cross-cloud data transfers must maintain high security standards, ensuring data remains encrypted and verifiable upon arrival.
-* **Guardrails**: Mandatory TLS transport, strict bucket-level access controls, and post-transfer cryptographic checksum validation against the accompanying manifest file.
+- **Untrusted destination** — integrity proven platform-side (manifest SHA-256 + read-back), never assumed from the destination.
+- **HTTPS-only transport** — every upload and read-back over TLS; no plaintext fallback.
+- **Credential isolation** — per-connection service-account credentials decrypted at runtime from n6; never logged or persisted outside the invocation.
+- **Bounded retry** — 3 retries for transient failures; final failure recorded only after the third retry, then alert + audit entry.
+- **Delivery-only** — the platform delivers the package and manifest; no post-delivery object management beyond failed-partial cleanup (production default).
 
 ### 15.3. Configuration Approach
 <a id="laminar-sec-c.imp_gcp_gcs_14.cfg"></a>
-* **Principle**: Parameterized external destination mapping.
-* **Rationale**: GCS bucket URIs, project IDs, and service account authentication keys are dynamic per customer configuration and resolved at runtime from the export configuration store.
-* **Guardrails**: The architecture relies on standard regional or multi-regional GCS bucket defaults, delegating bucket lifecycle, retention, and encryption policy management entirely to the customer.
+The platform sets nothing on the customer resource. The connection configuration in n6 defines: connection name, `target_type: gcs`, dataset, mode, schedule, and encrypted credential fields (assumed: bucket name, object path prefix, and a service-account key or workload-identity-federated credential, stored encrypted). **Guardrail:** customer-side prerequisites (bucket exists, credential has object create + get scope on the prefix) are documented onboarding requirements; the platform compensates for unverifiable customer controls with read-back verification.
 
 ### 15.4. Input Schema
 <a id="laminar-sec-c.imp_gcp_gcs_14.in"></a>
-* **Principle**: Strict manifest-driven package ingestion.
-* **Rationale**: Incoming payloads must adhere to standardized naming conventions and include control files to verify data integrity upon delivery.
-* **Guardrails**: Accepts export data packages (compressed/encrypted or raw) along with the corresponding JSON manifest detailing file sizes and SHA-256 checksums.
+Per delivery, the bucket receives: the data file(s) (raw JSON/TXT, or `.gz`/`.gz.pgp` when enabled) and `manifest_<lineage_uuid>.json`, at the object prefix configured in the connection; object names carry the lineage UUID. Uploads arrive over HTTPS from the Egress Lambda using the connection's credentials; CRC32C is requested as an additional transport check where supported. **Guardrail:** only package files and the manifest are written; no auxiliary objects.
 
 ### 15.5. Output/Side Effects
 <a id="laminar-sec-c.imp_gcp_gcs_14.out"></a>
-* **Principle**: Terminal object storage sink.
-* **Rationale**: Persists delivered export files in customer GCS buckets for downstream ingestion by customer analytics or operational systems.
-* **Guardrails**: Side effects are strictly confined to object creation within the target bucket; no internal platform execution workflows are triggered by this destination.
+Side effects on the platform are the upload and read-back responses: verified SHA-256 match yields TRANSFER_COMPLETED; transient failure drives the 3-retry path; terminal failure raises an alert and writes TRANSFER_FAILED with destination, file names, checksum, status, and timestamp to n13 (SCRUM-482 AC#7). The bucket emits nothing consumed by the platform. **Guardrail:** an upload that succeeds but fails read-back verification is a failed transfer within the retry budget.
 
 ### 15.6. Telemetry Event Schema
 <a id="laminar-sec-c.imp_gcp_gcs_14.tel"></a>
-* **Principle**: Comprehensive transfer audit logging.
-* **Rationale**: Complete visibility into multi-cloud delivery success and failure states is required for operational compliance.
-* **Guardrails**: Emits standardized CloudEvents (`TRANSFER_STARTED`, `TRANSFER_COMPLETED`, `TRANSFER_FAILED`) to the audit bucket, embedding lineage UUIDs and verification statuses.
+SCRUM-486 schema emitted by the Egress Lambda: `actor_id` = `system:egress-lambda`; `timestamp_utc` ISO-8601 ms/Z; `event_type` TRANSFER_STARTED / TRANSFER_COMPLETED / TRANSFER_FAILED (+ retry records); `execution_id` = lineage UUID; extended fields: destination (`gcs:<connection_name>`), file names, checksum, status. **Guardrails:** expected event count per transfer (2, or start + TRANSFER_FAILED on abort); structured JSON; no credential material in any field.
 
 ### 15.7. Error Handling Strategy
 <a id="laminar-sec-c.imp_gcp_gcs_14.err"></a>
-* **Principle**: Bounded retry and fail-safe alerting.
-* **Rationale**: Mitigates transient connectivity issues between AWS compute resources and GCP storage endpoints without infinite blocking loops.
-* **Guardrails**: Implements a maximum of 3 retry attempts with exponential backoff; exhaustion of retries triggers an immediate operational alert and records a terminal failure audit entry.
+- **Transient failures** (HTTP 5xx, rate limiting, network errors): retry up to 3 times with exponential backoff; final failure only after the third retry, then alert + TRANSFER_FAILED to n13.
+- **Authentication failures** (401/403): retried within the budget but alerted immediately as likely credential/config issues.
+- **Verification failure** (read-back SHA-256 mismatch): failed transfer within the retry budget; on terminal failure, partially written objects are deleted (production default) and the failure audited.
+- **Guardrails:** no silent failure; every attempt audited; no unencrypted delivery under any error condition.
 
 ### 15.8. Security and Compliance
 <a id="laminar-sec-c.imp_gcp_gcs_14.sec"></a>
-* **Principle**: Transport encryption and identity isolation.
-* **Rationale**: Prevents data leakage during cross-cloud transmission and enforces least-privilege access.
-* **Guardrails**: Enforces HTTPS transport, utilizes secure service-account credentials stored in encrypted parameter stores, and prohibits anonymous or public bucket configurations.
+- **Transit**: HTTPS enforced; CRC32C requested as an additional transport check where supported (SCRUM-484 technical context).
+- **Credentials**: service-account credentials encrypted at rest in n6 (SCRUM-479 AC#1); decrypted only in Lambda memory; never logged.
+- **Payload protection**: fail-closed PGP upstream; the Lambda refuses delivery of unencrypted packages when the connection requires encryption.
+- **Audit**: full transfer traceability in n13 per the SCRUM-486 schema.
+- **Guardrail**: customer-side controls (bucket IAM hardening, retention locks) are onboarding requirements, not platform-enforceable; read-back verification is the compensating control.
 
 ### 15.9. Performance Metrics
 <a id="laminar-sec-c.imp_gcp_gcs_14.perf"></a>
-* **Principle**: Latency and throughput tracking.
-* **Rationale**: Ensures data delivery meets contractual SLAs and identifies network bottlenecks across cloud providers.
-* **Guardrails**: Track upload duration, payload size, and error rates per transfer batch.
+- **Upload + verify duration per file**: bounded by the split threshold (≤500k records/file) so transfers complete within the Lambda execution window with retry headroom.
+- **Retry backoff**: exponential with jitter, three attempts within the window.
+- **Monitoring**: per-destination transfer duration and failure rate alarmed via CloudWatch on Lambda metrics, dimensioned by destination type.
+- **Guardrail**: latency growth on the customer endpoint is an alerting concern, not a platform scaling concern.
 
 ### 15.10. Assumptions & Follow-up Resolutions
 <a id="laminar-sec-c.imp_gcp_gcs_14.asm"></a>
-* **Principle**: External resource ownership.
-* **Rationale**: GCS buckets are provisioned, owned, and managed entirely by the customer; the platform bears responsibility solely for outbound transmission and audit logging.
-* **Guardrails**: Bucket provisioning, access policy tuning, and lifecycle management are out of scope for the platform's Terraform infrastructure.
+- **Credential type**: assumed service-account key stored encrypted in n6 as the universal default; workload-identity federation is the preferred alternative if the customer supports it.
+- **Bucket prerequisites**: assumed the customer pre-provisions the bucket and grants object create + get permissions on the configured prefix.
+- **Partial-write cleanup**: assumed delete permission is included in the credential scope; if not, partial objects are reported in the audit record instead.
+- **CRC32C support**: assumed available on standard GCS endpoints; absence degrades gracefully to the application-level SHA-256 read-back check alone.
 
 ---
 
 ## 16. Component Details: audit_bucket
 <a id="laminar-sec-c.imp_aws_aws_s3_bucket_15"></a>
 
+<!-- laminar:diagram-settings:imp-aws-aws_s3_bucket-15 -->
+**Diagram settings (user decisions — authoritative)**
+
+| Setting | Value |
+| --- | --- |
+| `versioning` | `false` |
+| `encryption` | `AES256` |
+| `public_access_block` | `true` |
+| `lifecycle_enabled` | `true` |
+| `lifecycle_transition_days` | `30` |
+| `lifecycle_glacier_days` | `90` |
+| `bucket_name` | `audit_bucket` |
+
+<!-- /laminar:diagram-settings -->
+
+
 ### 16.1. Functional Overview
 <a id="laminar-sec-c.imp_aws_aws_s3_bucket_15.fo"></a>
-The **audit_bucket** component (Audit & Execution Log Store backed by Amazon S3) serves as the centralized, immutable repository for all system audit events, lifecycle logs, and compliance records generated by **do-admin-api**, **emr_do**, and **egress dag**. It guarantees long-term retention and tamper-resistant storage for operational traceability.
+**Architectural principle: Immutable, append-only audit trail as a first-class data asset.** The `audit_bucket` is the physical realization of the Audit & Execution Log Store (n13) — the single, authoritative sink for every business audit event emitted by the DataOutbound pipeline (admin operations, execution lifecycle, transfer attempts, and pipeline log groups). It is treated as a compliance record store, not an application data store: writes are append-only, reads are restricted to auditors and tooling, and no pipeline component ever mutates or deletes an audit record.
+
+**Rationale.** Non-repudiation and end-to-end lineage traceability (Architecture Tenet 1) require that audit records survive the failure, teardown, or compromise of any producing component. Centralizing all audit events in one dedicated bucket — rather than scattering them across component log groups or databases — gives a single query surface for the SCRUM-486 event-count reconciliation (admin operations + 2N execution events + 2N transfer events per run), simplifies retention enforcement, and isolates audit data lifecycle from the 7-day staging purge lifecycle that governs `staging_bucet_internal`. The trade-off is a small write-amplification cost (every component writes to S3 in addition to its own logs) and a dependency on S3 availability for audit completeness; this is accepted because audit integrity outweighs marginal latency, and producers buffer/retry audit writes rather than blocking business flow.
+
+**Guardrails.**
+- Producers write audit records only; no component may read-modify-write or delete objects in this bucket.
+- Every audit object must carry the lineage UUID (`execution_id`) in its key path so that all records for one execution are enumerable by prefix.
+- The bucket must never be used for staging export data or any other payload — separation of audit data from business data is absolute.
+- Log groups for pipeline components (n1, n2, n3, n4, n7, n14, n15) are provisioned explicitly under this store as the parent node, each with the single organisation logging-standard retention value (to be confirmed in days before sprint commitment — see Assumptions).
 
 ### 16.2. Component Tenets
 <a id="laminar-sec-c.imp_aws_aws_s3_bucket_15.tn"></a>
-* **Principle**: Immutable Audit Governance & Automated Lifecycle Archival.
-* **Rationale**: Centralizing operational logs in a dedicated S3 bucket ensures strict compliance with organizational retention policies while controlling long-term storage costs through automated tiering.
-* **Guardrails**: Public access must be strictly blocked. Server-side encryption must be enforced for all stored objects, and lifecycle policies must automatically transition logs to archival storage tiers.
+**Architectural principle: Compliance-grade durability and immutability over convenience.** The tenets below exist to guarantee that once an audit event is accepted, it cannot be silently lost or altered.
+
+1. **Append-only writes.** All writes are new-object PUTs; no overwrite semantics are used. Rationale: audit records are immutable facts; overwriting would destroy the evidence chain. Guardrail: object keys must be unique per event (lineage UUID + event type + timestamp), making accidental overwrite detectable.
+2. **Versioning disabled (user decision — authoritative).** The architecture graph sets `versioning = false` for this bucket. Rationale: with append-only, unique-key writes and no delete path for producers, versioning adds cost and operational surface without adding integrity value; immutability is enforced through IAM (no delete permission for producers) rather than through versioning. Guardrail: because versioning is off, delete permissions on this bucket must be restricted to a break-glass role only, and any delete operation must itself be audited out-of-band; lifecycle rules must never target audit objects for expiration.
+3. **Environment-driven deletion protection.** Deletion protection (bucket-level and KMS-key-level) is read from per-environment configuration variables (dev/staging/prod) — never hardcoded — per SCRUM-485. Rationale: lower environments must be fully tearable for ephemeral testing, while staging/prod audit records are compliance evidence that must survive teardown attempts. Guardrail: teardown in staging/prod must exit non-zero with the bucket and its encryption key still protected.
+4. **Explicit log-group provisioning.** Every pipeline component's CloudWatch log group is declared in configuration with an explicit `retention_in_days`; zero groups may be unset or never-expire. Rationale: implicit log creation produces unmanaged, non-compliant retention.
+5. **Structured, schema-conformant records.** Every audit event conforms to the SCRUM-486 schema (actor_id, timestamp_utc, event_type, execution_id). Rationale: schema conformance is what makes automated event-count reconciliation and ISO-8601 validation possible.
 
 ### 16.3. Configuration Approach
 <a id="laminar-sec-c.imp_aws_aws_s3_bucket_15.cfg"></a>
-* **Principle**: Secure and Governed Object Storage.
-* **Rationale**: Object storage parameters must balance high durability with strict security and automated cost optimization.
-* **Guardrails**: Only architecture-mandated properties are explicitly set:
-  * `versioning`: `False` — Versioning disabled on audit bucket to prevent uncontrolled version proliferation of append-only audit logs (relies on append-only write patterns).
-  * `encryption`: `AES256` — Server-side encryption enforced on all ingested audit objects.
-  * `public_access_block`: `True` — Enforces absolute prevention of public bucket policies and ACLs.
-  * `lifecycle_enabled`: `True` — Enables automated lifecycle transitions for cost-effective log management.
-  * `lifecycle_transition_days`: `30` — Transitions audit objects to Standard-IA storage after 30 days.
-  * `lifecycle_glacier_days`: `90` — Transitions audit objects to Glacier archival storage after 90 days.
-  * `tags`: `{}` — Provisioned with metadata tags for operational ownership.
-  * `bucket_name`: `audit_bucket` — Explicit resource identifier.
+**Architectural principle: Declarative, environment-driven configuration with zero hardcoded lifecycle or protection values** (Architecture Tenet 4). Only the properties the architecture actually sets are documented; all other S3 properties defer to service defaults, which is itself a deliberate decision to minimize configuration drift.
+
+| Property | Value | Rationale |
+|---|---|---|
+| Versioning | `false` (user decision — authoritative) | Append-only, unique-key writes plus IAM-restricted delete make versioning redundant; avoids version-sprawl cost. Compensating control: break-glass-only delete role. |
+| Server-side encryption | SSE-KMS with a dedicated CMK | Audit records may reference PII-bearing executions; KMS CMK enables key-level deletion protection and per-environment key policy, aligned with the fail-closed security posture. |
+| Public access | Fully blocked (all four block settings) | Audit data must never be publicly reachable; no use case exists for public reads. |
+| Deletion protection | Read from env config variable (dev/staging/prod) | SCRUM-485 AC#3–#5: no hardcoded value; dev tearable, staging/prod protected. |
+| KMS key deletion protection | Read from the same env config variable | Encryption keys are explicitly listed as stateful resources in SCRUM-485. |
+| Lifecycle rules | None for audit objects | Audit records are retained per the organisation logging-standard retention; expiring them would violate the compliance mandate. Trade-off: unbounded storage growth in prod, accepted as a compliance cost. |
+| Log-group retention (child log groups under n13) | `retention_in_days` = single organisation logging-standard value, explicitly set per group | SCRUM-486 AC#4; value must be confirmed in days before sprint commitment. |
+
+**Guardrails.** Any future property change must go through the Terraform module with the env-variable pattern preserved; hardcoding any deletion-protection or retention value is a review-blocking defect.
 
 ### 16.4. Input Schema
 <a id="laminar-sec-c.imp_aws_aws_s3_bucket_15.in"></a>
-* **Principle**: Standardized Audit Payload Ingestion.
-* **Rationale**: Ingesting telemetry and audit records in a uniform schema ensures consistent querying and compliance verification.
-* **Guardrails**: Incoming audit records must conform to the standard JSON audit schema (`actor_id`, `timestamp_utc`, `event_type`, `execution_id`).
+**Architectural principle: Contract-first, schema-validated event ingestion.** The bucket accepts exactly two classes of input, both governed by explicit contracts so that downstream reconciliation and validation are deterministic.
+
+1. **Business audit events** (written by the Export Admin API, orchestrator, child export DAG, transform & encrypt DAG, egress lambda, and EMR job wrapper): JSON objects conforming to the SCRUM-486 audit schema — `actor_id` (authenticated Acme user id, or `system:<component-name>` for automated events), `timestamp_utc` (ISO-8601, millisecond precision, Z suffix), `event_type` (one of ADMIN_CREATE, ADMIN_UPDATE, ADMIN_DELETE, ADMIN_MANUAL_TRIGGER, EXECUTION_STARTED, EXECUTION_COMPLETED, TRANSFER_STARTED, TRANSFER_COMPLETED, TRANSFER_FAILED), and `execution_id` (lineage UUID). Transfer events additionally carry destination, file names, checksum, and status. Rationale: a fixed schema is what enables the exact event-count reconciliation in SCRUM-486 AC#1 and the 100% ISO-8601 validation in AC#2. Guardrail: producers must validate schema before writing; a malformed event is a producer defect and must be surfaced as an alert, not silently stored.
+2. **Pipeline log-group streams** (CloudWatch log groups provisioned under this store as parent node): structured application logs from each pipeline component, each group explicitly provisioned with the organisation retention value.
+
+**Guardrails.** Object keys must embed `execution_id` (lineage UUID) and event type; no producer may write binary or free-form payloads into the audit namespace; the bucket accepts no input from customer destinations or external systems.
 
 ### 16.5. Output/Side Effects
 <a id="laminar-sec-c.imp_aws_aws_s3_bucket_15.out"></a>
-* **Principle**: Durable Object Persistence and Archival.
-* **Rationale**: Audit records written to the bucket must be durably stored and automatically transitioned according to governance schedules.
-* **Guardrails**: Objects are durably persisted with SHA-256 integrity checks and migrated across storage tiers without altering record payloads.
+**Architectural principle: Read-only consumption by authorized audit tooling; the store is a sink, not a source of pipeline state.** The bucket produces no events that drive pipeline behavior — no S3 event notifications are configured on it, deliberately, so that audit ingestion can never trigger or influence export execution (preventing circular dependencies and audit-driven side effects).
+
+**Outputs.**
+- **Audit record reads** for compliance tooling and the SCRUM-486 reconciliation tests: prefix-scoped reads by `execution_id` or date partition, over HTTPS/TLS, authenticated via IAM roles granted read-only access. Rationale: read access must be scoped and auditable; broad read access would create a PII exposure surface.
+- **Log-group query surface** for operational dashboards and incident investigation via CloudWatch Logs Insights.
+
+**Side effects.** None on the pipeline: writing to this bucket never triggers downstream processing, and its lifecycle (no expiration) is independent of the 7-day staging purge. Guardrail: any future consumer of audit data must use a dedicated read-only role; no component may derive control-flow decisions from audit records.
 
 ### 16.6. Telemetry Event Schema
 <a id="laminar-sec-c.imp_aws_aws_s3_bucket_15.tel"></a>
-* **Principle**: Self-Telemetry and Access Logging.
-* **Rationale**: Access to the audit bucket itself must be monitored to detect unauthorized read or write attempts.
-* **Guardrails**: S3 server access logging enabled, routing storage access metrics to CloudWatch.
+**Architectural principle: The audit store is itself the telemetry of record; its own operational telemetry is limited to storage-level health signals.** The events stored *in* the bucket follow the SCRUM-486 schema (see Input Schema). The bucket's *own* telemetry — what monitoring observes about the bucket — is deliberately minimal:
+
+- **Storage metrics**: bucket size and object count (CloudWatch S3 metrics), monitored for anomalous growth (e.g., a producer stuck in a retry loop emitting duplicate events).
+- **Write-failure signals**: producers emit an operational alert (outside this bucket) when an audit PUT fails after retries, because a failed audit write is itself a compliance incident that cannot be recorded in the bucket it failed to reach. Rationale: self-referential audit failure must be surfaced through an independent channel.
+- **KMS/throttle metrics**: KMS request errors and S3 throttles on the bucket, alarmed because sustained failures would silently erode audit completeness.
+
+**Guardrails.** No event notifications, no audit-of-audit recursion inside the bucket; the audit completeness SLA (100% of expected events per SCRUM-486 AC#1) is verified by reconciliation tests, not by in-bucket instrumentation.
 
 ### 16.7. Error Handling Strategy
 <a id="laminar-sec-c.imp_aws_aws_s3_bucket_15.err"></a>
-* **Principle**: Client-Side Retry Resilience.
-* **Rationale**: Transient network or S3 service interruptions during audit publishing must be retried by client applications without crashing core business workflows.
-* **Guardrails**: Audit publishers (`common.telemetry.auditor`) wrap S3 put operations in exponential backoff retries and fail silently or log locally if auxiliary telemetry sinks experience prolonged outages, ensuring business transactions are never blocked.
+**Architectural principle: Fail-visible, never fail-silent — audit write failures are compliance incidents.** Because the bucket is a passive sink, its error strategy is defined from the producer's perspective, with the bucket providing the durability guarantees.
+
+- **Producer-side retry**: producers retry audit PUTs with bounded exponential backoff; a write that ultimately fails raises an operational alert on an independent channel (CloudWatch alarm / alerting pipeline) and is logged to the producer's own log group. Rationale: an audit event that is lost without an alert would silently break the 100% event-count guarantee in SCRUM-486 AC#1.
+- **Non-blocking business flow**: a failed audit write must not abort the underlying business operation (export execution or transfer) — audit is best-effort with alerting, while business correctness is governed by the pipeline's own error handling. Trade-off: in a prolonged S3 outage, business events may complete without audit records; the alert ensures operators can reconstruct the gap. This is accepted because blocking customer data delivery to preserve audit would invert the priority of the two obligations.
+- **Bucket-side durability**: S3's designed 11-nines durability plus SSE-KMS encryption protect against data loss; no DLQ or replay mechanism is required at the bucket itself. Guardrail: reconciliation tests must detect and report any gap between expected and recorded event counts after incident recovery.
 
 ### 16.8. Security and Compliance
 <a id="laminar-sec-c.imp_aws_aws_s3_bucket_15.sec"></a>
-* **Principle**: Least Privilege Access and Zero Public Exposure.
-* **Rationale**: Audit logs contain sensitive operational metadata and must be protected against unauthorized exfiltration or tampering.
-* **Guardrails**: Enforce `public_access_block`, apply AES256 encryption at rest, restrict bucket policies to allow write access only from authenticated pipeline roles and read access strictly to authorized security principals.
+**Architectural principle: Least-privilege, encrypted, network-isolated compliance store.**
+
+- **Encryption at rest**: SSE-KMS with a dedicated CMK; the CMK's deletion protection follows the same env-driven flag as the bucket (SCRUM-485 AC#3). Rationale: audit records reference PII-bearing executions and are themselves sensitive.
+- **Encryption in transit**: all producer writes and auditor reads use HTTPS/TLS; no HTTP endpoint is reachable.
+- **IAM least privilege**: each producing component receives a role permitting `s3:PutObject` scoped to its own key prefix only; no producer has `s3:DeleteObject` or `s3:GetObject`. Read access is granted to a distinct auditor/tooling role. Delete is restricted to a break-glass role whose use is itself audited out-of-band. Rationale: append-only integrity is enforced by IAM, which is the compensating control for versioning being disabled.
+- **Public access**: all public-access block settings enabled; bucket policy denies non-TLS and non-authorized principals.
+- **Network isolation**: access restricted to the pipeline's VPC endpoints / trusted network paths; no internet-facing access path exists.
+- **Compliance alignment**: retention follows the single organisation logging-standard value (to be confirmed); the SCRUM-486 audit schema (actor_id, timestamp_utc, event_type, execution_id) provides the non-repudiation evidence chain required by Architecture Tenet 1.
+
+**Guardrails.** Any widening of IAM permissions on this bucket requires security review; credential material must never be written into audit records (masking rules apply to producers).
 
 ### 16.9. Performance Metrics
 <a id="laminar-sec-c.imp_aws_aws_s3_bucket_15.perf"></a>
-* **Principle**: High-Throughput Concurrent Write Optimization.
-* **Rationale**: Distributed serverless and container tasks emit audit events concurrently; the storage architecture must ingest high volumes without throttling.
-* **Guardrails**: Utilize non-sequential prefix naming conventions (e.g., partitioned by date/service) to distribute S3 request load across partitions.
+**Architectural principle: Audit ingestion must never become a pipeline bottleneck; throughput is sized for burst, latency is secondary.**
+
+- **Write throughput**: sized for the worst-case burst — N concurrent connection executions each emitting 2 execution events + 2 transfer events, plus admin operations and retries. S3's per-prefix scaling accommodates this; the key-naming scheme (lineage UUID prefix) avoids sequential-key hot partitions.
+- **Write latency**: target sub-second PUT latency; producers do not block business flow on audit writes (fire-and-put with retry), so audit latency does not appear on the export critical path.
+- **Read latency**: reconciliation and audit queries are batch/offline workloads; no interactive-latency SLA applies.
+- **Monitoring signals**: S3 5xx/throttle rates, KMS throttling, and bucket-size growth rate; an alarm on sustained write-failure rates protects the audit-completeness SLA.
+
+**Guardrails.** Producers must batch or parallelize audit writes without serializing them on the business path; any change that would place audit writes synchronously in the delivery critical path is an architectural deviation requiring review.
 
 ### 16.10. Assumptions & Follow-up Resolutions
 <a id="laminar-sec-c.imp_aws_aws_s3_bucket_15.asm"></a>
-* **Assumption**: Standard S3 availability (99.99%) and 11 nines of durability satisfy the platform's audit retention requirements.
-* **Assumption**: Lifecycle transition schedules (30 days to IA, 90 days to Glacier) align with organizational log governance standards.
+**Architectural principle: Every open question is resolved with a documented, production-grade default — never left implicit.**
+
+1. **Organisation logging-standard retention value (SCRUM-486)**: the retention value in days is not stated in the inputs and must be confirmed before sprint commitment. Assumption until confirmed: the architecture provisions `retention_in_days` as a single, explicitly configured value applied uniformly to all pipeline log groups and the audit store, sourced from the organisation logging standard once confirmed; zero groups are left unset or never-expire. Rationale: the mechanism is fixed now; only the numeric value is pending, and hardcoding a guess would violate the declarative-configuration tenet.
+2. **Versioning = false with append-only integrity**: accepted as the authoritative user decision; integrity is enforced via IAM (no producer delete/read) and unique-key writes rather than versioning. Recommendation: if a compliance review later requires object-level immutability guarantees (e.g., WORM/legal-hold), revisit Object Lock as a follow-up — it is deliberately not introduced here because it was not a user decision and changes delete semantics.
+3. **Audit record format**: JSON, one event per object, keys partitioned by execution lineage UUID and UTC date. Rationale: enables prefix-scoped reconciliation queries and avoids hot partitions.
+4. **Audit writes during S3 outage**: business operations proceed; the gap is detected by reconciliation tests and the independent alert channel. Rationale: customer delivery obligations take precedence over audit completeness, with fail-visible compensation.
+5. **Cross-region resilience**: no cross-region replication is configured for the audit bucket; audit durability relies on S3's single-region durability plus the env-driven deletion protection. Recommendation: if a formal DR requirement for audit records is later established, cross-region replication should be added as a scoped change — it is out of the current diagram scope.
 
 ## 17. Component Details: customer SFTP server
 <a id="laminar-sec-c.imp_standard_standard_sftp_11"></a>
 
+<!-- laminar:diagram-settings:imp-standard-standard_sftp-11 -->
+**Diagram settings (user decisions — authoritative)**
+
+| Setting | Value |
+| --- | --- |
+| `port` | `22` |
+| `authentication_method` | `SSH Key` |
+| `server_name` | `customer SFTP server` |
+
+<!-- /laminar:diagram-settings -->
+
+
 ### 17.1. Functional Overview
 <a id="laminar-sec-c.imp_standard_standard_sftp_11.fo"></a>
-The customer SFTP server component represents an external, legacy or enterprise-standard SFTP endpoint hosted and managed by the customer for secure file drop delivery.
-* **Principle**: Enterprise-standard file transfer boundary integration.
-* **Rationale**: Many hospitality enterprises rely on secure file transfer protocols (SFTP) for batch data integration, making direct SFTP delivery a critical capability for platform interoperability.
-* **Guardrails**: The platform connects exclusively over SSH (Port 22) using key-based authentication, transferring packaged export files and manifests into the customer's designated remote directory.
+**Integration boundary only — external, customer-owned SFTP server.** The Customer sFTP Destination (n9) is a remote SSH/SFTP endpoint operated by the customer. The platform's only interaction is: the Egress Lambda (n15) authenticates with a per-connection SSH key, enforces strict host-key verification against the pinned host key from the connection config, uploads the data file(s) and manifest control file to the configured remote path, then reads each remote file back to recompute SHA-256 against the manifest value before declaring TRANSFER_COMPLETED.
+
+**Rationale for the boundary.** sFTP is the least uniform of the destinations: it has no native object-checksum API, so the application-level SHA-256 read-back is the sole integrity mechanism here — which is precisely why the SCRUM-484 standard applies it uniformly across all destinations. The trade-off is higher per-transfer overhead (connection setup, remote read-back over SSH); accepted because sFTP is a mandated customer destination type.
+
+**Guardrails:** host-key verification failure → connection refused, zero bytes sent, no retry, immediate alert and audit entry (SCRUM-484 AC#2); any other connection failure → up to 3 retries, then alert and TRANSFER_FAILED to n13; no upload of unencrypted packages when the connection requires PGP.
 
 ### 17.2. Input Schema
 <a id="laminar-sec-c.imp_standard_standard_sftp_11.in"></a>
-* **Principle**: Stream-based file and manifest transmission.
-* **Rationale**: Files are streamed over authenticated SSH channels to remote directories, requiring atomic transfer patterns to prevent partial file ingestion by the customer.
-* **Guardrails**: Payloads consist of GZIP/PGP encrypted or raw data files and JSON manifests, fully validated and checksum-verified prior to transmission initiation.
+Per delivery, the remote path receives: the data file(s) (raw JSON/TXT, or `.gz`/`.gz.pgp` when enabled) and `manifest_<lineage_uuid>.json`; remote file names carry the lineage UUID. Transfers arrive over SSH (SFTP subsystem) from the Egress Lambda using key-based authentication; the host key is pinned from the connection config in n6. **Guardrail:** the platform writes only the package files; no auxiliary remote files beyond the manifest.
 
 ### 17.3. Output/Side Effects
 <a id="laminar-sec-c.imp_standard_standard_sftp_11.out"></a>
-* **Principle**: Remote filesystem persistence.
-* **Rationale**: Drops delivered export packages into the customer's target SFTP directory path, completing the outbound synchronization flow.
-* **Guardrails**: Side effects are restricted to file creation on the remote SFTP server; no platform feedback loops or downstream triggers depend on this external server.
+Side effects on the platform are the SSH session outcomes: successful upload + verified read-back yields TRANSFER_COMPLETED; host-key failure yields an immediate non-retryable abort (alert + audit); other failures drive the 3-retry path with final failure recorded only after the third retry (SCRUM-484 AC#2, SCRUM-482 AC#6). The server emits nothing consumed by the platform. **Guardrail:** upload to a temporary name followed by atomic rename is the guardrail against partial-file visibility (production default); if the server does not support rename, upload-then-verify-then-clean-partial is used and documented per connection.
 
 ### 17.4. Security and Compliance
 <a id="laminar-sec-c.imp_standard_standard_sftp_11.sec"></a>
-* **Principle**: Cryptographic host verification and key-based access.
-* **Rationale**: Protects against man-in-the-middle attacks and unauthorized server impersonation during file transfer.
-* **Guardrails**: Strict host-key verification is mandatory. If host-key verification fails, the connection is refused immediately, zero bytes are transmitted, no retries are attempted, an alert is raised, and a failure entry is written to the audit store.
+- **Transport & authentication**: SSH with key-based authentication; strict host-key verification against the pinned key — TOFU (trust-on-first-use) is prohibited. Rationale: SCRUM-484 AC#2; prevents man-in-the-middle.
+- **Host-key failure handling**: refuse, send zero bytes, no retry, alert, audit — a security event, not an availability event.
+- **Credentials**: private keys encrypted at rest in n6 (SCRUM-479 AC#1); decrypted only in Lambda memory; never logged; host keys stored alongside the connection config.
+- **Payload protection**: fail-closed PGP upstream; no unencrypted delivery when the connection requires encryption.
+- **Audit**: every attempt, retry, and terminal failure recorded in n13 per the SCRUM-486 schema with destination, file names, checksum, status, timestamp.
+- **Guardrail**: the platform cannot enforce server-side controls on the customer's SFTP server (cipher policy, chroot, rate limits); these are onboarding requirements, with strict host-key verification and read-back verification as platform-side compensating controls.
 
 ### 17.5. Assumptions & Follow-up Resolutions
 <a id="laminar-sec-c.imp_standard_standard_sftp_11.asm"></a>
-* **Principle**: External infrastructure boundary.
-* **Rationale**: The platform assumes the customer maintains continuous server uptime, adequate disk quota, and correct network routing for their SFTP service.
-* **Guardrails**: The customer SFTP server is outside the platform's infrastructure control; infrastructure scaling, patching, and availability management are strictly the customer's responsibility.
+- **Host-key distribution**: assumed the customer provides the host public key (or fingerprint) at connection onboarding, stored in n6 with the connection config; key rotation is a customer-initiated config update through the Export Admin API.
+- **Key-based auth only**: assumed password authentication is disabled by platform policy; only SSH key auth is supported (SCRUM-484 AC#2).
+- **Remote read-back support**: assumed the SFTP server supports remote file read (standard SFTP subsystem); if a server restricts read access, delivery to that connection cannot satisfy the integrity standard and must be flagged at onboarding.
+- **Temporary-name + rename**: assumed supported by the customer server; fallback documented per connection if not.
+- **Network reachability**: assumed the customer endpoint is reachable from the platform's private subnets (via NAT/egress allowlist); firewall rules on the customer side are an onboarding requirement.
 
 ## 18. Component Details: customer bucket
 <a id="laminar-sec-c.imp_aws_aws_s3_bucket_12"></a>
 
+<!-- laminar:diagram-settings:imp-aws-aws_s3_bucket-12 -->
+**Diagram settings (user decisions — authoritative)**
+
+| Setting | Value |
+| --- | --- |
+| `versioning` | `true` |
+| `encryption` | `AES256` |
+| `public_access_block` | `true` |
+| `lifecycle_enabled` | `false` |
+| `lifecycle_transition_days` | `30` |
+| `lifecycle_glacier_days` | `90` |
+| `bucket_name` | `customer bucket` |
+
+<!-- /laminar:diagram-settings -->
+
+
 ### 18.1. Functional Overview
 <a id="laminar-sec-c.imp_aws_aws_s3_bucket_12.fo"></a>
-- **Principle**: External Bounded Integration Endpoint.
-- **Rationale**: The **customer bucket** represents a customer-owned S3 storage destination that receives finalized, encrypted or raw export packages and JSON manifest control files via secure TLS 1.3 transport.
-- **Guardrails**: As an external context component, platform components do not manage its lifecycle, permissions, or internal infrastructure.
+**Integration boundary only — external, customer-owned AWS S3 bucket.** The Customer S3 Destination (n10) is a bucket in the customer's AWS account. The platform's only interaction is: the Egress Lambda (n15) writes the delivered data file(s) and manifest control file to the customer-configured bucket and key path over TLS 1.3, optionally requesting S3 ChecksumSHA256 as an additional transport check, then performs an application-level read-back of each object to recompute SHA-256 against the manifest value. The platform does not provision, configure, lifecycle-manage, or monitor this bucket; retention, encryption-at-rest, and access policies on the customer side are the customer's responsibility.
+
+**Rationale for the boundary.** SCRUM-485 explicitly excludes customer destinations (n9–n12) from the platform allowlist check; treating them as pure integration endpoints keeps the platform's security perimeter and Terraform inventory clean. The trade-off is that the platform cannot guarantee customer-side controls — hence the read-back verification and manifest, which give the platform an end-to-end integrity proof regardless of the destination's internal configuration.
+
+**Guardrails for the integration:** access is via credentials/role defined in the connection config in n6 (encrypted at rest); the Lambda retries up to 3 times on HTTP 4xx/5xx or unreachable bucket, then raises an alert and writes the failure to n13; no object is written when the package is not encrypted per connection config.
 
 ### 18.2. Input Schema
 <a id="laminar-sec-c.imp_aws_aws_s3_bucket_12.in"></a>
-- **Principle**: Secure Multipart Object Ingestion.
-- **Rationale**: Receives export data files and SHA-256 manifest control files pushed by the egress pipeline.
-- **Guardrails**: Objects must be transmitted securely over TLS 1.3 with application-level SHA-256 integrity verification.
+The bucket receives, per delivery: the data file(s) produced by the Transform & Encrypt DAG (raw JSON/TXT, or `.gz`/`.gz.pgp` when GZIP/PGP are enabled) and the manifest control file `manifest_<lineage_uuid>.json`, at the key path configured in the connection. Object names carry the lineage UUID. Writes arrive over TLS 1.3 from the Egress Lambda with the connection's credentials; ChecksumSHA256 is requested where the customer bucket accepts it. **Guardrail:** the platform writes only; it never reads or lists customer objects beyond the immediate read-back verification of the objects it just delivered.
 
 ### 18.3. Output/Side Effects
 <a id="laminar-sec-c.imp_aws_aws_s3_bucket_12.out"></a>
-- **Principle**: Delivery Confirmation and Receipt.
-- **Rationale**: Confirms successful object storage back to the caller, enabling completion telemetry logging.
-- **Guardrails**: Delivery failures must trigger retry logic and eventual error logging if thresholds are exceeded.
+The bucket's side effects on the platform are limited to the responses of PutObject/GetObject during delivery and verification: success enables TRANSFER_COMPLETED; HTTP 4xx/5xx or unreachability drives the 3-retry-then-alert-and-audit path (SCRUM-484 AC#1). The bucket emits no events consumed by this platform. **Guardrail:** read-back verification is mandatory before completion is declared; a write that succeeds but fails read-back verification is treated as a failed transfer.
 
 ### 18.4. Security and Compliance
 <a id="laminar-sec-c.imp_aws_aws_s3_bucket_12.sec"></a>
-- **Principle**: Transport Security and Encryption at Rest.
-- **Rationale**: Enforces TLS 1.3 for secure transport and relies on customer-managed encryption policies at rest within their destination bucket.
-- **Guardrails**: Credential and access keys for writing to external customer buckets must be stored securely encrypted in SSM Parameter Store.
+- **Transit**: TLS 1.3 enforced by the platform client; the platform cannot force server-side settings on the customer bucket, so the manifest + read-back SHA-256 verification is the compensating integrity control.
+- **Credentials**: stored encrypted in the Export Config Store (n6); never logged; least-privilege scope requested from the customer (write to the configured prefix only, plus read for verification).
+- **Audit**: every transfer attempt, retry, and final failure against this destination is recorded in n13 with destination identifier, file names, checksum, status, and timestamp (SCRUM-482 AC#7).
+- **Guardrail**: the platform treats the customer bucket as untrusted storage — integrity is proven by the platform's own recomputation, not by the destination's guarantees.
 
 ### 18.5. Assumptions & Follow-up Resolutions
 <a id="laminar-sec-c.imp_aws_aws_s3_bucket_12.asm"></a>
-- **Principle**: External Accountability Assumption.
-- **Rationale**: Assumes the customer maintains ownership, availability, and access governance of their destination bucket.
-- **Guardrails**: Platform responsibilities are strictly limited to delivery attempts, retries, and integrity validation via manifests.
+- **Access model**: assumed the customer provides either a cross-account role or an access key pair, recorded encrypted in n6; role assumption is preferred where available.
+- **Key-path convention**: assumed the connection config specifies bucket + key prefix, with file names appended (lineage-UUID-bearing names from the DAG).
+- **Customer-side retention/encryption**: outside this architecture's scope; the platform assumes the customer manages object retention and at-rest encryption on their own bucket.
+- **ChecksumSHA256 support**: assumed available on the customer bucket (standard S3 feature); if the customer's S3-compatible endpoint does not support it, the application-level read-back check alone satisfies the integrity standard.
+
+---
 
 ## 19. Architectural Assumptions and Design Decisions
 <a id="laminar-sec-g.assump"></a>
-The following assumptions and design decisions apply system-wide. Each is a production-grade default adopted where the requirements were silent; all are binding on the detailed design unless superseded by an explicit user decision.
+This section consolidates the overarching architectural assumptions, system-wide design decisions, and standard industry defaults applied across the DataOutbound data-sync platform.
 
-#### 19.1 A1. Approved AWS Stack Conformance
-**Decision:** All pipeline-owned resources are provisioned exclusively from the approved allowlist — MWAA, RDS Postgres, Lambda, EMR Serverless, S3, and ECS — via the Terraform pipeline. Golden Entity Source Store (n5) and customer destinations (n9–n12) are externally/customer-owned and are consumed, never provisioned.
-**Rationale:** SCRUM-485 mandates a closed, verifiable resource inventory per environment; restricting the stack makes the allowlist check deterministic and keeps the blast radius of teardown automation bounded.
-**Guardrails:** The resource-inventory verification check runs in every environment (dev, staging, prod) and must exit 0; any resource type outside the allowlist fails the check. Externally owned components (n5, n9–n12) are listed by name in the report but never created by the pipeline.
+### 19.1 Architectural Assumptions
+1. **Source Data Availability and Schema Stability**: The Golden Entity Source Store (`dev`, Amazon Redshift) maintains a stable relational schema for all covered entities (Unified Identity Profile, Pii Restricted Profile, Contact Method Subscription, Enriched Campaigns, Enriched Campaign Reactions, and reservation items). It is assumed that upstream data pipelines complete their write cycles at least 30 minutes prior to the scheduled execution window of the Export Orchestrator DAG (`orchestrator`).
+2. **Network and VPC Isolation**: All internal compute components—including Amazon MWAA (`orchestrator`, `child_export_dag`, `egress dag`), EMR Serverless (`emr_do`), and AWS Lambda (`egress-lambda`)—operate within private subnets of a shared Virtual Private Cloud (VPC). Outbound internet connectivity for external destinations (such as `Customer Azure Blob Destination`, `Customer GCS Destination`, and `customer SFTP server`) is routed exclusively through managed NAT Gateways with static Elastic IP addresses.
+3. **Secrets Management and Encryption Keys**: All sensitive credentials, database connection strings, and PGP public keys are externalized into AWS SSM Parameter Store as SecureString parameters encrypted with dedicated AWS KMS customer-managed keys (CMKs). Plaintext secrets are strictly prohibited from being hardcoded in configuration files, DAG definitions, or application source code.
+4. **Audit and Logging Retention Standard**: Log retention for all cloud watch log groups associated with pipeline components and the Audit & Execution Log Store (`audit_bucket`) is configured to comply with the organization's logging-standard retention period (defaulting to 365 days in production environments, adjustable per environment configuration).
+5. **Customer-Owned Infrastructure Boundaries**: External destinations (such as `customer SFTP server` and `customer bucket`) are owned and operated by external partners or customers. The platform assumes standard SSH key authentication for sFTP and TLS 1.3 / HTTPS endpoints for cloud storage destinations, with no direct control over customer-side infrastructure availability or configuration management.
 
-#### 19.2 A2. Environment-Driven Deletion Protection
-**Decision:** Every stateful resource — Export Config Store (n6), Customer Staging Buckets (n8), Audit & Execution Log Store (n13), and all encryption keys — reads its deletion-protection flag from a per-environment configuration variable (dev, staging, prod). No value is hardcoded in the Terraform module.
-**Rationale:** Lower environments must be fully tearable-down for cost and iteration speed, while staging/prod data (customer configurations, audit trail, encryption keys) must survive accidental teardown. Centralizing the flag in environment config makes the safety posture explicit and auditable per environment.
-**Guardrails:** Teardown against an environment with deletion protection enabled must exit non-zero and delete nothing; teardown of dev must leave zero stateful resources with protection enabled. A static scan of the module source must find zero hardcoded protection values.
-
-#### 19.3 A3. Organisation Logging-Standard Retention Value
-**Assumption:** The single organisation logging-standard retention value (in days) referenced by SCRUM-486 is not stated in the inputs. It is assumed to be **365 days** for all pipeline log groups and the audit log store, pending confirmation before sprint commitment.
-**Rationale:** One year is a mainstream compliance default for audit-grade operational logs; the requirement explicitly demands a single confirmed value, so a placeholder default is adopted and flagged for confirmation.
-**Guardrails:** Every log group is explicitly provisioned in configuration with `retention_in_days` set to the confirmed value; zero groups may have retention unset or never-expire. If the confirmed value differs, only the configuration variable changes — no component redesign.
-
-#### 19.4 A4. Audit Schema and Event Counting Contract
-**Decision:** Every business audit event conforms to the fixed schema: `actor_id` (authenticated Acme user for admin operations, `system:<component-name>` for automated events), `timestamp_utc` (ISO-8601, millisecond precision, Z suffix), `event_type` (enumerated: ADMIN_CREATE, ADMIN_UPDATE, ADMIN_DELETE, ADMIN_MANUAL_TRIGGER, EXECUTION_STARTED, EXECUTION_COMPLETED, TRANSFER_STARTED, TRANSFER_COMPLETED, TRANSFER_FAILED), and `execution_id` (the lineage UUID generated by the Export Orchestrator DAG). Expected event count per run = admin operations + 2 per connection execution + 2 per transfer (or start plus TRANSFER_FAILED on abort).
-**Rationale:** A fixed, countable schema makes the audit trail verifiable by acceptance test rather than by inspection, and the lineage UUID as the sole correlation key enables end-to-end traceability from orchestrator run through extraction, transform, and delivery.
-**Guardrails:** Exactly one audit record per event; every record carries all four non-null fields. The 100% event-count acceptance check is a hard gate.
-
-#### 19.5 A5. Fail-Closed Encryption Posture
-**Decision:** When PGP encryption is enabled for a connection, encryption failure of any kind (missing, corrupt, or failing key) aborts the transfer entirely: zero bytes of unencrypted data reach any destination, a TRANSFER_FAILED audit event is written within 5 seconds, and an automated alert is raised.
-**Rationale:** Data protection in transit and at rest is a non-negotiable security invariant; delivering plaintext when encryption was configured would be a silent confidentiality breach. Fail-closed is the only acceptable posture.
-**Guardrails:** The Egress Lambda must never receive unencrypted payloads when a connection enables PGP; the Transform & Encrypt DAG gates delivery behind successful encryption. Alerting and audit write are part of the failure path, not optional.
-
-#### 19.6 A6. Delivery-Only Semantics and Integrity Standard
-**Decision:** Delivery to customer destinations is delivery-only — no post-delivery reconciliation, acknowledgment processing, or destination-side lifecycle management is in scope. Integrity is verified uniformly by an application-level SHA-256 recomputed from read-back of each delivered object/file and compared to the manifest value; native transport checksums (S3 ChecksumSHA256, Azure Content-MD5, GCS CRC32C) are requested as additional checks where supported.
-**Rationale:** The requirements define delivery semantics as delivery-only; a single uniform integrity standard applied across heterogeneous destinations (S3, Azure Blob, GCS, sFTP) keeps verification logic simple and testable, while native checksums add defense-in-depth at no architectural cost.
-**Guardrails:** Every delivered file and manifest must pass read-back SHA-256 verification; failed transfers retry up to 3 times, with final failure recorded only after the third retry. sFTP host-key verification failure is non-retryable by design (refuse, zero bytes, alert).
-
-#### 19.7 A7. Staging Lifecycle and Temporary Data Hygiene
-**Decision:** Every Customer Staging Bucket carries an S3 lifecycle rule with expiration of exactly 7 days; the Acme inspection staging destination (delivery back into n8) is subject to the same rule.
-**Rationale:** Staged files are transient pipeline artifacts; automatic purge prevents unbounded data accumulation and limits exposure of customer data copies. The 7-day value is explicitly mandated by SCRUM-486.
-**Guardrails:** Objects aged 6 days must still exist; objects aged 7+ days must be purged within the S3 lifecycle evaluation window (≤48h of expiry). The rule is configured identically on every staging bucket.
-
-#### 19.8 A8. Lineage UUID as the Sole Correlation Identifier
-**Decision:** A single RFC 4122 v4 lineage UUID is generated per orchestrator run and carried in every Child Export DAG run conf, every output file name, the manifest, and every audit event for that run.
-**Rationale:** One immutable correlation key across orchestration, extraction, transformation, delivery, and audit eliminates ambiguity when tracing or re-running a specific export, and satisfies the audit schema's `execution_id` requirement.
-**Guardrails:** Exactly one UUID per run; the same value must appear in the orchestrator run conf, child run confs, manifest, and audit records. Re-runs generate a new UUID (idempotency is per-lineage, not per-connection).
-
-#### 19.9 A9. Credential Protection at Rest
-**Decision:** All credential fields in the Export Config Store (n6) are persisted only in encrypted form; no retrieve operation ever returns plaintext credentials, and raw record reads expose no plaintext values.
-**Rationale:** Export configurations contain customer destination credentials (S3 keys, sFTP keys, Azure/GCS secrets); storing them encrypted at rest with KMS-backed keys and masking on retrieval is the minimum viable protection for a multi-tenant configuration store.
-**Guardrails:** Encryption keys are stateful resources subject to environment-driven deletion protection (A2). Credential fields are masked in all API responses; the acceptance test that a stored value differs from submitted plaintext is a hard gate.
-
-#### 19.10 A10. Scheduling Tolerance and Cadence Semantics
-**Decision:** The Export Scheduler raises cadence events on the configured schedule; the Export Orchestrator selects connections whose cron time falls within ±10 minutes of the event time. Supported cadences are daily, weekly, bi-weekly, monthly, and hourly fast-batch, expressed as 5-field cron expressions validated at configuration time.
-**Rationale:** A bounded selection window absorbs clock skew and event-delivery latency without allowing duplicate or missed selections to go unnoticed; cron validation at the API boundary prevents unparseable schedules from reaching the scheduler.
-**Guardrails:** Connections outside the ±10-minute window are not selected; manual trigger and stop enter through the Export Admin API and are authorized by the export-admin role, with unauthorized attempts returning HTTP 403 and leaving run state unchanged.
+### 19.2 Key Design Decisions
+1. **Decoupled Orchestration via Amazon MWAA**: Airflow is utilized strictly for workflow orchestration (`orchestrator`, `child_export_dag`, `egress dag`), ensuring that no heavy data transformation or I/O processing occurs within worker nodes. Compute-intensive extractions are delegated entirely to EMR Serverless (`emr_do`), aligning with the approved enterprise stack and optimizing cost-to-performance ratios.
+2. **Fail-Closed Security Posture for PGP Encryption**: PGP encryption enforced during transform and egress stages is designed as a hard fail-closed gate. If a key is missing, expired, or corrupted, the pipeline immediately halts execution, generates an audit log entry in `audit_bucket`, raises an operational alert, and transmits zero bytes of unencrypted payload to any destination.
+3. **Lineage Propagation via RFC 4122 v4 UUID**: Every export execution lifecycle is bound to a single cryptographically generated lineage UUID produced at the orchestration boundary (`orchestrator`). This UUID propagates through all child tasks, Spark job parameters, staged file names, manifest files (`manifest_<lineage_uuid>.json`), and audit records, ensuring deterministic end-to-end traceability.
+4. **Automated Lifecycle Governance**: To prevent unbounded storage cost growth and mitigate data leakage risks, intermediate artifacts in Customer Staging Buckets (`staging_bucet_internal`) are automatically purged after exactly 7 days via native S3 lifecycle rules.
+5. **Environment-Driven Deletion Protection**: Stateful resources (such as `cofig_db`, `staging_bucet_internal`, and `audit_bucket`) derive their deletion-protection settings from per-environment Terraform configuration variables (`dev`, `staging`, `prod`), allowing automated lower-environment teardowns while safeguarding production data stores against accidental deletion.
 
 ## 20. Security & Compliance Assumptions
 <a id="laminar-sec-g.sec"></a>
-- **IAM Least Privilege**: All compute engines (`emr_do`, `egress-lambda`, MWAA DAGs) operate under dedicated, least-privilege IAM roles restricting access strictly to required S3 buckets, SSM parameters, and database endpoints.
-- **Transport Security & Protocols**: In strict accordance with transport standards, data in transit is encrypted using TLS 1.3 for AWS S3 destinations (`customer bucket`), secure HTTPS for Azure Blob (`Customer Azure Blob Destination`) and GCS (`Customer GCS Destination`), and SSH with strict host-key verification and key-based authentication for SFTP (`customer SFTP server`).
-- **Lambda Network Isolation**: The `egress-lambda` function operates with `vpc_enabled = False` per explicit configuration. As a non-VPC Lambda function, it invokes the Transform & Encrypt DAG (MWAA) securely via IAM-authenticated REST API calls over AWS public service endpoints using SigV4 signing, eliminating the need for ENI provisioning while maintaining encrypted HTTPS transport.
-- **Fail-Closed Encryption**: PGP encryption enforced within the transformation pipeline is strictly fail-closed. If key retrieval or encryption fails, the export run aborts immediately, raising an automated alert and transmitting zero unencrypted bytes to any destination.
+- **Architectural Principle**: Defense-in-depth and Least-Privilege Access Control.
+- **Rationale**: Hospitality datasets contain sensitive customer profiles, subscriptions, and reservation items that require strict isolation and protection against unauthorized access both at rest and in transit.
+- **Guardrails**:
+  - All database credentials, sensitive connection parameters, and PGP private keys are managed via AWS SSM Parameter Store (`SecureString`) or encrypted columns within `cofig_db` (RDS Postgres), ensuring no plaintext secrets are logged or persisted.
+  - S3 buckets (`audit_bucket`, `staging_bucet_internal`, and `customer bucket`) enforce server-side encryption (`AES256`) and block public access entirely per their authoritative blueprint and diagram configurations.
+  - Network transport utilizes secure protocols across all boundaries: TLS 1.3 for AWS S3 and HTTPS for Azure Blob (`Customer Azure Blob Destination`) and GCS (`Customer GCS Destination`), and SSH with strict host-key verification for the `customer SFTP server`.
+  - *Network Configuration Note*: Per authoritative user settings, `egress-lambda` operates with `vpc_enabled = False`. *Recommendation*: For production environments handling sensitive PII egress, configure `egress-lambda` within private VPC subnets to maintain uniform internal network isolation and leverage VPC endpoints.
+  - Infrastructure provisioning for Azure Blob and GCS destinations is managed via platform Terraform (`terraform/blob_store.tf` and `terraform/gcs.tf`), ensuring version-controlled and reproducible infrastructure state across lower and upper environments.
 
 ## 21. Operational Assumptions
 <a id="laminar-sec-g.ops"></a>
 
 ### 21.1. Operational Tenets
 <a id="laminar-sec-g.ops.tn"></a>
-1. **Orchestrate, don't compute.** MWAA DAGs (n3, n7, n14) coordinate only; heavy extraction runs on EMR Serverless (n4), delivery on the Egress Lambda (n15). No data processing inside Airflow workers.
-2. **Idempotency everywhere.** Every DAG task and Lambda invocation is idempotent per lineage UUID: re-running a task for the same execution produces the same result and never duplicates a delivered file or audit event.
-3. **Fail closed on security, fail loud on operations.** Encryption failures abort silently toward destinations but loudly toward operations (audit entry ≤5s, alert raised). Operational failures retry 3× then alert.
-4. **Configuration over code.** All connection behaviour (target type, dataset, mode, cadence, GZIP/PGP flags, split thresholds, credentials) lives in the Export Config Store (n6); no per-connection logic is hardcoded in DAGs or Lambda.
-5. **Explicit provisioning.** Every log group is explicitly defined in configuration with a set retention; no resource relies on implicit or never-expire defaults.
-6. **Least privilege per component.** Each component (Spark job, Lambda, DAGs) holds a dedicated IAM role scoped to exactly the buckets, keys, and stores it touches.
-7. **One lineage UUID, one truth.** Any question about "what happened to this export" is answered by tracing the lineage UUID across n3, n14, n4, n8, n7, n15, and n13.
+1. **Traceable Lineage & Auditing**: Every workflow execution, administrative action, and transfer attempt is bound to a single RFC 4122 v4 lineage UUID. Immutable audit records containing `actor_id`, `timestamp_utc`, `event_type`, and `execution_id` are published to the `audit_bucket` within 5 seconds of occurrence.
+2. **Fail-Closed Cryptographic Operations**: PGP encryption and compression steps executed by the data pipeline are strictly fail-closed. If a PGP key is missing, invalid, or encryption fails, the transfer aborts immediately, raising an automated operational alert and writing a `TRANSFER_FAILED` event to prevent any unencrypted data egress.
+3. **Decoupled Orchestration**: Control plane scheduling and workflow coordination (`scheduler`, `orchestrator`, `child_export_dag`, `egress dag`) are strictly decoupled from data processing (`emr_do`) and event routing (`egress-lambda`), ensuring clean operational boundaries and independent scaling.
+4. **Automated Lifecycle Hygiene**: Temporary staged files residing in internal staging buckets are automatically purged after 7 days via native S3 lifecycle rules, preventing unbounded storage accumulation.
 
 ### 21.2. Resilience & Availability Assumptions
 <a id="laminar-sec-g.ops.res"></a>
-- **R-01 — Managed-service HA defaults.** RDS Postgres (n6) runs Multi-AZ with automated backups; MWAA (n3, n7, n14) uses its managed multi-AZ workers; S3 (n8, n13) is inherently multi-AZ. No additional standby environments are provisioned.
-- **R-02 — Retry and DLQ posture.** Transfer failures retry up to 3 times (A-09); sFTP host-key failures never retry. S3 event notifications that fail to invoke the Egress Lambda (n15) are retried by the S3 notification mechanism; a DLQ is attached to the notification configuration so undeliverable events are captured rather than dropped silently.
-- **R-03 — Exactly-once trigger.** The S3 event → Egress Lambda → Transform & Encrypt DAG chain must produce exactly one DAG run per lineage UUID (SCRUM-482 AC#3); the Lambda deduplicates on lineage UUID before triggering, guarding against S3's at-least-once delivery.
-- **R-04 — Stop semantics.** A stop request accepted via the Export Admin API terminates the orchestrator run within 30 seconds and prevents any further child run from starting; in-flight child runs are cancelled, and partial transfers are treated as failed with a TRANSFER_FAILED audit event.
-- **R-05 — Recovery from partial delivery.** Because delivery is idempotent per lineage UUID and file name, a retried transfer overwrites the same destination keys rather than creating duplicates; the read-back SHA-256 check confirms final integrity.
-- **R-06 — Deletion protection in non-prod/prod.** Staging and prod stateful resources cannot be deleted by teardown automation (A-02); recovery from accidental deletion in dev is by environment re-provisioning from Terraform, not backup restore.
-- **R-07 — No cross-region DR is assumed.** The requirements do not mandate a secondary region; the architecture assumes single-region deployment with managed-service availability zones. Any DR requirement is a future scope extension.
+**Principle: Fail-safe over fail-fast — data integrity failures stop the pipeline; transient infrastructure failures are retried with bounded attempts and fully audited.**
+
+The following assumptions define the resilience posture of the export pipeline. They are architecture-level defaults chosen where requirements were silent; each is binding on the design and implementation unless superseded by an explicit user decision.
+
+**R1. Bounded, uniform retry policy.** All transient delivery and execution failures (S3 PutObject 4xx/5xx, Azure/GCS HTTPS errors, sFTP connection failures other than host-key mismatch, EMR Serverless job start failures) are retried up to **3 attempts** with exponential backoff. Host-key verification failure on sFTP is deliberately **never retried** — it indicates a security-relevant mismatch, not a transient fault; the connection is refused, zero bytes are sent, and an alert is raised. Rationale: bounded retries prevent infinite retry loops from masking systemic failures, while excluding security failures from retry avoids repeatedly probing a potentially spoofed endpoint. Guardrail: the retry count must be a single shared constant, not per-destination values; the final failure is recorded in the Audit & Execution Log Store (n13) only after the third failed attempt, never per attempt.
+
+**R2. Fail-closed encryption as a hard availability trade-off.** If PGP encryption is enabled and the key is missing, corrupt, or fails, the transfer is aborted entirely — no unencrypted bytes reach any destination, including the staging buckets. This intentionally sacrifices delivery availability for confidentiality; the trade-off is accepted because re-delivery after key remediation is always possible (staged files persist up to 7 days), whereas an unencrypted leak is not recoverable. Guardrail: encryption failure must write an audit entry within 5 seconds and raise an alert; the Egress Lambda must never receive unencrypted payloads when PGP is enabled for the connection.
+
+**R3. At-least-once staging with idempotent downstream processing.** S3 event notifications on the Customer Staging Buckets (n8) are at-least-once; the Egress Lambda and Transform & Encrypt DAG must therefore be idempotent per lineage UUID — a duplicate event must not produce a second DAG run or a second delivery. Rationale: S3 does not guarantee exactly-once notification; idempotency keyed on the lineage UUID is the only way to satisfy AC#3 of SCRUM-482 ("exactly one DAG run per lineage UUID") without an exactly-once transport. Guardrail: deduplication is by lineage UUID, not by event ID; implementers must not rely on event uniqueness.
+
+**R4. Orchestration availability.** MWAA (Export Orchestrator DAG n3, Child Export DAG n14, Transform & Encrypt DAG n7) is assumed deployed in a Multi-AZ private-subnet configuration with the standard MWAA managed resilience; no additional standby environment is provisioned. Missed scheduled runs within the ±10-minute selection window are treated as lost and re-executed only via manual trigger — the architecture does not assume automatic backfill of missed cron windows. Rationale: the ±10-minute window (SCRUM-480 AC#1) is a selection tolerance, not a catch-up mechanism; automatic backfill would risk duplicate incremental exports. Guardrail: incremental mode's watermark logic must tolerate a re-run of the same window without duplicating records (idempotent watermarking).
+
+**R5. Stateful resource durability.** The Export Config Store (RDS Postgres, n6) is assumed Multi-AZ with automated backups retained ≥30 days; the Customer Staging Buckets (n8) and Audit & Execution Log Store (n13) rely on S3's intrinsic 11-nines durability plus versioning. Deletion protection on all stateful resources (n6, n8, n13, encryption keys) is driven exclusively by per-environment configuration variables (SCRUM-485) — enabled in staging/prod, disabled in dev — so lower environments remain fully tear-downable. Rationale: durability requirements differ by environment; hardcoding protection would violate the teardown acceptance criteria. Guardrail: no deletion-protection value may be hardcoded in the Terraform module.
+
+**R6. Compute elasticity over reserved capacity.** EMR Serverless (Export Extract Spark Job, n4) and Lambda (Egress Lambda, n15) are assumed to scale dynamically within AWS default service quotas; no pre-provisioned standby compute exists. A transient EMR job failure is retried by the Child Export DAG's task-level retry (3 attempts, consistent with R1); a Lambda invocation failure on the S3 event is retried by the event source's built-in retry policy, with a DLQ on the notification configuration to capture events that exhaust retries. Rationale: serverless elasticity removes the need for capacity-based resilience; the DLQ prevents silent event loss. Guardrail: DLQ contents must be monitored and re-driven manually; the architecture does not assume automated DLQ replay.
+
+**R7. Destination-side failure containment.** Customer destinations (n9–n12) are external and outside our control; unavailability of one destination must not block delivery to other destinations in the same run. Each connection's transfer is isolated — a failure on one destination results in TRANSFER_FAILED for that connection only, with the orchestrator run completing for the others. Rationale: per-connection isolation (one Child Export DAG per connection) already provides the fault boundary; no cross-destination coupling is introduced. Guardrail: partial-run success must be reflected accurately in audit events (per-connection EXECUTION_COMPLETED/TRANSFER_FAILED), never as a single run-level status.
+
+**R8. Recovery time expectations.** No formal RTO/RPO was specified. Assumed defaults: RPO of 0 for config data (Multi-AZ synchronous replication on n6), RPO of 0 for staged files within the 7-day retention window (S3 durability), and an operational expectation that a failed run is re-triggered manually within one business day. These are assumptions to be confirmed with operations before sprint commitment; they are not SLA commitments of this architecture.
 
 ### 21.3. Data Governance Assumptions
 <a id="laminar-sec-g.ops.data"></a>
-- **D-01 — Encrypted at rest and in transit, everywhere.** S3 buckets (n8, n13) use SSE-KMS with CMKs; RDS (n6) storage is KMS-encrypted; all inter-service and egress traffic uses the transports in A-14. Encryption keys are stateful resources covered by deletion-protection configuration (A-02).
-- **D-02 — Credentials never in plaintext.** Credential fields in n6 are encrypted at rest, masked on retrieve, and never logged. PGP private keys are stored encrypted and never written to logs or audit events.
-- **D-03 — PII handling.** Exported entities include Pii Restricted Profile and Unified Identity Profile; the pipeline treats all staged and in-flight data as sensitive. PGP encryption (when enabled) is the at-rest protection for data leaving Acme's boundary; when a connection disables PGP, the customer destination is deemed an approved raw-delivery endpoint by that connection's configuration — this is an explicit business decision recorded per connection, not a default.
-- **D-04 — Audit immutability.** Audit events in n13 are append-only; no component updates or deletes audit records. The audit schema (A-07) is the single contract for all writers.
-- **D-05 — Temporary data minimisation.** Staged files in n8 expire after exactly 7 days (A-13); no other intermediate copies persist beyond the run. The pipeline does not retain a second copy of delivered data.
-- **D-06 — Data classification of destinations.** Customer destinations (n9–n12) are outside Acme's governance boundary once delivery is verified; the manifest control file (record counts, sizes, SHA-256 checksums) is the handover evidence and is delivered alongside every package.
-- **D-07 — Source data ownership.** Golden Entity Source Store (n5) is externally owned; the Spark job (n4) holds read-only access scoped to the six exported entity types (Unified Identity Profile, Pii Restricted Profile, Contact Method Subscription, Enriched Campaigns, Enriched Campaign Reactions, reservation items including Room stay, Restaurant reservation, Tee time, Spa treatment).
+- **Architectural Principle**: Schema Consistency and Non-Destructive Ingestion.
+- **Rationale**: Golden Entity datasets must maintain structural integrity, schema adherence, and reliable incremental state tracking across extraction cycles.
+- **Guardrails**:
+  - Incremental extractions rely on watermark tracking tables stored in `cofig_db`, ensuring deterministic backfill capabilities and safe re-run semantics without duplicate record emission.
+  - PII masking rules are enforced declaratively via JSON recipes during EMR Serverless Spark processing (`emr_do`) prior to writing staged files.
+  - Manifest control files (`manifest_<lineage_uuid>.json`) accompany every export package, providing exact record counts, total file sizes, and SHA-256 checksums to verify payload integrity upon delivery.
 
 ### 21.4. Performance and SLA Assumptions
 <a id="laminar-sec-g.ops.perf"></a>
-- **P-01 — Scheduling precision.** Scheduled runs start within the ±10-minute selection window (A-10); a manual trigger results in a running orchestrator run within 30 seconds of HTTP 202, and a stop takes effect within 30 seconds (SCRUM-480 AC#5–AC#6).
-- **P-02 — Audit latency.** Audit events are written within 5 seconds of the triggering action (SCRUM-479 AC#4–AC#5, SCRUM-486); encryption-failure alerts within 5 seconds of the failure, and abort-related error alerts within 5 minutes of the abort (SCRUM-482 AC#5).
-- **P-03 — Throughput envelope.** The Transform & Encrypt DAG handles datasets of at least 1.2M records within the 2,048 MB worker RSS ceiling via configurable split thresholds (A-12); larger datasets scale by splitting, not by memory growth. EMR Serverless (n4) uses dynamic worker allocation between configured minimum and maximum capacity rather than static sizing.
-- **P-04 — Delivery latency.** No explicit end-to-end SLA is stated in the requirements; the architecture assumes a batch-export posture where a run (extract → stage → transform → deliver) completes within hours, not minutes. Hourly fast-batch cadences are sized on the same envelope; if a stricter SLA emerges, it must be confirmed before commitment.
-- **P-05 — Retry timing.** The 3 transfer retries use exponential backoff (assumed default: e.g., 1/2/4-minute spacing) so transient destination outages are absorbed without breaching the audit-latency expectations; the final failure is recorded only after the third attempt (A-09).
-- **P-06 — Staging lifecycle evaluation.** S3 lifecycle expiry is evaluated by AWS within its standard cycle (≤48h past the 7-day mark); the architecture accepts this platform behaviour rather than implementing an active deletion job (SCRUM-486 AC#5).
-- **P-07 — Concurrency.** Multiple connections scheduled in the same window run as parallel Child Export DAG runs (n14); MWAA and EMR Serverless capacity limits are the concurrency ceiling. No per-tenant rate limiting is required — the API serves authorised internal administrators only, with standard input validation at the boundary.
+- **Architectural Principle**: Resource Bounding and Predictable Throughput.
+- **Rationale**: High-volume batch synchronizations (up to 1,000,000 records and 1 GB file sizes per export) must complete within the 24-hour delivery SLA without exhausting worker memory or storage bandwidth.
+- **Guardrails**:
+  - Worker memory utilization during transformation and splitting operations is bounded below 2,048 MB by enforcing configurable record-splitting thresholds (e.g., 500,000 records per file).
+  - S3 lifecycle expiration rules evaluate staged objects within a standard processing window (up to 48 hours following the exact 7-day retention threshold).
+  - Concurrency limits (`max_active_runs = 1` for MWAA DAGs) and worker allocation caps on EMR Serverless prevent resource contention and cluster over-allocation during peak execution hours.
 
 ## 22. Amendment Log
 <a id="laminar-sec-g.amend"></a>
 _No amendments._
 
-## 23. Closing & Disclaimer
+
+## 23. Traceability
+<a id="laminar-sec-g.trace"></a>
+
+| Section | Story | AC# |
+| --- | --- | --- |
+| 10. Component Details: cofig_db | SCRUM-479 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6, AC#7 |
+| 16. Component Details: audit_bucket | SCRUM-479 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6, AC#7 |
+| 5. Component Details: scheduler | SCRUM-480 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6, AC#7 |
+| 6. Component Details: orchestrator | SCRUM-480 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6, AC#7 |
+| 7. Component Details: child_export_dag | SCRUM-480 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6, AC#7 |
+| 10. Component Details: cofig_db | SCRUM-480 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6, AC#7 |
+| 16. Component Details: audit_bucket | SCRUM-480 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6, AC#7 |
+| 5. Component Details: scheduler | SCRUM-481 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6, AC#7 |
+| 6. Component Details: orchestrator | SCRUM-481 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6, AC#7 |
+| 7. Component Details: child_export_dag | SCRUM-481 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6, AC#7 |
+| 8. Component Details: emr_do | SCRUM-481 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6, AC#7 |
+| 10. Component Details: cofig_db | SCRUM-481 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6, AC#7 |
+| 11. Component Details: staging_bucet_internal | SCRUM-481 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6, AC#7 |
+| 16. Component Details: audit_bucket | SCRUM-481 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6, AC#7 |
+| 11. Component Details: staging_bucet_internal | SCRUM-482 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6, AC#7 |
+| 12. Component Details: egress-lambda | SCRUM-482 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6, AC#7 |
+| 13. Component Details: egress dag | SCRUM-482 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6, AC#7 |
+| 14. Component Details: Customer Azure Blob Destination | SCRUM-482 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6, AC#7 |
+| 15. Component Details: Customer GCS Destination | SCRUM-482 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6, AC#7 |
+| 16. Component Details: audit_bucket | SCRUM-482 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6, AC#7 |
+| 10. Component Details: cofig_db | SCRUM-483 | AC#1, AC#2, AC#3, AC#4 |
+| 11. Component Details: staging_bucet_internal | SCRUM-483 | AC#1, AC#2, AC#3, AC#4 |
+| 12. Component Details: egress-lambda | SCRUM-483 | AC#1, AC#2, AC#3, AC#4 |
+| 13. Component Details: egress dag | SCRUM-483 | AC#1, AC#2, AC#3, AC#4 |
+| 16. Component Details: audit_bucket | SCRUM-483 | AC#1, AC#2, AC#3, AC#4 |
+| 11. Component Details: staging_bucet_internal | SCRUM-484 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6 |
+| 12. Component Details: egress-lambda | SCRUM-484 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6 |
+| 13. Component Details: egress dag | SCRUM-484 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6 |
+| 14. Component Details: Customer Azure Blob Destination | SCRUM-484 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6 |
+| 15. Component Details: Customer GCS Destination | SCRUM-484 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6 |
+| 16. Component Details: audit_bucket | SCRUM-484 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6 |
+| 5. Component Details: scheduler | SCRUM-485 | AC#1, AC#2, AC#3, AC#4, AC#5 |
+| 6. Component Details: orchestrator | SCRUM-485 | AC#1, AC#2, AC#3, AC#4, AC#5 |
+| 7. Component Details: child_export_dag | SCRUM-485 | AC#1, AC#2, AC#3, AC#4, AC#5 |
+| 8. Component Details: emr_do | SCRUM-485 | AC#1, AC#2, AC#3, AC#4, AC#5 |
+| 10. Component Details: cofig_db | SCRUM-485 | AC#1, AC#2, AC#3, AC#4, AC#5 |
+| 11. Component Details: staging_bucet_internal | SCRUM-485 | AC#1, AC#2, AC#3, AC#4, AC#5 |
+| 12. Component Details: egress-lambda | SCRUM-485 | AC#1, AC#2, AC#3, AC#4, AC#5 |
+| 13. Component Details: egress dag | SCRUM-485 | AC#1, AC#2, AC#3, AC#4, AC#5 |
+| 16. Component Details: audit_bucket | SCRUM-485 | AC#1, AC#2, AC#3, AC#4, AC#5 |
+| 5. Component Details: scheduler | SCRUM-486 | AC#1, AC#2, AC#3, AC#4, AC#5 |
+| 6. Component Details: orchestrator | SCRUM-486 | AC#1, AC#2, AC#3, AC#4, AC#5 |
+| 7. Component Details: child_export_dag | SCRUM-486 | AC#1, AC#2, AC#3, AC#4, AC#5 |
+| 8. Component Details: emr_do | SCRUM-486 | AC#1, AC#2, AC#3, AC#4, AC#5 |
+| 11. Component Details: staging_bucet_internal | SCRUM-486 | AC#1, AC#2, AC#3, AC#4, AC#5 |
+| 12. Component Details: egress-lambda | SCRUM-486 | AC#1, AC#2, AC#3, AC#4, AC#5 |
+| 13. Component Details: egress dag | SCRUM-486 | AC#1, AC#2, AC#3, AC#4, AC#5 |
+| 14. Component Details: Customer Azure Blob Destination | SCRUM-486 | AC#1, AC#2, AC#3, AC#4, AC#5 |
+| 15. Component Details: Customer GCS Destination | SCRUM-486 | AC#1, AC#2, AC#3, AC#4, AC#5 |
+| 16. Component Details: audit_bucket | SCRUM-486 | AC#1, AC#2, AC#3, AC#4, AC#5 |
+
+## 24. Closing & Disclaimer
 <a id="laminar-sec-g.close"></a>
 This document was generated by an AI system from the architecture graph, its stories and the project blueprint. It is a starting point for engineering review, not a substitute for it: verify every contract, sizing figure, policy and assumption before relying on it. Discretion advised.
 
@@ -1388,4 +1707,4 @@ This document was generated by an AI system from the architecture graph, its sto
 <a id="laminar-sec-g.summary"></a>
 - Headings: 23
 - Sub-headings: 144
-- Sub-sub-headings: 18
+- Sub-sub-headings: 2

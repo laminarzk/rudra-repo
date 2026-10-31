@@ -7,87 +7,96 @@
 
 ## Table of Contents
 - **1.** HLD Executive Summary & Scope
-    - **1.1** Purpose
-    - **1.2** Scope — Components in this Design
-    - **1.3** End-to-End Data Flow
-    - **1.4** Key Architectural Decisions Honoured
-    - **1.5** Out of Scope
+    - **1.1** Purpose of This Document
+    - **1.2** Scope — Components Designed in This HLD
+    - **1.3** Out of Scope — External / Third-Party Boundary Components
+    - **1.4** End-to-End Flow in One Pass
+    - **1.5** Design Principles Applied Throughout
+    - **1.6** Code Parity with the Project Blueprint
+    - **1.7** How to Read This Document
 - **2.** System-wide Design Principles
-    - **2.1** Principle 1 — Contract-First, Diagram-Bounded Design
-    - **2.2** Principle 2 — Shared Foundation, Never Re-declared
-    - **2.3** Principle 3 — One Canonical `AuditPublisher` and One Canonical `DbClient` Interface
-    - **2.4** Principle 4 — Idempotency by Construction
-    - **2.5** Principle 5 — Fail-Closed Security and Least Privilege
-    - **2.6** Principle 6 — Resilience: Retries, DLQs and Dead-Letter Paths
-    - **2.7** Principle 7 — Observability: One Audit Schema, One Event Shape
-    - **2.8** Principle 8 — Configuration and Environment Discipline
-    - **2.9** Principle 9 — Bounded Depth, Consistency over Volume
+    - **2.1** Contract-First and Schema-Driven Design
+    - **2.2** OOP Design Parity and Shared Foundation
+    - **2.3** Fail-Closed Security & Least-Privilege IAM
+    - **2.4** Idempotency and Deterministic Lineage Propagation
+    - **2.5** Standardized Error Handling and Retry Policies
 - **3.** Component Design: do-admin-api
   - **3.1.** Component Contract (Bi-Directional Inputs & Outputs)
-    - **3.1.1** Inbound (exposed) interface — HTTP endpoints
-    - **3.1.2** Outbound (consumed) interfaces
-    - **3.1.3** Error envelope
-    - **3.1.4** Configuration the design actually sets
+    - **3.1.1** Diagram settings (user decisions — authoritative)
+    - **3.1.2** Role and bounded context
+    - **3.1.3** Inbound contract (what the API consumes)
+    - **3.1.4** Outbound contract (what the API produces)
+    - **3.1.5** Frozen edge contracts (binding)
+    - **3.1.6** Configuration the design actually sets
   - **3.2.** Class and Interface Definitions
   - **3.3.** Implementation Code Skeleton (Stubs & Handlers)
+    - **3.3.1** Endpoint inventory (binding)
+    - **3.3.2** Routes
+    - **3.3.3** Application factory
+    - **3.3.4** Service implementation (illustrative bodies)
   - **3.4.** Cross-Component Interaction Sequence (Local Mermaid/ASCII Flow)
+    - **3.4.1** Flow A — Create / update / delete an export configuration
+    - **3.4.2** Flow B — Manual trigger of an orchestrator run
+    - **3.4.3** Flow C — Stop a running orchestrator run
+    - **3.4.4** Flow D — Audit emission (cross-cutting)
   - **3.5.** Schema Definitions (DB Tables / API JSON / Telemetry CloudEvents)
-    - **3.5.1** API request/response JSON
-    - **3.5.2** Telemetry CloudEvents
+    - **3.5.1** Canonical DDL — `export_configurations` (owned by `cofig_db`, declared once here)
+    - **3.5.2** API request / response schemas (OpenAPI 3.0)
+    - **3.5.3** Telemetry — CloudEvents-shaped audit record
+    - **3.5.4** S3 object key layout for audit records
   - **3.6.** Local Design Assumptions
 - **4.** Component Design: scheduler
   - **4.1.** Component Contract (Bi-Directional Inputs & Outputs)
+    - **4.1.1** Outbound contract (scheduler → orchestrator)
+    - **4.1.2** Inbound contract (configuration → scheduler)
+    - **4.1.3** Configuration actually set (user decisions, authoritative)
   - **4.2.** Class and Interface Definitions
   - **4.3.** Implementation Code Skeleton (Stubs & Handlers)
   - **4.4.** Cross-Component Interaction Sequence (Local Mermaid/ASCII Flow)
   - **4.5.** Schema Definitions (DB Tables / API JSON / Telemetry CloudEvents)
+    - **4.5.1** Database tables
+    - **4.5.2** Scheduler event schema (CloudEvents 1.0 — the single envelope)
+    - **4.5.3** Worked example
+    - **4.5.4** EventBridge transport wrapper (for reference — not the contract)
+    - **4.5.5** Telemetry record written to audit_bucket
   - **4.6.** Local Design Assumptions
 - **5.** Component Design: orchestrator
   - **5.1.** Component Contract (Bi-Directional Inputs & Outputs)
-    - **5.1.1** Inbound Contracts (what the orchestrator consumes)
-    - **5.1.2** Outbound Contracts (what the orchestrator produces)
-    - **5.1.3** Configuration the design actually sets
+    - **5.1.1** Inbound Contracts
+    - **5.1.2** Outbound Contracts
+    - **5.1.3** Configuration the Design Actually Sets
   - **5.2.** Class and Interface Definitions
   - **5.3.** Implementation Code Skeleton (Stubs & Handlers)
   - **5.4.** Cross-Component Interaction Sequence (Local Mermaid/ASCII Flow)
   - **5.5.** Schema Definitions (DB Tables / API JSON / Telemetry CloudEvents)
-    - **5.5.1** Child DAG run payload (contract O2)
-    - **5.5.2** Telemetry CloudEvents emitted by the orchestrator
-    - **5.5.3** cofig_db tables the orchestrator reads and writes
+    - **5.5.1** Inbound — scheduler → orchestrator (CloudEvents 1.0)
+    - **5.5.2** Inbound — do-admin-api → orchestrator (manual trigger)
+    - **5.5.3** Outbound — orchestrator → child_export_dag (DagRun conf)
+    - **5.5.4** Outbound — orchestrator → audit_bucket (CloudEvents-shaped audit record)
+    - **5.5.5** Read — orchestrator → cofig_db
   - **5.6.** Local Design Assumptions
 - **6.** Component Design: child_export_dag
   - **6.1.** Component Contract (Bi-Directional Inputs & Outputs)
-    - **6.1.1** Configuration the design sets (everything else is Airflow default)
-    - **6.1.2** Inbound contract — orchestrator → child_export_dag
-    - **6.1.3** Outbound contract — child_export_dag → cofig_db (read)
-    - **6.1.4** Outbound contract — child_export_dag → emr_do (async job invocation)
-    - **6.1.5** Audit contract (SCRUM-486)
+    - **6.1.1** Inbound contracts
+    - **6.1.2** Outbound contracts
   - **6.2.** Class and Interface Definitions
   - **6.3.** Implementation Code Skeleton (Stubs & Handlers)
   - **6.4.** Cross-Component Interaction Sequence (Local Mermaid/ASCII Flow)
   - **6.5.** Schema Definitions (DB Tables / API JSON / Telemetry CloudEvents)
-    - **6.5.1** DagRun conf — orchestrator → child_export_dag
-    - **6.5.2** EMR Serverless StartJobRun request — child_export_dag → emr_do
-    - **6.5.3** cofig_db rows consumed (read-only; DDL is owned by the cofig_db component)
-    - **6.5.4** Telemetry — CloudEvents 1.0
+    - **6.5.1** Run configuration (inbound, I-1)
+    - **6.5.2** EMR Serverless submission (outbound, O-1)
+    - **6.5.3** Audit CloudEvents (outbound, O-3)
+    - **6.5.4** Database tables
   - **6.6.** Local Design Assumptions
 - **7.** Component Design: emr_do
   - **7.1.** Component Contract (Bi-Directional Inputs & Outputs)
-    - **7.1.1** Inbound contract — `child_export_dag` → `emr_do`
-    - **7.1.2** Outbound contracts
-    - **7.1.3** Configuration this design actually sets
   - **7.2.** Class and Interface Definitions
   - **7.3.** Implementation Code Skeleton (Stubs & Handlers)
   - **7.4.** Cross-Component Interaction Sequence (Local Mermaid/ASCII Flow)
   - **7.5.** Schema Definitions (DB Tables / API JSON / Telemetry CloudEvents)
-    - **7.5.1** Recipe JSON (`s3://…/config/recipes/<dataset>.json`)
-    - **7.5.2** Staging manifest (`s3://staging_bucet_internal/<config_id>/<execution_id>/manifest_<execution_id>.json`)
-    - **7.5.3** Telemetry CloudEvents emitted by `emr_do`
-    - **7.5.4** Audit execution log record (`s3://audit_bucket/emr_do/<run_date>/<job_run_id>.json`)
   - **7.6.** Local Design Assumptions
 - **8.** Component Design: dev
   - **8.1.** Component Contract (Bi-Directional Inputs & Outputs)
-    - **8.1.1** Inbound Contracts
   - **8.2.** Class and Interface Definitions
   - **8.3.** Implementation Code Skeleton (Stubs & Handlers)
   - **8.4.** Cross-Component Interaction Sequence (Local Mermaid/ASCII Flow)
@@ -95,51 +104,48 @@
   - **8.6.** Local Design Assumptions
 - **9.** Component Design: cofig_db
   - **9.1.** Component Contract (Bi-Directional Inputs & Outputs)
-    - **9.1.1** Inbound Contracts & Triggers
-    - **9.1.2** Outbound Contracts & Behaviors
+    - **9.1.1** Inbound contracts (who writes to / reads from `cofig_db`)
+    - **9.1.2** Outbound contracts (what `cofig_db` produces)
+    - **9.1.3** Configuration the design actually sets
   - **9.2.** Class and Interface Definitions
   - **9.3.** Implementation Code Skeleton (Stubs & Handlers)
   - **9.4.** Cross-Component Interaction Sequence (Local Mermaid/ASCII Flow)
   - **9.5.** Schema Definitions (DB Tables / API JSON / Telemetry CloudEvents)
+    - **9.5.1** Canonical DDL — owned by this design
+    - **9.5.2** Telemetry — CloudEvents emitted by callers, not by the store
   - **9.6.** Local Design Assumptions
 - **10.** Component Design: staging_bucet_internal
   - **10.1.** Component Contract (Bi-Directional Inputs & Outputs)
-    - **10.1.1** Configuration the design actually sets
-    - **10.1.2** Bi-directional contract
+    - **10.1.1** Diagram settings (user decisions — authoritative)
+    - **10.1.2** Role
+    - **10.1.3** Inbound contract (what writes into this component)
+    - **10.1.4** Outbound contract (what this component emits)
+    - **10.1.5** Configuration actually set (with rationale)
+    - **10.1.6** Failure behaviour
   - **10.2.** Class and Interface Definitions
   - **10.3.** Implementation Code Skeleton (Stubs & Handlers)
   - **10.4.** Cross-Component Interaction Sequence (Local Mermaid/ASCII Flow)
   - **10.5.** Schema Definitions (DB Tables / API JSON / Telemetry CloudEvents)
-    - **10.5.1** Object key layout
-    - **10.5.2** Manifest control file (`manifest_<lineage_uuid>.json`)
-    - **10.5.3** S3 event notification payload (delivered to **egress-lambda**)
-    - **10.5.4** Telemetry CloudEvents emitted at this boundary
+    - **10.5.1** S3 object key layout (the bucket's only structural contract)
+    - **10.5.2** S3 `ObjectCreated` notification payload (bucket → `egress-lambda`)
+    - **10.5.3** Telemetry CloudEvents emitted by writers/readers of this bucket
+    - **10.5.4** No DDL
   - **10.6.** Local Design Assumptions
 - **11.** Component Design: egress-lambda
   - **11.1.** Component Contract (Bi-Directional Inputs & Outputs)
-    - **11.1.1** Inbound Interfaces & Triggers
-    - **11.1.2** Outbound Interfaces & Destinations
-    - **11.1.3** Resilience & Error Handling
   - **11.2.** Class and Interface Definitions
   - **11.3.** Implementation Code Skeleton (Stubs & Handlers)
   - **11.4.** Cross-Component Interaction Sequence (Local Mermaid/ASCII Flow)
   - **11.5.** Schema Definitions (DB Tables / API JSON / Telemetry CloudEvents)
-    - **11.5.1** S3 Event Notification Input JSON
-    - **11.5.2** MWAA DAG Trigger Payload (`dag_conf`) JSON
-    - **11.5.3** CloudEvents Telemetry Record (`com.laminar.dataoutbound.egress.triggered`)
+    - **11.5.1** Lambda Trigger Request Schema (`egress dag` MWAA Trigger Payload)
+    - **11.5.2** Telemetry Event Schema (`EXECUTION_STARTED` CloudEvent)
   - **11.6.** Local Design Assumptions
 - **12.** Component Design: egress dag
   - **12.1.** Component Contract (Bi-Directional Inputs & Outputs)
-    - **12.1.1** Inbound Contract (Trigger & Payload)
-    - **12.1.2** Outbound Contracts & Integrations
-    - **12.1.3** Resilience, Retries & Error Handling
   - **12.2.** Class and Interface Definitions
   - **12.3.** Implementation Code Skeleton (Stubs & Handlers)
   - **12.4.** Cross-Component Interaction Sequence (Local Mermaid/ASCII Flow)
   - **12.5.** Schema Definitions (DB Tables / API JSON / Telemetry CloudEvents)
-    - **12.5.1** Inbound DAG Trigger Payload (`dag_conf`)
-    - **12.5.2** Manifest Control File Schema (`manifest_<execution_id>.json`)
-    - **12.5.3** CloudEvent Telemetry Schema (`TRANSFER_COMPLETED`)
   - **12.6.** Local Design Assumptions
 - **13.** Component Design: Customer Azure Blob Destination
   - **13.1.** Component Contract (Bi-Directional Inputs & Outputs)
@@ -162,10 +168,17 @@
   - **14.6.** Local Design Assumptions
 - **15.** Component Design: audit_bucket
   - **15.1.** Component Contract (Bi-Directional Inputs & Outputs)
+    - **15.1.1** Inbound contract (writers → audit_bucket)
+    - **15.1.2** Outbound contract (audit_bucket → consumers)
+    - **15.1.3** Configuration actually set (user decisions, authoritative)
   - **15.2.** Class and Interface Definitions
   - **15.3.** Implementation Code Skeleton (Stubs & Handlers)
   - **15.4.** Cross-Component Interaction Sequence (Local Mermaid/ASCII Flow)
   - **15.5.** Schema Definitions (DB Tables / API JSON / Telemetry CloudEvents)
+    - **15.5.1** Database tables
+    - **15.5.2** Audit record schema (CloudEvents 1.0 envelope — the single contract for all writers)
+    - **15.5.3** Worked examples — one per writer family
+    - **15.5.4** Expected event count per run (verification contract)
   - **15.6.** Local Design Assumptions
 - **16.** Component Design: customer SFTP server
   - **16.1.** Component Contract (Bi-Directional Inputs & Outputs)
@@ -177,6 +190,16 @@
   - **17.1.** Component Contract (Bi-Directional Inputs & Outputs)
   - **17.2.** Local Design Assumptions
 - **18.** Global Design Assumptions and Constraints
+    - **18.1** A1. Approved AWS Stack Conformance
+    - **18.2** A2. Environment-Driven Deletion Protection
+    - **18.3** A3. Organisation Logging-Standard Retention Value
+    - **18.4** A4. Audit Schema and Event Counting Contract
+    - **18.5** A5. Fail-Closed Encryption Posture
+    - **18.6** A6. Delivery-Only Semantics and Integrity Standard
+    - **18.7** A7. Staging Lifecycle and Temporary Data Hygiene
+    - **18.8** A8. Lineage UUID as the Sole Correlation Identifier
+    - **18.9** A9. Credential Protection at Rest
+    - **18.10** A10. Scheduling Tolerance and Cadence Semantics
 - **19.** Amendment Log
 - **20.** Closing & Disclaimer
 
@@ -184,224 +207,165 @@
 
 ## 1. HLD Executive Summary & Scope
 <a id="laminar-sec-g.exec"></a>
-#### 1.1 Purpose
+### 1.1 Purpose of This Document
 
-The **DataOutbound Product** is a scheduled batch outbound data-sync capability within the hospitality data platform domain. It extracts Golden Entity datasets (Unified Identity Profile, Pii Restricted Profile, Contact Method Subscription, Enriched Campaigns, Enriched Campaign Reactions, and reservation items — Room stay, Restaurant reservation, Tee time, Spa treatment) from a Redshift source store, transforms them into JSON/TXT export packages, optionally GZIP-compresses and PGP-encrypts them, and delivers them to customer-owned destinations (S3, Azure Blob, GCS, sFTP) under a 24-hour delivery SLA, with a maximum file size of 1 GB and up to 100,000 records per package.
+This High-Level Design (HLD) is the contract-first, implementable design for the **DataOutbound Product** — a scheduled batch outbound data-sync capability that extracts hospitality Golden Entity datasets from the Golden Entity Source Store, stages and transforms them into customer-ready export packages, and delivers them to heterogeneous customer destinations with end-to-end integrity verification, fail-closed encryption and complete auditability.
 
-This document is the **High-Level Design (HLD)** for exactly the components the user placed in the architecture diagram. It is contract-first: every interaction between the diagram's components is specified as a typed interface, a payload schema, and a failure/idempotency contract before any component internals are described.
+It is the design-level companion to the architecture document: the architecture document states *what* the system is and *why*; this HLD states *how each component is built and how each component talks to the next* — typed interfaces, payload schemas, retry/idempotency/failure behaviour, and the DDL for the tables the design itself owns. Every decision recorded on the architecture canvas (component properties, connections, protocols, event formats, schedules, encryption and lifecycle settings) is treated as **authoritative and binding**; where the inputs were silent, a mainstream production-grade default is adopted and stated once as an assumption.
 
-#### 1.2 Scope — Components in this Design
+### 1.2 Scope — Components Designed in This HLD
 
-The design covers the following 13 components, referred to throughout by their user-given names:
+The design covers exactly the components placed on the architecture diagram, one chapter per component, each following the fixed layout `Component Contract → Class and Interface Definitions → Implementation Code Skeleton → Cross-Component Interaction Sequence → Schema Definitions → Local Design Assumptions`:
 
-| # | Component | Type | Role in the flow |
-|---|---|---|---|
-| 1 | **do-admin-api** | REST API (JWT) | Administrative CRUD and manual trigger/stop of export configurations |
-| 2 | **scheduler** | AWS EventBridge | Raises cadence events that start scheduled export runs |
-| 3 | **orchestrator** | MWAA DAG (`@daily`) | Selects in-window connections, generates the lineage UUID, fans out child runs |
-| 4 | **child_export_dag** | MWAA DAG (`@daily`) | Reads watermarks/recipes and submits one EMR Serverless Spark job per connection |
-| 5 | **emr_do** | EMR Serverless (Spark, `emr-7.0.0`) | Extracts Golden Entity datasets and writes staged files |
-| 6 | **dev** | Redshift (`golden_data_source`) | Existing externally-owned Golden Entity source store |
-| 7 | **cofig_db** | RDS Postgres 15.4 | Export configurations, watermarks, execution logs |
-| 8 | **staging_bucet_internal** | S3 bucket | Staged Parquet/JSON datasets; 7-day lifecycle purge |
-| 9 | **egress-lambda** | AWS Lambda (python3.11) | S3-event-driven trigger of the egress workflow |
-| 10 | **egress dag** | MWAA DAG (`@daily`) | Transform, encrypt and deliver packages to customer destinations |
-| 11 | **Customer Azure Blob Destination** | Azure Blob Storage | Customer-owned delivery endpoint |
-| 12 | **Customer GCS Destination** | Google Cloud Storage | Customer-owned delivery endpoint |
-| 13 | **audit_bucket** | S3 bucket | Audit execution logs and telemetry records |
+| Layer | Component | Role in the pipeline |
+|---|---|---|
+| Control plane | **do-admin-api** | REST/JWT administrative entrypoint: CRUD of export configurations, manual trigger and stop, audit emission |
+| Control plane | **scheduler** | EventBridge scheduled rule raising cadence events to the orchestrator |
+| Control plane | **orchestrator** | MWAA DAG: selects connections within ±10 minutes, generates the lineage UUID, fans out child runs |
+| Control plane | **cofig_db** | RDS Postgres configuration store: export configurations, watermarks, execution state |
+| Processing | **child_export_dag** | MWAA DAG: per-connection orchestration, submits the Spark job, carries the lineage UUID |
+| Processing | **emr_do** | EMR Serverless Spark job: extracts Golden Entities and writes staged files |
+| Processing | **dev** | Redshift Golden Entity Source Store (read-only source of truth) |
+| Storage & egress | **staging_bucet_internal** | Transient staging buffer; S3 `ObjectCreated` notification triggers the egress path |
+| Storage & egress | **egress-lambda** | S3-event consumer that triggers exactly one Transform & Encrypt DAG run per staged file |
+| Storage & egress | **egress dag** | MWAA DAG: split, optional GZIP, fail-closed PGP, manifest generation, multi-destination delivery |
+| Storage & egress | **audit_bucket** | Immutable audit and execution log store with lifecycle tiering |
+| External sinks | **Customer Azure Blob Destination** | Customer-owned Azure Blob container receiving delivered packages |
+| External sinks | **Customer GCS Destination** | Customer-owned GCS bucket receiving delivered packages |
 
-Two further nodes are **context-only external boundaries** and are referenced only through the internal components' side of their contracts — they are not designed here: **customer SFTP server** (SSH key auth, port 22) and **customer bucket** (customer-owned S3 destination).
+### 1.3 Out of Scope — External / Third-Party Boundary Components
 
-#### 1.3 End-to-End Data Flow
+Two components are marked **External / Third-Party Component** on the canvas and are **customer-owned**. They are never designed, coded or provisioned here; this HLD specifies only our side of the integration contract with them (protocol, credentials, network path, failure handling):
 
-1. **Configuration** — An authorized Acme administrator (or a scripted client) creates, retrieves, updates, deletes, manually triggers or stops an export configuration through **do-admin-api**. Configurations are persisted in **cofig_db** with credential fields stored encrypted; every administrative action is audited to **audit_bucket**.
-2. **Scheduling** — **scheduler** raises a CloudEvents-shaped cadence event at time *T*. **orchestrator** reads active configurations from **cofig_db**, selects only those whose `cron_schedule` falls within *T ± 10 minutes*, generates exactly one RFC 4122 v4 lineage UUID per run, and submits one **child_export_dag** run per selected connection carrying the same lineage UUID.
-3. **Extraction** — **child_export_dag** reads watermarks and recipe details from **cofig_db** and submits the **emr_do** Spark job. **emr_do** reads Golden Entity tables from **dev** (Redshift) and writes staged Parquet/JSON datasets to **staging_bucet_internal**, pushing execution metrics to **audit_bucket**.
-4. **Egress** — An S3 `ObjectCreated` notification on **staging_bucet_internal** invokes **egress-lambda**, which triggers exactly one **egress dag** run carrying the lineage UUID. **egress dag** reads staged files, applies optional GZIP then fail-closed PGP encryption, and pushes packages plus manifest control files to the configured customer destination (**Customer Azure Blob Destination**, **Customer GCS Destination**, **customer bucket**, or **customer SFTP server**), writing transfer audit records to **audit_bucket**.
-5. **Lifecycle** — Staged objects are purged after exactly 7 days by the **staging_bucet_internal** lifecycle rule. Every business audit event carries `actor_id`, `timestamp_utc` (ISO-8601, millisecond precision, `Z`), `event_type` and `execution_id` (the lineage UUID).
+- **customer SFTP server** — reached by **egress dag** over SSH on port 22 with key-based authentication and strict host-key verification; a host-key mismatch refuses the connection, sends zero bytes, is not retried, raises an alert and writes a failure entry to **audit_bucket**.
+- **customer bucket** — reached by **egress dag** over TLS 1.3 S3 `PutObject` with deterministic object naming; delivery is verified by an application-level SHA-256 recomputed from read-back and compared to the manifest.
 
-#### 1.4 Key Architectural Decisions Honoured
+Also outside this design's ownership: the Golden Entity Source Store (**dev**) is an existing, externally owned source consumed read-only, and no pipeline-owned resource may run outside the approved AWS stack (MWAA, RDS Postgres, Lambda, EMR Serverless, S3, ECS).
 
-- **Contract-first**: every edge in the diagram is frozen as a typed contract (trigger, request, response, errors, idempotency, telemetry event) and is binding for the generated code.
-- **Lineage UUID propagation**: a single RFC 4122 v4 UUID generated by **orchestrator** is carried in every downstream run conf, output file name, manifest and audit record.
-- **Fail-closed encryption**: on PGP failure the transfer aborts, a `TRANSFER_FAILED` event is recorded, an alert is raised, and zero bytes of unencrypted data reach any destination.
-- **Idempotency everywhere**: deterministic S3 object keys, logical execution dates, client tokens and atomic SFTP rename make every retry safe.
-- **Least privilege & isolation**: all compute (MWAA, EMR Serverless, Egress Lambda) runs in private VPC subnets; outbound egress is routed through a NAT gateway with static egress IPs; interactive shell/exec access is disabled in all environments.
-- **Environment-driven statefulness**: deletion protection for stateful resources (**cofig_db**, **staging_bucet_internal**, **audit_bucket**, encryption keys) is read from per-environment configuration, never hardcoded, so lower environments can be torn down cleanly.
+### 1.4 End-to-End Flow in One Pass
 
-#### 1.5 Out of Scope
+1. An administrator creates or updates an export configuration through **do-admin-api**; credentials are persisted encrypted in **cofig_db** and an `ADMIN_*` audit event is written to **audit_bucket**.
+2. **scheduler** raises a cadence event; **orchestrator** reads active connections from **cofig_db**, selects those whose cron falls within ±10 minutes, generates exactly one RFC 4122 v4 lineage UUID, and invokes one **child_export_dag** run per connection carrying that UUID and the connection JSON.
+3. **child_export_dag** submits **emr_do**, which reads Golden Entities from **dev** in full or incremental (strictly-greater-than watermark) mode and writes partitioned staged files to **staging_bucet_internal**.
+4. The S3 `ObjectCreated` notification invokes **egress-lambda**, which triggers exactly one **egress dag** run for that lineage UUID.
+5. **egress dag** reads the staged files, applies the connection's split threshold, optional GZIP **before** optional PGP, produces `manifest_<lineage_uuid>.json`, and delivers the package plus manifest to the configured destination — **customer bucket**, **Customer Azure Blob Destination**, **Customer GCS Destination**, **customer SFTP server**, or Acme inspection staging — verifying SHA-256 on read-back, retrying transient failures up to 3 times, and recording `TRANSFER_STARTED` / `TRANSFER_COMPLETED` / `TRANSFER_FAILED` events in **audit_bucket**.
+6. Every administrative, execution and transfer event conforms to the single audit schema (`actor_id`, `timestamp_utc` ISO-8601 millisecond UTC with `Z`, `event_type` from the enumerated set, `execution_id` = lineage UUID), with a deterministic expected event count per run of *admin operations + 2 per connection execution + 2 per transfer*.
 
-Operational ownership and on-call rotations, disaster-recovery runbooks, CI/CD pipelines, testing strategies, cost analyses and compliance programmes are explicitly out of scope. **dev** (Redshift) is an existing externally-owned source and the customer destinations are customer-owned; both are excluded from the pipeline resource allowlist check and are listed by name in the verification report.
+### 1.5 Design Principles Applied Throughout
+
+- **Orchestration–compute separation** — MWAA DAGs (**orchestrator**, **child_export_dag**, **egress dag**) orchestrate only; heavy work runs in **emr_do** or **egress-lambda**. DAG top-level code stays instantaneous.
+- **Configuration-as-data** — target type, dataset, mode, cadence, split thresholds, GZIP/PGP flags and credentials live in **cofig_db**, never in code.
+- **One lineage UUID, one truth** — a single UUID per orchestrator run threads through run confs, file names, the manifest and every audit record; re-runs generate a new UUID.
+- **Fail-closed security** — a missing, corrupt or failing PGP key aborts the transfer, writes an audit error within 5 seconds, raises an alert and passes **zero bytes** to any destination.
+- **Verified, delivery-only semantics** — uniform application-level SHA-256 read-back verification across all destinations; no downstream reconciliation is in scope.
+- **Least privilege and private networking** — dedicated IAM role per component scoped to exact resource ARNs; stateful resources read deletion protection from per-environment configuration, never hardcoded.
+
+### 1.6 Code Parity with the Project Blueprint
+
+Every Implementation Code Skeleton in this HLD cites real module paths from the project blueprint and imports shared concerns from the foundation rather than re-declaring them — for example `dataoutbound_section_tree.apis.export_admin_api.export_admin_routes`, `dataoutbound_section_tree.dags.export_orchestrator_dag`, `dataoutbound_section_tree.dags.child_export_dag`, `dataoutbound_section_tree.dags.transform_encrypt_dag`, `dataoutbound_section_tree.lambdas.egress_lambda`, `dataoutbound_section_tree.spark_emr.export_extract_spark_job.main`, and the shared `common.clients.*`, `common.telemetry.auditor`, `common.logging.logger`, `config.config_loader` and `util.*` modules. For **do-admin-api** (module type `api`) the skeleton is the binding implementation baseline — every endpoint, status code, auth dependency, audit event and error mapping is fixed there and must not be dropped or renamed by generated code. For all other module types the skeleton is illustrative and the Component Contract and Schema Definitions are binding.
+
+### 1.7 How to Read This Document
+
+Each component chapter is self-contained and machine-readable: the **Component Contract** fixes bi-directional inputs and outputs (trigger, request, response, errors, idempotency, telemetry event); **Class and Interface Definitions** give the typed Python surface; the **Implementation Code Skeleton** shows the component's own logic with imports and error handling; the **Cross-Component Interaction Sequence** shows the local flow; **Schema Definitions** give the JSON payloads and any DDL the design owns; and **Local Design Assumptions** resolve the open questions for that component exactly once. System-wide assumptions and constraints are collected in the global assumptions chapter.
 
 ## 2. System-wide Design Principles
 <a id="laminar-sec-g.principles"></a>
-#### 2.1 Principle 1 — Contract-First, Diagram-Bounded Design
+### 2.1 Contract-First and Schema-Driven Design
+Every cross-component interaction is governed by strict, versioned contracts defined prior to implementation. APIs enforce OpenAPI 3.0 boundaries, event payloads conform to CloudEvents specifications, and database interactions use parameterized queries via canonical client libraries.
 
-Every interaction between the diagram's components is specified as a typed contract before any internals are described: trigger, request payload, response payload, error behaviour, idempotency key and telemetry event. The frozen integration contracts in this document are binding for the generated code. No component, data store, queue, function or bucket that the user did not place in the diagram is designed here; where a diagram component cannot function without a supporting resource, that resource is named inside the component's own section in one or two lines.
+### 2.2 OOP Design Parity and Shared Foundation
+All cross-cutting concerns—including logging, telemetry publishing, database sessions, configuration loading, and protocol clients—are centralized in the blueprint foundation (`src/dataoutbound_section_tree/common/`). Components never re-implement SDK connections, retry logic, or cryptographic wrappers; instead, they import and inherit from standard foundation classes:
+- **Logging**: Structured JSON logging via `common.logging.logger.get_logger(name)` ensuring PII and secrets are never emitted.
+- **Configuration**: Unified environment merging via `config.config_loader.ConfigLoader` combining base YAML configurations with environment-specific overlays.
+- **Telemetry**: Uniform audit event emission via `common.telemetry.auditor.AuditPublisher` writing CloudEvents-shaped payloads to `audit_bucket`.
 
-**Guardrail:** a component's section never introduces a new node; it only documents the component's own side of the contracts it participates in.
+### 2.3 Fail-Closed Security & Least-Privilege IAM
+Security is enforced at every boundary:
+- **Encryption**: Credential fields in `cofig_db` and parameters retrieved via SSM are stored encrypted at rest. Outbound PGP encryption is strictly fail-closed: any key retrieval or encryption failure immediately aborts the transfer, transmits zero unencrypted bytes, raises an operational alert, and records a `TRANSFER_FAILED` audit entry within 5 seconds.
+- **IAM**: Execution roles adhere strictly to least privilege, restricting read/write permissions to exact resource ARNs.
 
-#### 2.2 Principle 2 — Shared Foundation, Never Re-declared
+### 2.4 Idempotency and Deterministic Lineage Propagation
+Every execution run is stamped with a single RFC 4122 v4 lineage UUID at the orchestration boundary (`orchestrator`). This identifier propagates immutably through child orchestrations, Spark extractions, staging files, manifests, and audit logs. Tasks and event handlers are designed to be fully idempotent, ensuring that retries or re-runs produce identical, non-duplicated states.
 
-All cross-cutting concerns live in the blueprint's foundation and are **imported**, never re-declared, by component code:
-
-| Concern | Module | Responsibility |
-|---|---|---|
-| Cloud clients | `common/clients/aws/*`, `common/clients/azure/blob_client.py`, `common/clients/gcp/gcs_client.py`, `common/clients/db/db_client.py`, `common/clients/rest/rest_client.py`, `common/clients/sftp/sftp_client.py` | The **only** place SDK clients are constructed; every method maps SDK errors to `util.exceptions` and logs through the shared logger. |
-| Logging | `common/logging/logger.py` | `get_logger(name)` — structured JSON with correlation-id and component fields; never logs PII or secrets. |
-| Security | `common/security/auth.py` | `verify_token` / `current_subject` / `require_role`; raises `util.exceptions.AuthError`. |
-| Telemetry | `common/telemetry/auditor.py` | `AuditPublisher.publish(event_type, payload)` — writes CloudEvents-shaped records to the configured sink; **never raises into the caller's flow**. |
-| Configuration | `config/config_loader.py` + `config/common_config.yaml` | `ConfigLoader` merges the base file with per-module `config.yml` and the environment overlay; resolves secret references via `common.clients`. |
-| Pure helpers | `util/constants.py`, `util/exceptions.py`, `util/idempotency.py`, `util/utils.py` | Named constants (no magic strings elsewhere), the `LaminarError` hierarchy, `IdempotencyKey.build(*parts)` and retry/backoff helpers. |
-
-**Guardrail:** no component constructs a boto3/azure/gcp/db client directly, and no component defines its own logger, audit publisher or exception base.
-
-#### 2.3 Principle 3 — One Canonical `AuditPublisher` and One Canonical `DbClient` Interface
-
-To keep the generated code internally consistent, the foundation exposes exactly one constructor and one publish signature, used identically by every caller:
-
-```python
-# common/telemetry/auditor.py  (foundation — imported, never re-declared)
-class AuditPublisher:
-    def __init__(self, config: ConfigLoader) -> None: ...
-    def publish(self, event_type: str, payload: dict) -> None: ...   # never raises
-
-# common/clients/db/db_client.py  (foundation — imported, never re-declared)
-class DbClient:
-    def __init__(self, config: ConfigLoader) -> None: ...
-    @contextmanager
-    def transaction(self) -> Iterator[Connection]: ...               # commit/rollback
-    def execute(self, sql: str, params: Sequence[Any] = ()) -> int: ...        # rowcount
-    def fetch_one(self, sql: str, params: Sequence[Any] = ()) -> dict | None: ...
-    def fetch_all(self, sql: str, params: Sequence[Any] = ()) -> list[dict]: ...
-```
-
-Every caller — **do-admin-api**, **orchestrator**, **child_export_dag** — uses `AuditPublisher(config=...)` and `publish(event_type, payload)`, and the `DbClient` methods above. No caller invents `execute_query_single`, `session_scope` or a positional `publish(..., actor_id=...)` variant; the actor is carried inside the `payload` dict.
-
-**Guardrail:** a mismatch between a caller's call site and this interface is a defect, not a design choice.
-
-#### 2.4 Principle 4 — Idempotency by Construction
-
-Every write path is idempotent so that retries (Airflow task retries, EventBridge retries, Spark task retries, Lambda retries) never duplicate effects:
-
-- **cofig_db** writes use a unique configuration ID / upsert key.
-- **orchestrator** and **child_export_dag** runs are keyed by logical execution date + configuration ID.
-- **staging_bucet_internal** object keys are deterministic and include the lineage UUID.
-- **egress dag** transfers use deterministic object names and atomic SFTP rename on completion.
-- **audit_bucket** records are named by job run ID / DAG run ID / timestamp.
-
-`util/idempotency.py` provides `IdempotencyKey.build(*parts)` and the shared retry/backoff helper used by APIs, lambdas and DAG tasks.
-
-#### 2.5 Principle 5 — Fail-Closed Security and Least Privilege
-
-- **Authentication/authorization**: **do-admin-api** enforces JWT bearer validation on every protected endpoint via `common/security/auth.py`; missing/invalid credentials yield `401`, insufficient role yields `403`, and the store is left unchanged.
-- **Encryption**: credentials are stored encrypted in **cofig_db** (KMS-backed); no retrieve call returns plaintext. PGP encryption in **egress dag** is fail-closed — on key-missing, corrupt-key or encryption failure the transfer aborts, a `TRANSFER_FAILED` event is recorded, an alert is raised, and zero bytes of unencrypted data are handed to any destination.
-- **Transport**: TLS 1.3 for S3, HTTPS for Azure and GCS, SSH with key-based auth and strict host-key verification for sFTP.
-- **Network**: all compute runs in private VPC subnets; outbound egress is routed through a NAT gateway with static egress IPs; interactive shell/exec access is disabled in all environments.
-- **IAM**: dedicated, least-privilege execution roles per job run; DLQ resource permissions rely on default account policies.
-
-#### 2.6 Principle 6 — Resilience: Retries, DLQs and Dead-Letter Paths
-
-- Every EventBridge rule target carries an SQS DLQ; the **scheduler** rule retries up to 3 attempts.
-- **staging_bucet_internal → egress-lambda** invocation failures are routed to an SQS DLQ after retries.
-- **egress dag** destination transfers retry up to 3 times; after the third failure the transfer is routed to a dead-letter path, an alert is raised, and the incident is logged for operational review and customer notification.
-- Database reads retry up to 3 times; Redshift reads retry 3 times; S3 writes rely on Spark task retries.
-
-#### 2.7 Principle 7 — Observability: One Audit Schema, One Event Shape
-
-Every business audit event uses the same schema and is written to **audit_bucket** (and, for operational tracking, to **cofig_db** execution logs):
-
-| Field | Type | Rule |
-|---|---|---|
-| `actor_id` | string | Authenticated Acme user identifier, or `system:<component-name>` for automated events |
-| `timestamp_utc` | string | ISO-8601 UTC, millisecond precision, `Z` suffix (e.g. `2025-01-31T02:15:00.000Z`) |
-| `event_type` | enum | `ADMIN_CREATE`, `ADMIN_UPDATE`, `ADMIN_DELETE`, `ADMIN_MANUAL_TRIGGER`, `EXECUTION_STARTED`, `EXECUTION_COMPLETED`, `TRANSFER_STARTED`, `TRANSFER_COMPLETED`, `TRANSFER_FAILED` |
-| `execution_id` | string | The lineage UUID generated by **orchestrator** |
-
-Expected event count per run = admin operations performed + 2 per connection execution (start and completion) + 2 per transfer (start and completion, or start plus `TRANSFER_FAILED` on abort). Telemetry events are emitted in CloudEvents shape unless a component's contract specifies otherwise.
-
-#### 2.8 Principle 8 — Configuration and Environment Discipline
-
-- Environment-specific values are externalised: `config/common_config.yaml` (base), per-module `config.yml` (API, DAGs, Lambda, Spark job), and `terraform/values.yaml` (infrastructure).
-- No secret is hardcoded; credentials and PGP keys are managed via SSM Parameter Store (`SecureString`) and referenced through `ConfigLoader`.
-- Deletion protection for stateful resources (**cofig_db**, **staging_bucet_internal**, **audit_bucket**, encryption keys) is read from per-environment configuration variables (`dev`, `staging`, `prod`); no value is hardcoded in the Terraform module.
-- Log groups are provisioned explicitly per component with `retention_in_days` equal to the single organisation logging-standard value (to be confirmed in days before sprint commitment).
-
-#### 2.9 Principle 9 — Bounded Depth, Consistency over Volume
-
-Each component section states the principle it serves, the rationale and the guardrails, plus the configuration the user set. Where the user left a detail open, a mainstream production-grade default is chosen and stated in one line with its rationale. Names, protocols, data flows and configuration agree across the whole document and with the user's decisions; a short, correct, consistent section beats a long one.
+### 2.5 Standardized Error Handling and Retry Policies
+Transient failures across network boundaries (REST calls, database queries, S3 operations, and file transfers) utilize bounded exponential backoff retries (maximum 3 attempts). Unrecoverable errors trigger fail-fast behavior, structured error envelopes, DLQ routing where applicable, and immediate publication of audit failure records.
 
 ## 3. Component Design: do-admin-api
 <a id="laminar-sec-c.imp_standard_standard_api_1"></a>
 
+<!-- laminar:diagram-settings:imp-standard-standard_api-1 -->
+**Diagram settings (user decisions — authoritative)**
+
+| Setting | Value |
+| --- | --- |
+| `protocol` | `REST` |
+| `authentication` | `JWT` |
+| `api_name` | `do-admin-api` |
+
+<!-- /laminar:diagram-settings -->
+
+
 ### 3.1. Component Contract (Bi-Directional Inputs & Outputs)
 <a id="laminar-sec-c.imp_standard_standard_api_1.contract"></a>
-**do-admin-api** is the administrative bounded-context entrypoint of the DataOutbound Product. It is a stateless REST service (protocol `REST`, authentication `JWT`) that owns no data store of its own: it persists export configurations to **cofig_db**, triggers and stops runs on **orchestrator**, and writes administrative audit records to **audit_bucket**. It is the only component through which an authorized Acme administrator (or a scripted client using the same credentials) creates, retrieves, updates, deletes, manually triggers and stops customer export connections.
+#### 3.1.1 Diagram settings (user decisions — authoritative)
 
-#### 3.1.1 Inbound (exposed) interface — HTTP endpoints
+| Setting | Value |
+|---|---|
+| `protocol` | `REST` |
+| `authentication` | `JWT` |
+| `api_name` | `do-admin-api` |
 
-All endpoints are mounted under the base path `/api/v1` and require a valid JWT bearer token; every endpoint additionally requires the `export-admin` role. The auth dependency is `require_role("export-admin")` from `common/security/auth.py`, which raises `util.exceptions.AuthError` (`401` for missing/invalid credentials, `403` for insufficient role).
+#### 3.1.2 Role and bounded context
 
-| Method | Path | Purpose | Success | Client errors | Server errors | Audit event |
+`do-admin-api` is the single administrative entrypoint of the DataOutbound platform. It owns the lifecycle of export configurations (create / retrieve / update / delete), the manual trigger and stop of orchestrator runs, and the emission of `ADMIN_*` audit events. It is a **stateless** service: it owns no database tables of its own; the canonical `export_configurations` table lives in `cofig_db` and is declared once in §3.5.1 below and referenced (never re-declared) by the `cofig_db` chapter.
+
+#### 3.1.3 Inbound contract (what the API consumes)
+
+| Source | Protocol | Trigger | Payload | Response | Errors | Idempotency |
 |---|---|---|---|---|---|---|
-| `POST` | `/api/v1/exports` | Create export configuration | `201 Created` + config id | `400`, `401`, `403` | `500` | `com.laminar.dataoutbound.config.updated` |
-| `GET` | `/api/v1/exports/{config_id}` | Retrieve export configuration (credentials masked) | `200 OK` | `401`, `403`, `404` | `500` | — |
-| `PUT` | `/api/v1/exports/{config_id}` | Update one or more fields of an existing configuration | `200 OK` | `400`, `401`, `403`, `404` | `500` | `com.laminar.dataoutbound.config.updated` |
-| `DELETE` | `/api/v1/exports/{config_id}` | Delete an existing configuration | `204 No Content` | `401`, `403`, `404` | `500` | `com.laminar.dataoutbound.config.updated` |
-| `POST` | `/api/v1/exports/{config_id}/trigger` | Manually trigger an export run | `200 OK` + DAG run id | `401`, `403`, `404` | `502` | `com.laminar.dataoutbound.orchestrator.triggered` |
-| `POST` | `/api/v1/exports/{config_id}/stop` | Stop a running export execution | `202 Accepted` | `401`, `403`, `404` | `502` | `com.laminar.dataoutbound.orchestrator.triggered` |
+| Authorized administrator / scripted client | HTTPS + JWT bearer | HTTP request to a route below | `ExportConfigurationCreate` / `ExportConfigurationUpdate` JSON (see §3.5.2) | `201` / `200` / `204` with `ExportConfigurationResponse` | `400`, `401`, `403`, `404`, `409`, `500` (standard error envelope) | `POST` idempotent via `Idempotency-Key` header; `PUT` idempotent by `config_id`; `DELETE` idempotent by `config_id` |
+| Enterprise identity provider | OIDC/JWKS over HTTPS | JWT presented on every protected route | Signed JWT | Verified claims (`sub`, `roles`) | `401` on invalid/expired token | n/a (stateless verification) |
 
-The `stop` operation is required by SCRUM-480 AC#6/AC#7: an authorized user invokes stop, the API returns `202 Accepted`, and the **orchestrator** run reaches `terminated` within 30 s. It calls the MWAA REST API to mark the orchestrator DAG run as failed/terminated, which prevents any further **child_export_dag** run from being started for that execution.
+#### 3.1.4 Outbound contract (what the API produces)
 
-#### 3.1.2 Outbound (consumed) interfaces
+| Target | Protocol | Trigger | Payload | Response | Errors | Idempotency |
+|---|---|---|---|---|---|---|
+| `cofig_db` | JDBC (PostgreSQL) over TLS | Admin API request | Parameterised `INSERT` / `UPDATE` / `DELETE` on `export_configurations` | Row count / `RETURNING config_id` | `500` on DB error; client retried with backoff | Idempotent via unique `config_id` (upsert key) |
+| `orchestrator` | HTTPS (Airflow REST API, SigV4/IAM) | Manual trigger / stop request | DAG run trigger payload `{conf: {config_id, execution_date, lineage_uuid?}}` | `200 OK` with `dag_run_id` | `502 Bad Gateway`; retried with exponential backoff | Idempotent via logical `execution_date` + `config_id` |
+| `audit_bucket` | S3 API (boto3, TLS 1.3) | Every administrative action | CloudEvents-shaped audit record (see §3.5.3) | S3 `ETag` | Caught and logged locally; never fails the API response | Idempotent via unique audit filename (`<event_type>/<timestamp>_<uuid>.json`) |
 
-| Target | Contract | Trigger | Request | Response | Errors | Idempotency | Telemetry |
-|---|---|---|---|---|---|---|---|
-| **cofig_db** | database write, HTTPS/REST → JDBC | Admin API request | Export configuration payload (JSON with `tenant_id`, `schedule`, `destination_type`, `credentials_ref`) | `201 Created` with configuration ID | `400`, `500`; retried by client with backoff | Idempotent via unique configuration ID / upsert key | `com.laminar.dataoutbound.config.updated` |
-| **orchestrator** | scheduled trigger, HTTPS (Airflow REST API) | Manual API invocation | DAG run trigger payload with configuration ID and execution date | `200 OK` with DAG run ID | `502`; retried with exponential backoff | Idempotent via logical execution date and run ID | `com.laminar.dataoutbound.orchestrator.triggered` |
-| **audit_bucket** | file transfer, S3 API (boto3) | API administrative audit logging | Audit log JSON record upload | S3 upload success ETag | S3 error; caught and logged locally without failing the API response | Idempotent via unique audit log filename timestamp | `com.laminar.dataoutbound.audit.admin` |
+#### 3.1.5 Frozen edge contracts (binding)
 
-#### 3.1.3 Error envelope
+- **do-admin-api → cofig_db** — trigger: Admin API request; request: export configuration payload (JSON with `tenant_id`, `schedule`, `destination_type`, `credentials_ref`); response: `201 Created` with configuration ID; errors: `400`, `500`; idempotency: unique configuration ID / upsert key; telemetry: `com.laminar.dataoutbound.config.updated`.
+- **do-admin-api → orchestrator** — trigger: manual API invocation; request: DAG run trigger payload with configuration ID and execution date; response: `200 OK` with DAG run ID; errors: `502`; idempotency: logical execution date + run ID; telemetry: `com.laminar.dataoutbound.orchestrator.triggered`.
+- **do-admin-api → audit_bucket** — trigger: API administrative audit logging; request: audit log JSON record upload; response: S3 upload success `ETag`; errors: caught and logged locally without failing the API response; idempotency: unique audit log filename timestamp; telemetry: `com.laminar.dataoutbound.audit.admin`.
 
-Every non-2xx response uses the standard envelope. For `400` the `details` array names **each** invalid field (SCRUM-479 AC#2):
+#### 3.1.6 Configuration the design actually sets
 
-```json
-{
-  "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "Request payload failed validation",
-    "details": [
-      { "field": "cron_schedule", "message": "must be a valid 5-field cron expression" },
-      { "field": "target_type", "message": "must be one of: s3, azure_blob, gcs, sftp" }
-    ]
-  }
-}
-```
-
-#### 3.1.4 Configuration the design actually sets
-
-| Setting | Value | Rationale |
+| Property | Value | Rationale |
 |---|---|---|
-| `auth.issuer` / `auth.audience` | from `apis/config.yml` per environment | JWT validation parameters are environment-specific and never hardcoded. |
-| `auth.required_role` | `export-admin` | Least privilege: only the export-admin role may mutate or trigger exports. |
-| `rate_limit.per_client` | token bucket, 60 req/min per subject | Boundary protection against abusive scripted clients (SCRUM-479 AC#6). |
-| `credentials.kms_key_alias` | solution CMK alias from `apis/config.yml` | Credentials are encrypted at rest; the alias is configuration, not code. |
-| `mwaa.dag_id` | `orchestrator` | The API triggers/stops exactly the orchestrator DAG. |
-| `mwaa.trigger_timeout_seconds` | `10` | Bounds the synchronous call so the API can return `502` promptly. |
+| `protocol` | `REST` | User decision; stateless HTTP semantics for administrative CRUD. |
+| `authentication` | `JWT` | User decision; cryptographically verified bearer tokens with `export-admin` role claim. |
+| `api_name` | `do-admin-api` | User decision; service identifier used in logs, telemetry and the OpenAPI title. |
+| Rate limiting | Sliding-window per client IP/tenant, thresholds from `apis/config.yml` | Prevents abuse of the administrative surface; thresholds are configuration, not code. |
+| Response latency target | < 200 ms for CRUD | Administrative responsiveness; enforced by keeping the service stateless and pushing all heavy work to `orchestrator`. |
 
-All other tunables (worker count, CORS, host/port) defer to the platform defaults in `apis/config.yml`; deferring is itself the decision.
+All other runtime properties (host, port, CORS, JWT issuer, JWKS URL, DB DSN, S3 bucket name) are read from `apis/config.yml` + `config/common_config.yaml` via `ConfigLoader`; no value is hardcoded.
+
+---
 
 ### 3.2. Class and Interface Definitions
 <a id="laminar-sec-c.imp_standard_standard_api_1.classes"></a>
-The module follows the blueprint layout `apis/export_admin_api/`: `app.py` (factory + middleware + exception handlers), `dependencies.py` (single construction point), `export_admin_routes.py` (HTTP handlers), `export_admin_schemas.py` (pydantic models), `export_admin_service.py` (business operations, no HTTP types).
+All classes live under `src/dataoutbound_section_tree/apis/export_admin_api/`. Shared concerns are imported from the blueprint foundation — never re-declared.
 
 ```python
-# apis/export_admin_api/export_admin_schemas.py
+# src/dataoutbound_section_tree/apis/export_admin_api/export_admin_schemas.py
 from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Literal
+from typing import Any, Literal, Optional
+from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -420,128 +384,101 @@ class Dataset(str, Enum):
     RESERVATION_ITEMS = "reservation_items"
 
 
-class ExportMode(str, Enum):
+class Mode(str, Enum):
     INITIAL = "initial"
     INCREMENTAL = "incremental"
 
 
-class ExportConfigCreate(BaseModel):
-    """Inbound create payload (SCRUM-479 AC#1)."""
+class Credentials(BaseModel):
+    """Opaque credential bag; persisted encrypted, never returned in plaintext."""
+    model_config = {"extra": "allow"}
+
+
+class ExportConfigurationCreate(BaseModel):
     connection_name: str = Field(min_length=1, max_length=100)
-    tenant_id: str = Field(min_length=1, max_length=64)
     target_type: TargetType
     dataset: Dataset
-    mode: ExportMode
-    cron_schedule: str
-    destination_type: str
-    credentials: dict[str, Any] = Field(default_factory=dict)
-    gzip_enabled: bool = False
-    pgp_enabled: bool = False
-    split_threshold_records: int = Field(default=500_000, ge=1)
+    mode: Mode
+    cron_schedule: str = Field(description="5-field cron expression")
+    credentials: Credentials
 
     @field_validator("cron_schedule")
     @classmethod
-    def _valid_cron(cls, v: str) -> str:
-        from croniter import croniter  # pinned dependency
-        if not croniter.is_valid(v) or len(v.split()) != 5:
-            raise ValueError("must be a valid 5-field cron expression")
+    def _validate_cron(cls, v: str) -> str:
+        from croniter import croniter  # local import keeps top-level DAG-free
+        if len(v.split()) != 5 or not croniter.is_valid(v):
+            raise ValueError("cron_schedule must be a valid 5-field cron expression")
         return v
 
 
-class ExportConfigUpdate(BaseModel):
-    """Partial update payload; every field optional (SCRUM-479 AC#4)."""
-    connection_name: str | None = Field(default=None, min_length=1, max_length=100)
-    target_type: TargetType | None = None
-    dataset: Dataset | None = None
-    mode: ExportMode | None = None
-    cron_schedule: str | None = None
-    destination_type: str | None = None
-    credentials: dict[str, Any] | None = None
-    gzip_enabled: bool | None = None
-    pgp_enabled: bool | None = None
-    split_threshold_records: int | None = Field(default=None, ge=1)
-    is_active: bool | None = None
+class ExportConfigurationUpdate(BaseModel):
+    connection_name: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    target_type: Optional[TargetType] = None
+    dataset: Optional[Dataset] = None
+    mode: Optional[Mode] = None
+    cron_schedule: Optional[str] = None
+    credentials: Optional[Credentials] = None
+    is_active: Optional[bool] = None
 
 
-class ExportConfigRecord(BaseModel):
-    """Outbound representation; credentials are always masked (SCRUM-479 AC#3)."""
-    config_id: str
+class ExportConfigurationResponse(BaseModel):
+    config_id: UUID
     connection_name: str
-    tenant_id: str
     target_type: TargetType
     dataset: Dataset
-    mode: ExportMode
+    mode: Mode
     cron_schedule: str
-    destination_type: str
-    credentials_ref: str
-    credentials_masked: str = "********"
-    gzip_enabled: bool
-    pgp_enabled: bool
-    split_threshold_records: int
     is_active: bool
     created_at: datetime
     updated_at: datetime
-
-
-class TriggerResult(BaseModel):
-    config_id: str
-    dag_run_id: str
-    execution_date: str
-    state: Literal["queued", "running"]
-
-
-class StopResult(BaseModel):
-    config_id: str
-    dag_run_id: str
-    state: Literal["terminated"]
+    credentials: Literal["***MASKED***"] = "***MASKED***"
 
 
 class ErrorDetail(BaseModel):
-    field: str
+    field: Optional[str] = None
     message: str
-
-
-class ErrorBody(BaseModel):
-    code: str
-    message: str
-    details: list[ErrorDetail] = Field(default_factory=list)
 
 
 class ErrorEnvelope(BaseModel):
-    error: ErrorBody
+    error: dict[str, Any]  # {"code": str, "message": str, "details": list[ErrorDetail]}
+
+
+class TriggerResponse(BaseModel):
+    config_id: UUID
+    dag_run_id: str
+    execution_date: datetime
+    state: str
 ```
 
 ```python
-# apis/export_admin_api/export_admin_service.py
+# src/dataoutbound_section_tree/apis/export_admin_api/export_admin_service.py
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any
+from typing import Optional
+from uuid import UUID, uuid4
 
 from dataoutbound_section_tree.common.clients.aws.mwaa.mwaa_client import MwaaClient
-from dataoutbound_section_tree.common.clients.aws.ssm.ssm_client import SsmClient
 from dataoutbound_section_tree.common.clients.db.db_client import DbClient
 from dataoutbound_section_tree.common.logging.logger import get_logger
 from dataoutbound_section_tree.common.telemetry.auditor import AuditPublisher
-from dataoutbound_section_tree.config.config_loader import ConfigLoader
 from dataoutbound_section_tree.util.exceptions import ConflictError, NotFoundError, ValidationError
-from dataoutbound_section_tree.util.idempotency import IdempotencyKey
 
 from .export_admin_schemas import (
-    ExportConfigCreate,
-    ExportConfigRecord,
-    ExportConfigUpdate,
-    StopResult,
-    TriggerResult,
+    ExportConfigurationCreate,
+    ExportConfigurationResponse,
+    ExportConfigurationUpdate,
 )
 
 log = get_logger(__name__)
 
 
 @dataclass(frozen=True)
-class _Actor:
+class AdminContext:
+    """Authenticated caller context extracted from the verified JWT."""
     actor_id: str
+    roles: tuple[str, ...]
 
 
 class ExportAdminService:
@@ -550,308 +487,237 @@ class ExportAdminService:
     def __init__(
         self,
         db: DbClient,
-        ssm: SsmClient,
         mwaa: MwaaClient,
         auditor: AuditPublisher,
-        config: ConfigLoader,
+        orchestrator_dag_id: str,
     ) -> None:
         self._db = db
-        self._ssm = ssm
         self._mwaa = mwaa
         self._auditor = auditor
-        self._config = config
-        self._dag_id = config.get("mwaa.dag_id", "orchestrator")
+        self._orchestrator_dag_id = orchestrator_dag_id
 
-    # -- CRUD -------------------------------------------------------------
-    def create_configuration(self, payload: ExportConfigCreate, actor_id: str) -> ExportConfigRecord: ...
-    def get_configuration(self, config_id: str) -> ExportConfigRecord: ...
-    def update_configuration(self, config_id: str, payload: ExportConfigUpdate, actor_id: str) -> ExportConfigRecord: ...
-    def delete_configuration(self, config_id: str, actor_id: str) -> None: ...
+    # --- CRUD -------------------------------------------------------------
+    def create(self, ctx: AdminContext, payload: ExportConfigurationCreate) -> ExportConfigurationResponse: ...
+    def get(self, ctx: AdminContext, config_id: UUID) -> ExportConfigurationResponse: ...
+    def update(self, ctx: AdminContext, config_id: UUID, payload: ExportConfigurationUpdate) -> ExportConfigurationResponse: ...
+    def delete(self, ctx: AdminContext, config_id: UUID) -> None: ...
 
-    # -- Run control ------------------------------------------------------
-    def trigger_export(self, config_id: str, actor_id: str) -> TriggerResult: ...
-    def stop_export(self, config_id: str, actor_id: str) -> StopResult: ...
-
-    # -- Internals --------------------------------------------------------
-    def _store_credentials(self, config_id: str, credentials: dict[str, Any]) -> str:
-        """Write credentials to SSM SecureString (KMS-encrypted) and return the parameter name."""
-        ref = f"{self._config.get('credentials.param_prefix')}/{config_id}"
-        self._ssm.put_parameter(name=ref, value=credentials, secure=True)
-        return ref
-
-    def _audit(self, event_type: str, actor_id: str, config_id: str, action: str, status: str) -> None:
-        self._auditor.publish(
-            event_type,
-            {
-                "actor_id": actor_id,
-                "timestamp_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
-                "event_type": action,
-                "execution_id": config_id,
-                "status": status,
-            },
-        )
+    # --- Operations -------------------------------------------------------
+    def trigger(self, ctx: AdminContext, config_id: UUID, execution_date: Optional[datetime] = None) -> dict: ...
+    def stop(self, ctx: AdminContext, config_id: UUID, dag_run_id: str) -> dict: ...
 ```
 
-### 3.3. Implementation Code Skeleton (Stubs & Handlers)
-<a id="laminar-sec-c.imp_standard_standard_api_1.skeleton"></a>
-**Binding implementation baseline.** This is an `api` module: the generated code expands this skeleton and never drops or renames an endpoint, status code, auth dependency, audit event or error mapping.
-
 ```python
-# apis/export_admin_api/dependencies.py
+# src/dataoutbound_section_tree/apis/export_admin_api/dependencies.py
 from __future__ import annotations
 
 from functools import lru_cache
 
 from dataoutbound_section_tree.common.clients.aws.mwaa.mwaa_client import MwaaClient
-from dataoutbound_section_tree.common.clients.aws.ssm.ssm_client import SsmClient
 from dataoutbound_section_tree.common.clients.db.db_client import DbClient
-from dataoutbound_section_tree.common.security.auth import current_subject, require_role
+from dataoutbound_section_tree.common.security.auth import require_role, verify_token
 from dataoutbound_section_tree.common.telemetry.auditor import AuditPublisher
 from dataoutbound_section_tree.config.config_loader import ConfigLoader
 
-from .export_admin_service import ExportAdminService
+from .export_admin_service import AdminContext, ExportAdminService
 
 
 @lru_cache(maxsize=1)
-def get_config() -> ConfigLoader:
-    return ConfigLoader(module="apis/export_admin_api")
+def get_config() -> ConfigLoader: ...
 
 
 @lru_cache(maxsize=1)
-def get_db() -> DbClient:
-    return DbClient(config=get_config())
+def get_db() -> DbClient: ...
 
 
 @lru_cache(maxsize=1)
-def get_ssm() -> SsmClient:
-    return SsmClient(config=get_config())
+def get_mwaa() -> MwaaClient: ...
 
 
 @lru_cache(maxsize=1)
-def get_mwaa() -> MwaaClient:
-    return MwaaClient(config=get_config())
+def get_auditor() -> AuditPublisher: ...
 
 
 @lru_cache(maxsize=1)
-def get_auditor() -> AuditPublisher:
-    # Single canonical constructor: AuditPublisher(config=...)
-    return AuditPublisher(config=get_config())
+def get_service() -> ExportAdminService: ...
 
 
-def get_service() -> ExportAdminService:
-    return ExportAdminService(
-        db=get_db(),
-        ssm=get_ssm(),
-        mwaa=get_mwaa(),
-        auditor=get_auditor(),
-        config=get_config(),
-    )
-
-
-# Auth dependency reused by every route: raises AuthError -> 401 / 403
-require_export_admin = require_role("export-admin")
+def current_admin(token: str = "") -> AdminContext:
+    """FastAPI dependency: verify JWT, require export-admin role, return context."""
+    claims = verify_token(token)
+    require_role(claims, "export-admin")
+    return AdminContext(actor_id=claims["sub"], roles=tuple(claims.get("roles", [])))
 ```
 
+---
+
+### 3.3. Implementation Code Skeleton (Stubs & Handlers)
+<a id="laminar-sec-c.imp_standard_standard_api_1.skeleton"></a>
+**Binding implementation baseline.** The generated code expands this skeleton and never drops or renames any endpoint, status code, auth dependency, audit event or error mapping listed here.
+
+#### 3.3.1 Endpoint inventory (binding)
+
+| # | Method | Path | Success | Auth | Audit event | Error mapping |
+|---|---|---|---|---|---|---|
+| 1 | `POST` | `/api/v1/exports` | `201 Created` | `current_admin` (JWT + `export-admin`) | `ADMIN_CREATE` → `com.laminar.dataoutbound.audit.admin` | `400` validation, `401` missing/invalid token, `403` insufficient role, `409` duplicate `connection_name`, `500` DB error |
+| 2 | `GET` | `/api/v1/exports/{id}` | `200 OK` | `current_admin` | none (read) | `401`, `403`, `404` not found, `500` |
+| 3 | `PUT` | `/api/v1/exports/{id}` | `200 OK` | `current_admin` | `ADMIN_UPDATE` → `com.laminar.dataoutbound.audit.admin` | `400`, `401`, `403`, `404`, `500` |
+| 4 | `DELETE` | `/api/v1/exports/{id}` | `204 No Content` | `current_admin` | `ADMIN_DELETE` → `com.laminar.dataoutbound.audit.admin` | `401`, `403`, `404`, `500` |
+| 5 | `POST` | `/api/v1/exports/{id}/trigger` | `202 Accepted` | `current_admin` | `ADMIN_MANUAL_TRIGGER` → `com.laminar.dataoutbound.audit.admin` + `com.laminar.dataoutbound.orchestrator.triggered` | `401`, `403`, `404`, `409` config inactive, `502` MWAA unreachable, `500` |
+| 6 | `POST` | `/api/v1/exports/{id}/stop` | `202 Accepted` | `current_admin` | `ADMIN_MANUAL_TRIGGER` (stop variant) → `com.laminar.dataoutbound.audit.admin` | `401`, `403`, `404`, `502`, `500` |
+| 7 | `GET` | `/health` | `200 OK` | none | none | `503` if DB unreachable |
+
+#### 3.3.2 Routes
+
 ```python
-# apis/export_admin_api/export_admin_routes.py
+# src/dataoutbound_section_tree/apis/export_admin_api/export_admin_routes.py
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Response, status
+from uuid import UUID
 
-from dataoutbound_section_tree.common.security.auth import current_subject
+from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
+
 from dataoutbound_section_tree.util.exceptions import (
-    AuthError,
-    ConflictError,
-    LaminarError,
-    NotFoundError,
-    ValidationError,
+    AuthError, ConflictError, NotFoundError, ValidationError,
 )
 
-from .dependencies import get_service, require_export_admin
+from .dependencies import current_admin, get_service
 from .export_admin_schemas import (
-    ErrorBody,
-    ErrorDetail,
     ErrorEnvelope,
-    ExportConfigCreate,
-    ExportConfigRecord,
-    ExportConfigUpdate,
-    StopResult,
-    TriggerResult,
+    ExportConfigurationCreate,
+    ExportConfigurationResponse,
+    ExportConfigurationUpdate,
+    TriggerResponse,
 )
-from .export_admin_service import ExportAdminService
+from .export_admin_service import AdminContext, ExportAdminService
 
 router = APIRouter(prefix="/api/v1/exports", tags=["exports"])
 
 
-# --------------------------------------------------------------------------
-# Domain-exception -> HTTP mapping (blueprint: routes.py maps domain errors)
-# --------------------------------------------------------------------------
-def _envelope(code: str, message: str, details: list[ErrorDetail] | None = None) -> dict:
-    return ErrorEnvelope(
-        error=ErrorBody(code=code, message=message, details=details or [])
-    ).model_dump()
+def _map(exc: Exception) -> HTTPException:
+    if isinstance(exc, ValidationError):
+        return HTTPException(status.HTTP_400_BAD_REQUEST,
+                             detail={"error": {"code": "VALIDATION_ERROR",
+                                               "message": str(exc), "details": []}})
+    if isinstance(exc, AuthError):
+        return HTTPException(status.HTTP_401_UNAUTHORIZED,
+                             detail={"error": {"code": "UNAUTHORIZED",
+                                               "message": "invalid or missing token", "details": []}})
+    if isinstance(exc, NotFoundError):
+        return HTTPException(status.HTTP_404_NOT_FOUND,
+                             detail={"error": {"code": "NOT_FOUND",
+                                               "message": str(exc), "details": []}})
+    if isinstance(exc, ConflictError):
+        return HTTPException(status.HTTP_409_CONFLICT,
+                             detail={"error": {"code": "CONFLICT",
+                                               "message": str(exc), "details": []}})
+    return HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR,
+                         detail={"error": {"code": "INTERNAL_ERROR",
+                                           "message": "internal error", "details": []}})
 
 
-@router.post("", status_code=status.HTTP_201_CREATED, response_model=ExportConfigRecord)
+@router.post("", status_code=status.HTTP_201_CREATED,
+             response_model=ExportConfigurationResponse,
+             responses={400: {"model": ErrorEnvelope}, 401: {"model": ErrorEnvelope},
+                        403: {"model": ErrorEnvelope}, 409: {"model": ErrorEnvelope}})
 def create_export(
-    payload: ExportConfigCreate,
-    subject: str = Depends(current_subject),
-    _role: None = Depends(require_export_admin),
-    service: ExportAdminService = Depends(get_service),
-) -> ExportConfigRecord:
-    """SCRUM-479 AC#1/AC#2. 201 on success; 400 names each invalid field."""
+    payload: ExportConfigurationCreate,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ctx: AdminContext = Depends(current_admin),
+    svc: ExportAdminService = Depends(get_service),
+) -> ExportConfigurationResponse:
     try:
-        return service.create_configuration(payload, actor_id=subject)
-    except ValidationError as exc:
-        raise _http(400, "VALIDATION_ERROR", str(exc), exc.details) from exc
-    except AuthError as exc:
-        raise _http(401, "UNAUTHORIZED", str(exc)) from exc
-    except ConflictError as exc:
-        raise _http(409, "CONFLICT", str(exc)) from exc
-    except LaminarError as exc:
-        raise _http(500, "INTERNAL_ERROR", str(exc)) from exc
+        return svc.create(ctx, payload)
+    except Exception as exc:  # noqa: BLE001 — mapped to HTTP
+        raise _map(exc) from exc
 
 
-@router.get("/{config_id}", status_code=status.HTTP_200_OK, response_model=ExportConfigRecord)
-def get_export(
-    config_id: str,
-    subject: str = Depends(current_subject),
-    _role: None = Depends(require_export_admin),
-    service: ExportAdminService = Depends(get_service),
-) -> ExportConfigRecord:
-    """SCRUM-479 AC#3. 200 with credentials masked; 404 when absent."""
+@router.get("/{config_id}", response_model=ExportConfigurationResponse,
+            responses={401: {"model": ErrorEnvelope}, 403: {"model": ErrorEnvelope},
+                       404: {"model": ErrorEnvelope}})
+def get_export(config_id: UUID,
+               ctx: AdminContext = Depends(current_admin),
+               svc: ExportAdminService = Depends(get_service)) -> ExportConfigurationResponse:
     try:
-        return service.get_configuration(config_id)
-    except NotFoundError as exc:
-        raise _http(404, "NOT_FOUND", str(exc)) from exc
-    except AuthError as exc:
-        raise _http(401, "UNAUTHORIZED", str(exc)) from exc
-    except LaminarError as exc:
-        raise _http(500, "INTERNAL_ERROR", str(exc)) from exc
+        return svc.get(ctx, config_id)
+    except Exception as exc:  # noqa: BLE001
+        raise _map(exc) from exc
 
 
-@router.put("/{config_id}", status_code=status.HTTP_200_OK, response_model=ExportConfigRecord)
-def update_export(
-    config_id: str,
-    payload: ExportConfigUpdate,
-    subject: str = Depends(current_subject),
-    _role: None = Depends(require_export_admin),
-    service: ExportAdminService = Depends(get_service),
-) -> ExportConfigRecord:
-    """SCRUM-479 AC#4. 200 with updated values; 400 names each invalid field; 404 when absent."""
+@router.put("/{config_id}", response_model=ExportConfigurationResponse,
+            responses={400: {"model": ErrorEnvelope}, 401: {"model": ErrorEnvelope},
+                       403: {"model": ErrorEnvelope}, 404: {"model": ErrorEnvelope}})
+def update_export(config_id: UUID,
+                  payload: ExportConfigurationUpdate,
+                  ctx: AdminContext = Depends(current_admin),
+                  svc: ExportAdminService = Depends(get_service)) -> ExportConfigurationResponse:
     try:
-        return service.update_configuration(config_id, payload, actor_id=subject)
-    except ValidationError as exc:
-        raise _http(400, "VALIDATION_ERROR", str(exc), exc.details) from exc
-    except NotFoundError as exc:
-        raise _http(404, "NOT_FOUND", str(exc)) from exc
-    except AuthError as exc:
-        raise _http(401, "UNAUTHORIZED", str(exc)) from exc
-    except LaminarError as exc:
-        raise _http(500, "INTERNAL_ERROR", str(exc)) from exc
+        return svc.update(ctx, config_id, payload)
+    except Exception as exc:  # noqa: BLE001
+        raise _map(exc) from exc
 
 
-@router.delete("/{config_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_export(
-    config_id: str,
-    subject: str = Depends(current_subject),
-    _role: None = Depends(require_export_admin),
-    service: ExportAdminService = Depends(get_service),
-) -> Response:
-    """SCRUM-479 AC#5. 204 on success; subsequent GET returns 404."""
+@router.delete("/{config_id}", status_code=status.HTTP_204_NO_CONTENT,
+               responses={401: {"model": ErrorEnvelope}, 403: {"model": ErrorEnvelope},
+                          404: {"model": ErrorEnvelope}})
+def delete_export(config_id: UUID,
+                  ctx: AdminContext = Depends(current_admin),
+                  svc: ExportAdminService = Depends(get_service)) -> Response:
     try:
-        service.delete_configuration(config_id, actor_id=subject)
+        svc.delete(ctx, config_id)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
-    except NotFoundError as exc:
-        raise _http(404, "NOT_FOUND", str(exc)) from exc
-    except AuthError as exc:
-        raise _http(401, "UNAUTHORIZED", str(exc)) from exc
-    except LaminarError as exc:
-        raise _http(500, "INTERNAL_ERROR", str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise _map(exc) from exc
 
 
-@router.post("/{config_id}/trigger", status_code=status.HTTP_200_OK, response_model=TriggerResult)
-def trigger_export(
-    config_id: str,
-    subject: str = Depends(current_subject),
-    _role: None = Depends(require_export_admin),
-    service: ExportAdminService = Depends(get_service),
-) -> TriggerResult:
-    """SCRUM-480 AC#5 / SCRUM-481 AC#2. 200 with DAG run id; 502 when MWAA is unreachable."""
+@router.post("/{config_id}/trigger", status_code=status.HTTP_202_ACCEPTED,
+             response_model=TriggerResponse,
+             responses={401: {"model": ErrorEnvelope}, 403: {"model": ErrorEnvelope},
+                        404: {"model": ErrorEnvelope}, 409: {"model": ErrorEnvelope},
+                        502: {"model": ErrorEnvelope}})
+def trigger_export(config_id: UUID,
+                   ctx: AdminContext = Depends(current_admin),
+                   svc: ExportAdminService = Depends(get_service)) -> TriggerResponse:
     try:
-        return service.trigger_export(config_id, actor_id=subject)
-    except NotFoundError as exc:
-        raise _http(404, "NOT_FOUND", str(exc)) from exc
-    except AuthError as exc:
-        raise _http(401, "UNAUTHORIZED", str(exc)) from exc
-    except LaminarError as exc:
-        raise _http(502, "UPSTREAM_ERROR", str(exc)) from exc
+        return TriggerResponse(**svc.trigger(ctx, config_id))
+    except Exception as exc:  # noqa: BLE001
+        raise _map(exc) from exc
 
 
-@router.post("/{config_id}/stop", status_code=status.HTTP_202_ACCEPTED, response_model=StopResult)
-def stop_export(
-    config_id: str,
-    subject: str = Depends(current_subject),
-    _role: None = Depends(require_export_admin),
-    service: ExportAdminService = Depends(get_service),
-) -> StopResult:
-    """SCRUM-480 AC#6/AC#7. 202 Accepted; orchestrator run reaches terminated <=30s."""
+@router.post("/{config_id}/stop", status_code=status.HTTP_202_ACCEPTED,
+             responses={401: {"model": ErrorEnvelope}, 403: {"model": ErrorEnvelope},
+                        404: {"model": ErrorEnvelope}, 502: {"model": ErrorEnvelope}})
+def stop_export(config_id: UUID,
+                dag_run_id: str,
+                ctx: AdminContext = Depends(current_admin),
+                svc: ExportAdminService = Depends(get_service)) -> dict:
     try:
-        return service.stop_export(config_id, actor_id=subject)
-    except NotFoundError as exc:
-        raise _http(404, "NOT_FOUND", str(exc)) from exc
-    except AuthError as exc:
-        raise _http(401, "UNAUTHORIZED", str(exc)) from exc
-    except LaminarError as exc:
-        raise _http(502, "UPSTREAM_ERROR", str(exc)) from exc
-
-
-def _http(status_code: int, code: str, message: str, details: list[dict] | None = None):
-    from fastapi import HTTPException
-    return HTTPException(
-        status_code=status_code,
-        detail=_envelope(code, message, [ErrorDetail(**d) for d in (details or [])]),
-    )
+        return svc.stop(ctx, config_id, dag_run_id)
+    except Exception as exc:  # noqa: BLE001
+        raise _map(exc) from exc
 ```
 
+#### 3.3.3 Application factory
+
 ```python
-# apis/export_admin_api/app.py
+# src/dataoutbound_section_tree/apis/export_admin_api/app.py
 from __future__ import annotations
 
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI
 
 from dataoutbound_section_tree.common.logging.logger import get_logger
-from dataoutbound_section_tree.util.exceptions import AuthError, NotFoundError, ValidationError
 
-from .export_admin_routes import router
+from .export_admin_routes import router as export_router
 
 log = get_logger(__name__)
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="do-admin-api", version="v1")
-    app.include_router(router)
+    app = FastAPI(title="do-admin-api", version="1.0.0")
+    app.include_router(export_router)
 
-    @app.exception_handler(ValidationError)
-    async def _validation(_: Request, exc: ValidationError) -> JSONResponse:
-        return JSONResponse(status_code=400, content={"error": {"code": "VALIDATION_ERROR",
-                            "message": str(exc), "details": getattr(exc, "details", [])}})
-
-    @app.exception_handler(NotFoundError)
-    async def _not_found(_: Request, exc: NotFoundError) -> JSONResponse:
-        return JSONResponse(status_code=404, content={"error": {"code": "NOT_FOUND",
-                            "message": str(exc), "details": []}})
-
-    @app.exception_handler(AuthError)
-    async def _auth(_: Request, exc: AuthError) -> JSONResponse:
-        code = 403 if getattr(exc, "insufficient_role", False) else 401
-        return JSONResponse(status_code=code, content={"error": {
-            "code": "FORBIDDEN" if code == 403 else "UNAUTHORIZED",
-            "message": str(exc), "details": []}})
-
-    @app.get("/health", include_in_schema=False)
-    async def health() -> dict:
+    @app.get("/health")
+    def health() -> dict:
         return {"status": "ok"}
 
     return app
@@ -860,501 +726,1127 @@ def create_app() -> FastAPI:
 app = create_app()
 ```
 
+#### 3.3.4 Service implementation (illustrative bodies)
+
+```python
+# src/dataoutbound_section_tree/apis/export_admin_api/export_admin_service.py (bodies)
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from uuid import UUID, uuid4
+
+from dataoutbound_section_tree.util.exceptions import ConflictError, NotFoundError, ValidationError
+
+# ... class header and __init__ as in §3.2 ...
+
+    def create(self, ctx, payload):
+        config_id = uuid4()
+        try:
+            self._db.execute(
+                """
+                INSERT INTO export_configurations
+                    (config_id, connection_name, target_type, dataset, mode,
+                     cron_schedule, credentials_encrypted, is_active,
+                     created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, TRUE, NOW(), NOW())
+                """,
+                (str(config_id), payload.connection_name, payload.target_type.value,
+                 payload.dataset.value, payload.mode.value, payload.cron_schedule,
+                 self._encrypt(payload.credentials)),
+            )
+        except Exception as exc:  # unique violation → ConflictError
+            raise ConflictError(f"connection_name already exists: {payload.connection_name}") from exc
+
+        self._auditor.publish("ADMIN_CREATE", {
+            "actor_id": ctx.actor_id, "config_id": str(config_id),
+            "event_type": "ADMIN_CREATE",
+        })
+        return self.get(ctx, config_id)
+
+    def get(self, ctx, config_id):
+        row = self._db.fetch_one(
+            "SELECT config_id, connection_name, target_type, dataset, mode, "
+            "cron_schedule, is_active, created_at, updated_at "
+            "FROM export_configurations WHERE config_id = %s",
+            (str(config_id),),
+        )
+        if row is None:
+            raise NotFoundError(f"export configuration {config_id} not found")
+        return ExportConfigurationResponse(**row, credentials="***MASKED***")
+
+    def update(self, ctx, config_id, payload):
+        fields = payload.model_dump(exclude_unset=True, exclude={"credentials"})
+        if payload.credentials is not None:
+            fields["credentials_encrypted"] = self._encrypt(payload.credentials)
+        if not fields:
+            raise ValidationError("no updatable fields supplied")
+        set_clause = ", ".join(f"{k} = %s" for k in fields)
+        self._db.execute(
+            f"UPDATE export_configurations SET {set_clause}, updated_at = NOW() "
+            f"WHERE config_id = %s",
+            (*fields.values(), str(config_id)),
+        )
+        self._auditor.publish("ADMIN_UPDATE", {
+            "actor_id": ctx.actor_id, "config_id": str(config_id),
+            "event_type": "ADMIN_UPDATE",
+        })
+        return self.get(ctx, config_id)
+
+    def delete(self, ctx, config_id):
+        n = self._db.execute(
+            "DELETE FROM export_configurations WHERE config_id = %s", (str(config_id),)
+        )
+        if n == 0:
+            raise NotFoundError(f"export configuration {config_id} not found")
+        self._auditor.publish("ADMIN_DELETE", {
+            "actor_id": ctx.actor_id, "config_id": str(config_id),
+            "event_type": "ADMIN_DELETE",
+        })
+
+    def trigger(self, ctx, config_id, execution_date=None):
+        cfg = self.get(ctx, config_id)
+        if not cfg.is_active:
+            raise ConflictError(f"configuration {config_id} is not active")
+        exec_date = execution_date or datetime.now(timezone.utc)
+        lineage_uuid = str(uuid4())
+        run = self._mwaa.trigger_dag_run(
+            dag_id=self._orchestrator_dag_id,
+            conf={"config_id": str(config_id), "execution_date": exec_date.isoformat(),
+                  "lineage_uuid": lineage_uuid},
+            logical_date=exec_date,
+        )
+        self._auditor.publish("ADMIN_MANUAL_TRIGGER", {
+            "actor_id": ctx.actor_id, "config_id": str(config_id),
+            "event_type": "ADMIN_MANUAL_TRIGGER", "execution_id": lineage_uuid,
+        })
+        return {"config_id": config_id, "dag_run_id": run["dag_run_id"],
+                "execution_date": exec_date, "state": run.get("state", "queued")}
+
+    def stop(self, ctx, config_id, dag_run_id):
+        self._mwaa.cancel_dag_run(dag_id=self._orchestrator_dag_id, dag_run_id=dag_run_id)
+        self._auditor.publish("ADMIN_MANUAL_TRIGGER", {
+            "actor_id": ctx.actor_id, "config_id": str(config_id),
+            "event_type": "ADMIN_MANUAL_TRIGGER", "action": "STOP",
+        })
+        return {"config_id": str(config_id), "dag_run_id": dag_run_id, "state": "terminating"}
+
+    @staticmethod
+    def _encrypt(credentials) -> str:
+        # Delegates to common.clients.aws.ssm / KMS-backed envelope encryption.
+        from dataoutbound_section_tree.common.clients.aws.ssm.ssm_client import SsmClient
+        return SsmClient().encrypt_payload(credentials.model_dump())
+```
+
+---
+
 ### 3.4. Cross-Component Interaction Sequence (Local Mermaid/ASCII Flow)
 <a id="laminar-sec-c.imp_standard_standard_api_1.seq"></a>
-The sequence below describes the interactions of **do-admin-api** with its three contract partners. The pipeline inserts the Mermaid sequence diagram for this section.
+The `do-admin-api` participates in three distinct flows. Each is described below in order; the pipeline renders the corresponding Mermaid sequence diagram.
 
-1. **Authenticate.** The client presents a JWT bearer token. `common/security/auth.py` validates it; on failure `AuthError` is raised and the route returns `401` (missing/invalid) or `403` (valid token, missing `export-admin` role). No store is touched and a security audit record is written to **audit_bucket** (SCRUM-479 AC#7).
-2. **Validate.** The pydantic model in `export_admin_schemas.py` validates the payload at the boundary. Any missing field, out-of-enum `target_type`/`dataset`, malformed 5-field `cron_schedule` or wrong-typed field produces a `400` whose `details` array names each invalid field; **cofig_db** row count and `updated_at` are unchanged (SCRUM-479 AC#2).
-3. **Persist configuration (create/update/delete).** The service writes credentials to SSM Parameter Store as a `SecureString` (KMS-encrypted with the solution CMK) and stores only the returned parameter name as `credentials_ref` in **cofig_db** via `DbClient.transaction()`. The stored value therefore differs from the submitted plaintext and no retrieve call returns a credential in plaintext (SCRUM-479 AC#1/AC#6).
-4. **Audit the administrative action.** Immediately after the store commits, the service calls `AuditPublisher(config=...).publish("com.laminar.dataoutbound.config.updated", payload)` and `publish("com.laminar.dataoutbound.audit.admin", payload)`. `publish` never raises into the caller's flow, so an **audit_bucket** failure is logged locally and does not fail the API response. The audit record carries `actor_id`, `action`, `config_id` and a UTC timestamp and is present within 5 s of the HTTP response (SCRUM-479 AC#4/AC#5).
-5. **Manual trigger.** `POST /api/v1/exports/{config_id}/trigger` reads the configuration from **cofig_db**, then calls **orchestrator** through the MWAA REST API with a DAG run trigger payload carrying the configuration ID and the logical execution date. On success the API returns `200 OK` with the DAG run id; if MWAA is unreachable or returns an error, the API returns `502 Bad Gateway` and the client retries with exponential backoff. The trigger is idempotent via the logical execution date and run id, so a retry does not start a second run (SCRUM-480 AC#5).
-6. **Manual stop.** `POST /api/v1/exports/{config_id}/stop` calls the MWAA REST API to terminate the running orchestrator DAG run and returns `202 Accepted`. The orchestrator run reaches `terminated` within 30 s and no further **child_export_dag** run is started for that execution (SCRUM-480 AC#6). An unauthorized caller receives `403` and the count and states of orchestrator runs are unchanged (SCRUM-480 AC#7).
-7. **Failure paths.** `NotFoundError` → `404`; `ValidationError` → `400`; `AuthError` → `401`/`403`; any other `LaminarError` → `500` for CRUD and `502` for trigger/stop. Every path emits exactly one audit record per event.
+#### 3.4.1 Flow A — Create / update / delete an export configuration
+
+1. An authorized administrator (or scripted client) presents a JWT bearer token and a JSON payload to `POST /api/v1/exports` (or `PUT` / `DELETE` on `/api/v1/exports/{id}`).
+2. `current_admin` dependency calls `verify_token` (from `common.security.auth`) against the enterprise JWKS endpoint; on failure it raises `AuthError` → HTTP `401`. It then calls `require_role(claims, "export-admin")`; on failure it raises `AuthError` → HTTP `403`.
+3. `ExportAdminService.create` (or `update` / `delete`) executes a parameterised statement against `cofig_db` via `DbClient`. Credentials are envelope-encrypted before the `INSERT`/`UPDATE`; the plaintext never touches the database.
+4. On success, the service calls `AuditPublisher.publish("ADMIN_CREATE" | "ADMIN_UPDATE" | "ADMIN_DELETE", …)` which writes a CloudEvents-shaped record to `audit_bucket`. The publisher never raises into the caller's flow — a failed audit write is logged locally and the API response is unaffected.
+5. The route returns `201 Created` (with `config_id`), `200 OK` (with the updated record, credentials masked), or `204 No Content`.
+6. **Failure path:** a `ValidationError` → `400`; a unique-constraint violation on `connection_name` → `409`; a DB connectivity error → `500`. In every failure case the row count and `updated_at` in `cofig_db` are unchanged, and a security event is written to `audit_bucket` within 5 s.
+
+#### 3.4.2 Flow B — Manual trigger of an orchestrator run
+
+1. An authorized administrator calls `POST /api/v1/exports/{id}/trigger`.
+2. `current_admin` verifies the JWT and the `export-admin` role (`401` / `403` on failure).
+3. `ExportAdminService.trigger` reads the configuration from `cofig_db`; if the record is missing → `404`; if `is_active = FALSE` → `409`.
+4. The service generates a fresh RFC 4122 v4 lineage UUID and calls `MwaaClient.trigger_dag_run(dag_id="orchestrator", conf={config_id, execution_date, lineage_uuid})` over the Airflow REST API (SigV4-signed, HTTPS).
+5. On success the service publishes `ADMIN_MANUAL_TRIGGER` to `audit_bucket` (with the lineage UUID as `execution_id`) and returns `202 Accepted` with the `dag_run_id`. The orchestrator run reaches `running` within 30 s (SCRUM-480 AC#5).
+6. **Failure path:** if MWAA is unreachable or returns a non-2xx response, the service raises a `ClientError` → HTTP `502 Bad Gateway`; the caller retries with exponential backoff. No audit `ADMIN_MANUAL_TRIGGER` event is emitted for a failed trigger.
+
+#### 3.4.3 Flow C — Stop a running orchestrator run
+
+1. An authorized administrator calls `POST /api/v1/exports/{id}/stop` with the target `dag_run_id`.
+2. `current_admin` verifies the JWT and role.
+3. `ExportAdminService.stop` calls `MwaaClient.cancel_dag_run(dag_id="orchestrator", dag_run_id=…)`.
+4. On success the service publishes an `ADMIN_MANUAL_TRIGGER` (stop variant) audit record and returns `202 Accepted`. The orchestrator run reaches `terminated` within 30 s (SCRUM-480 AC#6), and no further `child_export_dag` run is started for that execution.
+5. **Failure path:** MWAA unreachable → `502`; the caller retries with exponential backoff.
+
+#### 3.4.4 Flow D — Audit emission (cross-cutting)
+
+Every successful administrative action (create, update, delete, manual trigger, stop) emits exactly one audit record to `audit_bucket` via `AuditPublisher.publish`. The publisher is idempotent by filename (`<event_type>/<timestamp>_<uuid>.json`) and never blocks the API response.
+
+---
 ```mermaid
 sequenceDiagram
-    actor Client
-    participant AdminAPI as do-admin-api
-    participant ConfigDB as cofig_db
-    participant Orchestrator as orchestrator
-    participant AuditBucket as audit_bucket
+    autonumber
+    actor Admin as Admin client
+    participant API as do-admin-api
+    participant Auth as JWKS verify_token
+    participant DB as cofig_db
+    participant Orch as orchestrator
+    participant Audit as audit_bucket
 
-    Client->>AdminAPI: POST /api/v1/exports with JWT bearer token and Export configuration payload JSON with tenant_id, schedule, destination_type, credentials_ref
-    Note over AdminAPI: Authenticate via common/security/auth.py
-    alt AuthError missing or invalid token
-        AdminAPI-->>Client: 401 Unauthorized
-        AdminAPI->>AuditBucket: file transfer Audit log JSON record upload for security audit
-        AuditBucket-->>AdminAPI: S3 upload success ETag
-    else AuthError valid token missing export-admin role
-        AdminAPI-->>Client: 403 Forbidden
-        AdminAPI->>AuditBucket: file transfer Audit log JSON record upload for security audit
-        AuditBucket-->>AdminAPI: S3 upload success ETag
-    else Authenticated and authorized
-        Note over AdminAPI: Validate via export_admin_schemas.py
-        alt ValidationError
-            AdminAPI-->>Client: 400 Bad Request with details array naming each invalid field
-        else Valid
-            AdminAPI->>ConfigDB: database write Export configuration payload JSON with tenant_id, schedule, destination_type, credentials_ref
-            alt 400 Bad Request or 500 Internal Server Error
-                ConfigDB-->>AdminAPI: error
-                AdminAPI-->>Client: 400 Bad Request or 500 Internal Server Error
-            else 201 Created
-                ConfigDB-->>AdminAPI: 201 Created with configuration ID
-                AdminAPI->>AuditBucket: file transfer Audit log JSON record upload for com.laminar.dataoutbound.config.updated
-                AuditBucket-->>AdminAPI: S3 upload success ETag
-                AdminAPI->>AuditBucket: file transfer Audit log JSON record upload for com.laminar.dataoutbound.audit.admin
-                AuditBucket-->>AdminAPI: S3 upload success ETag
-                AdminAPI-->>Client: 201 Created with configuration ID
+    Note over Admin,Audit: Flow A - Create / update / delete an export configuration
+
+    Admin->>API: POST /api/v1/exports with JWT bearer token and Export configuration payload (JSON with tenant_id, schedule, destination_type, credentials_ref)
+    API->>Auth: verify_token against enterprise JWKS endpoint
+    alt Token invalid
+        Auth-->>API: AuthError
+        API-->>Admin: 401 Unauthorized
+    else Token valid
+        Auth-->>API: claims
+        API->>Auth: require_role(claims, "export-admin")
+        alt Role missing
+            Auth-->>API: AuthError
+            API-->>Admin: 403 Forbidden
+        else Role granted
+            API->>DB: parameterised INSERT / UPDATE / DELETE with envelope-encrypted credentials, idempotent via unique configuration ID or upsert key
+            alt Write succeeds
+                DB-->>API: 201 Created with configuration ID
+                API->>Audit: AuditPublisher.publish ADMIN_CREATE / ADMIN_UPDATE / ADMIN_DELETE - Audit log JSON record upload, telemetry com.laminar.dataoutbound.audit.admin
+                alt S3 upload succeeds
+                    Audit-->>API: S3 upload success ETag
+                else S3 error
+                    Audit-->>API: S3 error - caught and logged locally without failing API response
+                end
+                API-->>Admin: 201 Created with configuration ID, or 200 OK with updated record credentials masked, or 204 No Content
+            else ValidationError
+                DB-->>API: ValidationError
+                API->>Audit: security event record within 5 s
+                API-->>Admin: 400 Bad Request - retried by client with backoff
+            else Unique constraint violation on connection_name
+                DB-->>API: constraint violation
+                API->>Audit: security event record within 5 s
+                API-->>Admin: 409 Conflict
+            else DB connectivity error
+                DB-->>API: connectivity error
+                API->>Audit: security event record within 5 s
+                API-->>Admin: 500 Internal Server Error - retried by client with backoff
             end
         end
     end
 
-    Client->>AdminAPI: POST /api/v1/exports/config_id/trigger
-    AdminAPI->>ConfigDB: database read configuration by configuration ID
-    ConfigDB-->>AdminAPI: configuration payload
-    AdminAPI->>Orchestrator: scheduled trigger DAG run trigger payload with configuration ID and execution date
-    alt 502 Bad Gateway
-        Orchestrator-->>AdminAPI: 502 Bad Gateway
-        AdminAPI-->>Client: 502 Bad Gateway
-    else 200 OK
-        Orchestrator-->>AdminAPI: 200 OK with DAG run ID
-        AdminAPI->>AuditBucket: file transfer Audit log JSON record upload for com.laminar.dataoutbound.orchestrator.triggered
-        AuditBucket-->>AdminAPI: S3 upload success ETag
-        AdminAPI-->>Client: 200 OK with DAG run ID
+    Note over Admin,Audit: Flow B - Manual trigger of an orchestrator run
+
+    Admin->>API: POST /api/v1/exports/{id}/trigger with JWT bearer token
+    API->>Auth: verify_token and require_role(claims, "export-admin")
+    alt Auth failure
+        API-->>Admin: 401 Unauthorized or 403 Forbidden
+    else Authorized
+        API->>DB: read export configuration by config_id
+        alt Record missing
+            DB-->>API: not found
+            API-->>Admin: 404 Not Found
+        else is_active = FALSE
+            DB-->>API: inactive configuration
+            API-->>Admin: 409 Conflict
+        else Configuration active
+            DB-->>API: configuration record
+            API->>Orch: MwaaClient.trigger_dag_run dag_id="orchestrator" with DAG run trigger payload with configuration ID and execution date and lineage_uuid - HTTPS Airflow REST API SigV4-signed, idempotent via logical execution date and run ID
+            alt 2xx response
+                Orch-->>API: 200 OK with DAG run ID
+                API->>Audit: AuditPublisher.publish ADMIN_MANUAL_TRIGGER with lineage UUID as execution_id, telemetry com.laminar.dataoutbound.orchestrator.triggered
+                Audit-->>API: S3 upload success ETag
+                API-->>Admin: 202 Accepted with dag_run_id
+            else MWAA unreachable or non-2xx response
+                Orch-->>API: ClientError
+                API-->>Admin: 502 Bad Gateway - retried with exponential backoff, no audit ADMIN_MANUAL_TRIGGER event emitted
+            end
+        end
     end
 
-    Client->>AdminAPI: POST /api/v1/exports/config_id/stop
-    AdminAPI->>Orchestrator: terminate running orchestrator DAG run
-    alt unauthorized
-        AdminAPI-->>Client: 403 Forbidden
-    else accepted
-        Orchestrator-->>AdminAPI: terminated
-        AdminAPI->>AuditBucket: file transfer Audit log JSON record upload
-        AuditBucket-->>AdminAPI: S3 upload success ETag
-        AdminAPI-->>Client: 202 Accepted
+    Note over Admin,Audit: Flow C - Stop a running orchestrator run
+
+    Admin->>API: POST /api/v1/exports/{id}/stop with target dag_run_id and JWT bearer token
+    API->>Auth: verify_token and require_role(claims, "export-admin")
+    alt Auth failure
+        API-->>Admin: 401 Unauthorized or 403 Forbidden
+    else Authorized
+        API->>Orch: MwaaClient.cancel_dag_run dag_id="orchestrator" dag_run_id - HTTPS Airflow REST API SigV4-signed
+        alt 2xx response
+            Orch-->>API: 200 OK
+            API->>Audit: AuditPublisher.publish ADMIN_MANUAL_TRIGGER stop variant, telemetry com.laminar.dataoutbound.audit.admin
+            Audit-->>API: S3 upload success ETag
+            API-->>Admin: 202 Accepted
+        else MWAA unreachable
+            Orch-->>API: ClientError
+            API-->>Admin: 502 Bad Gateway - retried with exponential backoff
+        end
     end
 
-    Note over AdminAPI: Failure paths NotFoundError maps to 404, ValidationError maps to 400, AuthError maps to 401 or 403, other LaminarError maps to 500 for CRUD and 502 for trigger or stop. Every path emits exactly one audit record per event.
+    Note over Admin,Audit: Flow D - Audit emission cross-cutting, one record per successful administrative action, idempotent by filename event_type/timestamp_uuid.json, never blocks the API response
 ```
 
 ### 3.5. Schema Definitions (DB Tables / API JSON / Telemetry CloudEvents)
 <a id="laminar-sec-c.imp_standard_standard_api_1.schema"></a>
-**do-admin-api** owns no database tables — the export configuration tables are owned by **cofig_db** and their DDL is defined in that component's section. This section defines the API JSON contracts and the CloudEvents telemetry records the API emits.
+#### 3.5.1 Canonical DDL — `export_configurations` (owned by `cofig_db`, declared once here)
 
-#### 3.5.1 API request/response JSON
+This is the **single canonical definition** of the `export_configurations` table. The `cofig_db` chapter and any other chapter that references this table must reference this DDL and must not re-declare it with different columns.
+
+```sql
+-- Canonical DDL for export_configurations (owned by cofig_db; declared once in §3.5.1)
+CREATE TABLE IF NOT EXISTS export_configurations (
+    config_id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    connection_name        VARCHAR(100) NOT NULL UNIQUE,
+    target_type            VARCHAR(20)  NOT NULL
+                           CHECK (target_type IN ('s3','azure_blob','gcs','sftp')),
+    dataset                VARCHAR(40)  NOT NULL
+                           CHECK (dataset IN ('identity_profiles','subscription_statuses',
+                                              'campaigns_reactions','reservation_items')),
+    mode                   VARCHAR(20)  NOT NULL
+                           CHECK (mode IN ('initial','incremental')),
+    cron_schedule          VARCHAR(120) NOT NULL,
+    credentials_encrypted  TEXT         NOT NULL,   -- envelope-encrypted; never plaintext
+    is_active              BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_at             TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at             TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS ix_export_configurations_active
+    ON export_configurations (is_active) WHERE is_active = TRUE;
+```
+
+Notes:
+- `credentials_encrypted` is the canonical column name; the API never returns it and never accepts a plaintext value in a response.
+- `is_active` is the canonical activation flag; the orchestrator's selection query (`WHERE is_active = TRUE`) relies on it.
+- `created_at` / `updated_at` are the canonical audit timestamps; `updated_at` is bumped on every successful `UPDATE`.
+- The `cofig_db` chapter references this DDL; it does not restate the columns.
+
+#### 3.5.2 API request / response schemas (OpenAPI 3.0)
+
+```yaml
+openapi: 3.0.3
+info:
+  title: do-admin-api
+  version: 1.0.0
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    ExportConfigurationCreate:
+      type: object
+      required: [connection_name, target_type, dataset, mode, cron_schedule, credentials]
+      properties:
+        connection_name: { type: string, minLength: 1, maxLength: 100 }
+        target_type:     { type: string, enum: [s3, azure_blob, gcs, sftp] }
+        dataset:         { type: string, enum: [identity_profiles, subscription_statuses, campaigns_reactions, reservation_items] }
+        mode:            { type: string, enum: [initial, incremental] }
+        cron_schedule:   { type: string, description: "5-field cron expression" }
+        credentials:     { type: object, additionalProperties: true }
+    ExportConfigurationResponse:
+      type: object
+      required: [config_id, connection_name, target_type, dataset, mode, cron_schedule, is_active, created_at, updated_at, credentials]
+      properties:
+        config_id:       { type: string, format: uuid }
+        connection_name: { type: string }
+        target_type:     { type: string }
+        dataset:         { type: string }
+        mode:            { type: string }
+        cron_schedule:   { type: string }
+        is_active:       { type: boolean }
+        created_at:      { type: string, format: date-time }
+        updated_at:      { type: string, format: date-time }
+        credentials:     { type: string, enum: ["***MASKED***"] }
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, details]
+          properties:
+            code:    { type: string }
+            message: { type: string }
+            details: { type: array, items: { type: object } }
+paths:
+  /api/v1/exports:
+    post:
+      security: [{ bearerAuth: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ExportConfigurationCreate' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/ExportConfigurationResponse' } } } }
+        '400': { description: Validation error, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        '401': { description: Unauthorized }
+        '403': { description: Forbidden }
+        '409': { description: Conflict }
+  /api/v1/exports/{id}:
+    get:    { security: [{ bearerAuth: [] }], responses: { '200': { description: OK }, '404': { description: Not found } } }
+    put:    { security: [{ bearerAuth: [] }], responses: { '200': { description: OK }, '400': { description: Validation error }, '404': { description: Not found } } }
+    delete: { security: [{ bearerAuth: [] }], responses: { '204': { description: No content }, '404': { description: Not found } } }
+  /api/v1/exports/{id}/trigger:
+    post: { security: [{ bearerAuth: [] }], responses: { '202': { description: Accepted }, '409': { description: Inactive }, '502': { description: MWAA unreachable } } }
+  /api/v1/exports/{id}/stop:
+    post: { security: [{ bearerAuth: [] }], responses: { '202': { description: Accepted }, '502': { description: MWAA unreachable } } }
+```
+
+#### 3.5.3 Telemetry — CloudEvents-shaped audit record
+
+Every administrative action emits exactly one record to `audit_bucket` in the organisation audit schema (SCRUM-486). The CloudEvents envelope carries the frozen `telemetry_event` names from the component contracts.
 
 ```json
 {
-  "$id": "https://laminar.com/dataoutbound/schemas/export-config-create.json",
-  "title": "ExportConfigCreate",
+  "specversion": "1.0",
+  "id": "b1f0c2e4-9a3d-4f2b-8c1e-7d5a9b0e4f21",
+  "source": "com.laminar.dataoutbound.do-admin-api",
+  "type": "com.laminar.dataoutbound.audit.admin",
+  "time": "2025-01-31T02:15:00.000Z",
+  "datacontenttype": "application/json",
+  "subject": "export_configurations/8f3c1a2b-4d5e-6f70-8192-a3b4c5d6e7f8",
+  "data": {
+    "actor_id": "admin@acme.example",
+    "timestamp_utc": "2025-01-31T02:15:00.000Z",
+    "event_type": "ADMIN_CREATE",
+    "execution_id": "3f2a1b0c-9d8e-4f7a-8b6c-5d4e3f2a1b0c",
+    "config_id": "8f3c1a2b-4d5e-6f70-8192-a3b4c5d6e7f8",
+    "action": "CREATE"
+  }
+}
+```
+
+Field rules (binding):
+- `data.actor_id` — authenticated Acme user identifier for admin operations; `system:<component-name>` for automated events.
+- `data.timestamp_utc` — ISO-8601 UTC with millisecond precision and `Z` suffix.
+- `data.event_type` — one of `ADMIN_CREATE`, `ADMIN_UPDATE`, `ADMIN_DELETE`, `ADMIN_MANUAL_TRIGGER`, `EXECUTION_STARTED`, `EXECUTION_COMPLETED`, `TRANSFER_STARTED`, `TRANSFER_COMPLETED`, `TRANSFER_FAILED`.
+- `data.execution_id` — the lineage UUID generated by the orchestrator (for admin CRUD events, the API generates a fresh UUID for correlation).
+- `type` — the frozen telemetry event name from the component contract: `com.laminar.dataoutbound.audit.admin` for admin actions; `com.laminar.dataoutbound.config.updated` for the `cofig_db` write edge; `com.laminar.dataoutbound.orchestrator.triggered` for the manual trigger edge.
+
+#### 3.5.4 S3 object key layout for audit records
+
+```
+s3://audit_bucket/
+  admin/
+    ADMIN_CREATE/2025/01/31/2025-01-31T02-15-00.000Z_8f3c1a2b.json
+    ADMIN_UPDATE/2025/01/31/2025-01-31T02-16-00.000Z_8f3c1a2b.json
+    ADMIN_DELETE/2025/01/31/2025-01-31T02-17-00.000Z_8f3c1a2b.json
+    ADMIN_MANUAL_TRIGGER/2025/01/31/2025-01-31T02-18-00.000Z_8f3c1a2b.json
+```
+
+Non-sequential, date-partitioned prefixes avoid S3 hot-partition throttling; the filename embeds the millisecond timestamp and a short UUID suffix for idempotency.
+
+---
+
+### 3.6. Local Design Assumptions
+<a id="laminar-sec-c.imp_standard_standard_api_1.asm"></a>
+- **JWT issuer and JWKS.** Assumed to be the enterprise identity provider; the issuer URL, audience and JWKS endpoint are read from `apis/config.yml` via `ConfigLoader`. No public key is hardcoded.
+- **Role claim.** Assumed to be `roles` (a list of strings) inside the verified JWT; the required role is `export-admin`. If the enterprise uses a different claim name, only the `require_role` call site changes.
+- **Idempotency-Key header.** Assumed to be an optional `Idempotency-Key` request header on `POST /api/v1/exports`; when present, the service deduplicates within a 24-hour window using `util.idempotency.IdempotencyKey.build`. When absent, the unique `connection_name` constraint provides natural idempotency.
+- **Credential encryption.** Assumed to be envelope encryption backed by AWS KMS, exposed through `common.clients.aws.ssm.ssm_client.SsmClient.encrypt_payload`. The plaintext credential never leaves the process boundary; the encrypted blob is stored in `credentials_encrypted`.
+- **Rate limiting.** Assumed to be a sliding-window limiter per client IP/tenant, configured via `apis/config.yml`; thresholds are not hardcoded. No external distributed cache is required for the expected administrative concurrency.
+- **Response latency target.** Assumed < 200 ms for CRUD operations; the service is stateless and delegates all heavy work to `orchestrator` and `emr_do`.
+- **Stop endpoint contract.** Assumed to accept the target `dag_run_id` as a query parameter; the API returns `202 Accepted` and the orchestrator run reaches `terminated` within 30 s (SCRUM-480 AC#6).
+- **Audit write failure.** Assumed to be non-fatal: `AuditPublisher.publish` never raises into the caller's flow, and a failed audit write is logged locally. This preserves the API's availability guarantee while keeping the audit trail best-effort within the 5-second SLA.
+- **`cofig_db` DDL ownership.** The canonical `export_configurations` DDL is declared once in §3.5.1 of this chapter; the `cofig_db` chapter references it and does not restate the columns. This resolves the cross-chapter DDL inconsistency flagged in review.
+- **Follow-up question — "Where is the API hosted?"** Assumed to run as a containerised service on ECS (the only container runtime in the approved AWS allowlist), fronted by an Application Load Balancer with TLS termination; the container image is built from `apis/export_admin_api/`.
+- **Follow-up question — "How are secrets injected?"** Assumed to be injected as environment variables resolved from SSM Parameter Store (SecureString) at task start; no secret is baked into the image or committed to source.
+
+## 4. Component Design: scheduler
+<a id="laminar-sec-c.imp_aws_aws_eventbridge_2"></a>
+
+<!-- laminar:diagram-settings:imp-aws-aws_eventbridge-2 -->
+**Diagram settings (user decisions — authoritative)**
+
+| Setting | Value |
+| --- | --- |
+| `rule_name` | `scheduler` |
+
+<!-- /laminar:diagram-settings -->
+
+
+### 4.1. Component Contract (Bi-Directional Inputs & Outputs)
+<a id="laminar-sec-c.imp_aws_aws_eventbridge_2.contract"></a>
+**Component:** `scheduler` — an Amazon EventBridge scheduled rule (`rule_name = scheduler`) that raises a cadence event at each configured schedule time and hands it to the **orchestrator** DAG on MWAA. It owns *when* work is due; the orchestrator owns *what* work is due. The scheduler is stateless, holds no connection metadata, and carries no business data.
+
+#### 4.1.1 Outbound contract (scheduler → orchestrator)
+
+| Field | Value |
+|---|---|
+| Edge | scheduler → orchestrator |
+| Interaction | scheduled trigger; EventBridge event to MWAA |
+| Trigger | Cron schedule (`@daily` and the cadence family) |
+| Request | **CloudEvents 1.0 payload** with event source and schedule timestamp |
+| Response | HTTP 200 / Event acknowledged |
+| Errors | Retried via EventBridge built-in retry policy (max 3 attempts), then routed to the rule target's SQS DLQ |
+| Idempotency | Idempotent via EventBridge event ID and execution date |
+| Telemetry event | `com.laminar.dataoutbound.scheduler.fired` |
+
+**Envelope decision (single, binding).** The scheduler-to-orchestrator event is a **CloudEvents 1.0 document**. EventBridge is the transport: the rule target's input is the CloudEvents document, and the EventBridge-native envelope (`source`, `detail-type`, `time`, `account`, `region`, `id`) is the transport wrapper whose `detail` carries the CloudEvents document. The CloudEvents `id` is set from the EventBridge event `id`, so the two identifiers are the same value and idempotency is unambiguous. This is the one envelope used by the scheduler, by the orchestrator's inbound contract, and by the `com.laminar.dataoutbound.scheduler.fired` telemetry record — there is no second, competing shape.
+
+#### 4.1.2 Inbound contract (configuration → scheduler)
+
+The scheduler consumes **configuration, not data**. Its only input is the set of active cadences defined in **cofig_db** and provisioned into EventBridge rules through the deployment pipeline. The scheduler never reads `cofig_db` directly and never accepts ad-hoc schedule input at runtime; cadence changes flow exclusively through the **do-admin-api** CRUD path so that every change is validated (5-field cron, allowed cadences) and audited (`ADMIN_CREATE` / `ADMIN_UPDATE`).
+
+#### 4.1.3 Configuration actually set (user decisions, authoritative)
+
+| Setting | Value | Rationale |
+|---|---|---|
+| `rule_name` | `scheduler` | Explicit resource identifier; one rule per cadence family keeps event patterns specific and avoids overly broad matching. |
+| Rule type | Scheduled (cron/rate) rule per cadence class | Supports the full cadence set: daily, weekly, bi-weekly, monthly, hourly fast-batch. |
+| Target | MWAA orchestrator DAG trigger | Direct managed hand-off; a metadata-only event needs no intermediate compute. |
+| Retry policy | Bounded retries, maximum event age set to fit inside the ±10-minute selection window | An event delivered after the window would be ignored by the orchestrator anyway; expiring it early prevents wasted retries. |
+| DLQ | SQS DLQ attached to the rule target | Mandatory: a failed orchestrator invocation is captured, alarmed and replayable, never silently dropped. |
+| Event archiving | Enabled, retention aligned to the organisation logging-standard value | Supports replay for debugging and audit reconstruction. |
+| Bus encryption | AWS-managed KMS key (default, deliberately not overridden) | Production-grade managed default; deferring to it is itself the decision. |
+| Time zone | UTC | Consistent with the ISO-8601 UTC audit timestamp requirement. |
+
+### 4.2. Class and Interface Definitions
+<a id="laminar-sec-c.imp_aws_aws_eventbridge_2.classes"></a>
+`scheduler` is a managed EventBridge rule with no component-owned runtime. The classes below are the **typed contract** for the event it emits and the **provisioning interface** that creates its rules from `cofig_db` cadence configuration. They live in the blueprint foundation.
+
+```python
+from __future__ import annotations
+
+import uuid
+from dataclasses import dataclass, field, asdict
+from datetime import datetime, timezone
+from enum import Enum
+from typing import Any, Mapping, Optional
+
+from dataoutbound_section_tree.common.clients.aws.eventbridge.eventbridge_client import EventBridgeClient
+from dataoutbound_section_tree.common.clients.aws.sqs.sqs_client import SqsClient
+from dataoutbound_section_tree.common.logging.logger import get_logger
+from dataoutbound_section_tree.util.exceptions import ClientError, ValidationError
+
+logger = get_logger(__name__)
+
+SCHEDULER_EVENT_TYPE = "com.laminar.dataoutbound.scheduler.fired"
+SCHEDULER_SOURCE = "com.laminar.dataoutbound.scheduler"
+
+
+class Cadence(str, Enum):
+    """The cadence family the scheduler must cover (SCRUM-481)."""
+
+    DAILY = "daily"
+    WEEKLY = "weekly"
+    BIWEEKLY = "biweekly"
+    MONTHLY = "monthly"
+    HOURLY_FAST_BATCH = "hourly_fast_batch"
+
+
+@dataclass(frozen=True)
+class CadenceRule:
+    """One EventBridge scheduled rule, provisioned from cofig_db cadence config."""
+
+    rule_name: str
+    cadence: Cadence
+    cron_expression: str          # 5-field cron, validated at the API boundary
+    target_dag_name: str = "orchestrator"
+    dlq_arn: str = ""
+    retry_max_attempts: int = 3
+    max_event_age_seconds: int = 600   # fits inside the ±10-minute selection window
+
+    def __post_init__(self) -> None:
+        if len(self.cron_expression.split()) != 5:
+            raise ValidationError("cron_expression must be a valid 5-field cron expression")
+
+
+@dataclass(frozen=True)
+class SchedulerEventPayload:
+    """The CloudEvents 1.0 document emitted by the scheduler.
+
+    EventBridge is the transport; this document is the rule target's input and
+    the orchestrator's inbound contract.
+    """
+
+    schedule_time_utc: str        # ISO-8601, millisecond precision, Z suffix
+    cadence: Cadence
+    rule_name: str
+    event_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+
+    def to_cloudevent(self) -> dict:
+        return {
+            "specversion": "1.0",
+            "id": self.event_id,
+            "source": SCHEDULER_SOURCE,
+            "type": SCHEDULER_EVENT_TYPE,
+            "time": self.schedule_time_utc,
+            "datacontenttype": "application/json",
+            "data": {
+                "cadence": self.cadence.value,
+                "rule_name": self.rule_name,
+                "schedule_time_utc": self.schedule_time_utc,
+            },
+        }
+
+
+class SchedulerRuleProvisioner:
+    """Creates and updates the EventBridge scheduled rules from cadence config."""
+
+    def __init__(self, eventbridge: EventBridgeClient, sqs: SqsClient) -> None:
+        self._eventbridge = eventbridge
+        self._sqs = sqs
+
+    def upsert_rule(self, rule: CadenceRule) -> str:
+        """Create or update one scheduled rule with its target and DLQ."""
+        try:
+            return self._eventbridge.put_scheduled_rule(
+                name=rule.rule_name,
+                schedule_expression=f"cron({rule.cron_expression})",
+                target_dag_name=rule.target_dag_name,
+                dead_letter_arn=rule.dlq_arn,
+                retry_max_attempts=rule.retry_max_attempts,
+                max_event_age_seconds=rule.max_event_age_seconds,
+            )
+        except ClientError as exc:
+            logger.error("scheduler_rule_upsert_failed", extra={"rule": rule.rule_name, "error": str(exc)})
+            raise
+
+    def delete_rule(self, rule_name: str) -> None:
+        self._eventbridge.delete_rule(name=rule_name)
+
+
+class SchedulerEventEmitter:
+    """Emits a cadence event; used by tests and by manual replay tooling."""
+
+    def __init__(self, eventbridge: EventBridgeClient) -> None:
+        self._eventbridge = eventbridge
+
+    def emit(self, payload: SchedulerEventPayload) -> str:
+        return self._eventbridge.put_events(
+            source=SCHEDULER_SOURCE,
+            detail_type=SCHEDULER_EVENT_TYPE,
+            detail=payload.to_cloudevent(),
+        )
+```
+
+### 4.3. Implementation Code Skeleton (Stubs & Handlers)
+<a id="laminar-sec-c.imp_aws_aws_eventbridge_2.skeleton"></a>
+Illustrative skeleton — the Component Contract and Schema Definitions are binding. `scheduler` is a managed EventBridge rule: it has no handler of its own. The skeleton below is the **rule provisioning entrypoint** that the deployment pipeline invokes to materialise cadence rules from `cofig_db` configuration, plus the DLQ alarm wiring that is the scheduler's primary health signal.
+
+```python
+# src/dataoutbound_section_tree/common/clients/aws/eventbridge/eventbridge_client.py
+"""EventBridgeClient — scheduled-rule provisioning and event emission."""
+from __future__ import annotations
+
+from typing import Any, Mapping, Optional
+
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError as BotoClientError
+
+from dataoutbound_section_tree.common.clients.aws.session import build_session
+from dataoutbound_section_tree.common.logging.logger import get_logger
+from dataoutbound_section_tree.config.config_loader import ConfigLoader
+from dataoutbound_section_tree.util.exceptions import ClientError
+
+logger = get_logger(__name__)
+
+
+class EventBridgeClient:
+    def __init__(self, config: ConfigLoader, session: Optional[boto3.Session] = None) -> None:
+        self._config = config
+        self._client = (session or build_session(config)).client("events")
+
+    def put_scheduled_rule(
+        self,
+        name: str,
+        schedule_expression: str,
+        target_dag_name: str,
+        dead_letter_arn: str,
+        retry_max_attempts: int,
+        max_event_age_seconds: int,
+    ) -> str:
+        """Create/update a scheduled rule and attach its MWAA target with a DLQ."""
+        try:
+            self._client.put_rule(Name=name, ScheduleExpression=schedule_expression, State="ENABLED")
+            self._client.put_targets(
+                Rule=name,
+                Targets=[{
+                    "Id": f"{name}-target",
+                    "Arn": self._config.get("mwaa.orchestrator_target_arn"),
+                    "DeadLetterConfig": {"Arn": dead_letter_arn},
+                    "RetryPolicy": {
+                        "MaximumRetryAttempts": retry_max_attempts,
+                        "MaximumEventAgeInSeconds": max_event_age_seconds,
+                    },
+                }],
+            )
+            logger.info("scheduler_rule_provisioned", extra={"rule": name, "target": target_dag_name})
+            return name
+        except (BotoCoreError, BotoClientError) as exc:
+            raise ClientError(f"failed to provision scheduled rule {name}") from exc
+
+    def delete_rule(self, name: str) -> None:
+        try:
+            self._client.remove_targets(Rule=name, Ids=[f"{name}-target"])
+            self._client.delete_rule(Name=name)
+        except (BotoCoreError, BotoClientError) as exc:
+            raise ClientError(f"failed to delete scheduled rule {name}") from exc
+
+    def put_events(self, source: str, detail_type: str, detail: Mapping[str, Any]) -> str:
+        try:
+            response = self._client.put_events(
+                Entries=[{
+                    "Source": source,
+                    "DetailType": detail_type,
+                    "Detail": __import__("json").dumps(detail),
+                    "EventBusName": self._config.get("eventbridge.bus_name"),
+                }]
+            )
+            if response.get("FailedEntryCount", 0):
+                raise ClientError(f"event rejected: {response['Entries']}")
+            return response["Entries"][0]["EventId"]
+        except (BotoCoreError, BotoClientError) as exc:
+            raise ClientError("failed to put scheduler event") from exc
+```
+
+```python
+# src/dataoutbound_section_tree/dags/export_orchestrator_dag.py (inbound side, excerpt)
+"""The orchestrator's inbound contract for the scheduler event.
+
+The DAG reads the CloudEvents document from dag_run.conf and applies the
+±10-minute selection window against the schedule time it carries.
+"""
+from datetime import datetime, timedelta, timezone
+
+SELECTION_WINDOW = timedelta(minutes=10)
+
+
+def parse_scheduler_event(conf: dict) -> tuple[str, datetime]:
+    """Return (cadence, schedule_time_utc) from the CloudEvents document."""
+    if conf.get("specversion") != "1.0" or conf.get("type") != "com.laminar.dataoutbound.scheduler.fired":
+        raise ValueError("inbound event is not a scheduler CloudEvent")
+    schedule_time = datetime.strptime(
+        conf["data"]["schedule_time_utc"], "%Y-%m-%dT%H:%M:%S.%fZ"
+    ).replace(tzinfo=timezone.utc)
+    return conf["data"]["cadence"], schedule_time
+```
+
+```hcl
+# terraform/eventbridge.tf (excerpt) — export scheduler eventbridge
+resource "aws_cloudwatch_event_rule" "scheduler" {
+  name                = "scheduler"
+  schedule_expression = var.scheduler_cron_expression   # e.g. cron(0 2 * * ? *)
+  state               = "ENABLED"
+}
+
+resource "aws_cloudwatch_event_target" "orchestrator" {
+  rule      = aws_cloudwatch_event_rule.scheduler.name
+  arn       = var.mwaa_orchestrator_target_arn
+  dead_letter_config { arn = aws_sqs_queue.scheduler_dlq.arn }
+  retry_policy {
+    maximum_retry_attempts       = 3
+    maximum_event_age_in_seconds = 600   # inside the ±10-minute selection window
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "scheduler_dlq_depth" {
+  alarm_name          = "scheduler-dlq-depth"
+  namespace           = "AWS/SQS"
+  metric_name         = "ApproximateNumberOfMessagesVisible"
+  dimensions          = { QueueName = aws_sqs_queue.scheduler_dlq.name }
+  comparison_operator = "GreaterThanThreshold"
+  threshold           = 0
+  evaluation_periods  = 1
+  period              = 60
+  statistic           = "Maximum"
+}
+```
+
+### 4.4. Cross-Component Interaction Sequence (Local Mermaid/ASCII Flow)
+<a id="laminar-sec-c.imp_aws_aws_eventbridge_2.seq"></a>
+1. **Rule fires.** At schedule time `T`, the EventBridge scheduled rule `scheduler` fires. It emits a CloudEvents 1.0 document with `type = com.laminar.dataoutbound.scheduler.fired`, `id` = the EventBridge event id, `time` = `T` in ISO-8601 UTC millisecond precision, and `data` carrying `cadence`, `rule_name` and `schedule_time_utc`. The document carries no connection metadata and no business data.
+2. **Target invocation.** EventBridge invokes the **orchestrator** DAG on MWAA with the CloudEvents document as the run configuration. The orchestrator uses `data.schedule_time_utc` to apply the ±10-minute selection window against active connections read from **cofig_db**.
+3. **Acknowledgement.** The orchestrator returns HTTP 200 / event acknowledged. EventBridge records the successful delivery.
+4. **Audit.** The orchestrator writes the `EXECUTION_STARTED` audit record — carrying the lineage UUID it generates — to **audit_bucket** with `actor_id = system:export-scheduler` for the scheduled-trigger leg. The scheduler's own operational telemetry (rule invocations, target delivery failures, DLQ depth) goes to its explicitly provisioned CloudWatch log group under the audit store's parent node, with the organisation retention value.
+5. **Failure path.** If the orchestrator target fails to invoke, EventBridge retries per the configured policy (max 3 attempts, maximum event age 600 s). After the retries are exhausted the event is routed to the rule target's SQS DLQ, and the DLQ depth alarm raises an automated alert. Because the ±10-minute window makes late delivery moot, the retry budget is deliberately short; a missed schedule is reconciled by the orchestrator's window logic on the next event, not by backfill from the scheduler.
+6. **Replay.** DLQ replay is an operational action, never automatic, to avoid duplicate runs. Replayed events carry their original CloudEvents `id`, so the orchestrator's idempotency check on event id and execution date suppresses a duplicate run.
+```mermaid
+sequenceDiagram
+    participant Scheduler as scheduler
+    participant Orchestrator as orchestrator
+    participant CofigDB as cofig_db
+    participant AuditBucket as audit_bucket
+    participant CWLogs as CloudWatch log group
+    participant DLQ as SQS DLQ
+    participant Alerting as alerting
+
+    Note over Scheduler: Cron schedule @daily fires at time T
+    Scheduler->>Orchestrator: CloudEvents payload with event source and schedule timestamp
+    Note right of Scheduler: type com.laminar.dataoutbound.scheduler.fired, id = EventBridge event id, time = T ISO-8601 UTC ms, data carries cadence, rule_name, schedule_time_utc
+
+    alt Target invocation succeeds
+        Orchestrator->>CofigDB: read active connections
+        CofigDB-->>Orchestrator: active connections
+        Note over Orchestrator: apply plus or minus 10 minute selection window using data.schedule_time_utc
+        Orchestrator-->>Scheduler: HTTP 200 / Event acknowledged
+        Note over Scheduler: EventBridge records the successful delivery
+        Orchestrator->>AuditBucket: EXECUTION_STARTED audit record with lineage UUID, actor_id = system:export-scheduler
+    else Target invocation fails
+        Scheduler->>Orchestrator: retry CloudEvents payload with event source and schedule timestamp
+        Note right of Scheduler: max 3 attempts, maximum event age 600 s
+        Scheduler->>DLQ: route event to SQS DLQ after retries exhausted
+        DLQ->>Alerting: DLQ depth alarm raises automated alert
+        Note over Scheduler: retry budget deliberately short, missed schedule reconciled by orchestrator window logic on next event
+    end
+
+    Scheduler->>CWLogs: operational telemetry for rule invocations, target delivery failures, DLQ depth
+    Note over CWLogs: organisation retention value
+
+    Note over DLQ: DLQ replay is an operational action, never automatic
+    DLQ->>Orchestrator: replayed event carrying original CloudEvents id
+    Orchestrator->>Orchestrator: idempotency check on event id and execution date suppresses duplicate run
+```
+
+### 4.5. Schema Definitions (DB Tables / API JSON / Telemetry CloudEvents)
+<a id="laminar-sec-c.imp_aws_aws_eventbridge_2.schema"></a>
+#### 4.5.1 Database tables
+
+N/A — `scheduler` owns no relational tables. Its cadence configuration is read from `cofig_db` (owned by that component) and materialised into EventBridge rules by the deployment pipeline.
+
+#### 4.5.2 Scheduler event schema (CloudEvents 1.0 — the single envelope)
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://laminar.com/dataoutbound/schemas/scheduler-fired.json",
+  "title": "SchedulerFiredEvent",
   "type": "object",
-  "required": ["connection_name", "tenant_id", "target_type", "dataset", "mode", "cron_schedule", "destination_type", "credentials"],
+  "required": ["specversion", "id", "source", "type", "time", "data"],
   "additionalProperties": false,
   "properties": {
-    "connection_name": { "type": "string", "minLength": 1, "maxLength": 100 },
-    "tenant_id": { "type": "string", "minLength": 1, "maxLength": 64 },
-    "target_type": { "type": "string", "enum": ["s3", "azure_blob", "gcs", "sftp"] },
-    "dataset": { "type": "string", "enum": ["identity_profiles", "subscription_statuses", "campaigns_reactions", "reservation_items"] },
-    "mode": { "type": "string", "enum": ["initial", "incremental"] },
-    "cron_schedule": { "type": "string", "pattern": "^\\S+\\s+\\S+\\s+\\S+\\s+\\S+\\s+\\S+$" },
-    "destination_type": { "type": "string" },
-    "credentials": { "type": "object" },
-    "gzip_enabled": { "type": "boolean", "default": false },
-    "pgp_enabled": { "type": "boolean", "default": false },
-    "split_threshold_records": { "type": "integer", "minimum": 1, "default": 500000 }
-  }
-}
-```
-
-```json
-{
-  "$id": "https://laminar.com/dataoutbound/schemas/export-config-record.json",
-  "title": "ExportConfigRecord",
-  "type": "object",
-  "required": ["config_id", "connection_name", "tenant_id", "target_type", "dataset", "mode", "cron_schedule", "destination_type", "credentials_ref", "credentials_masked", "is_active", "created_at", "updated_at"],
-  "properties": {
-    "config_id": { "type": "string", "format": "uuid" },
-    "connection_name": { "type": "string" },
-    "tenant_id": { "type": "string" },
-    "target_type": { "type": "string", "enum": ["s3", "azure_blob", "gcs", "sftp"] },
-    "dataset": { "type": "string", "enum": ["identity_profiles", "subscription_statuses", "campaigns_reactions", "reservation_items"] },
-    "mode": { "type": "string", "enum": ["initial", "incremental"] },
-    "cron_schedule": { "type": "string" },
-    "destination_type": { "type": "string" },
-    "credentials_ref": { "type": "string", "description": "SSM SecureString parameter name; never the credential value" },
-    "credentials_masked": { "type": "string", "const": "********" },
-    "gzip_enabled": { "type": "boolean" },
-    "pgp_enabled": { "type": "boolean" },
-    "split_threshold_records": { "type": "integer" },
-    "is_active": { "type": "boolean" },
-    "created_at": { "type": "string", "format": "date-time" },
-    "updated_at": { "type": "string", "format": "date-time" }
-  }
-}
-```
-
-#### 3.5.2 Telemetry CloudEvents
-
-Every audit record is a CloudEvents 1.0 record. The `data` object carries the SCRUM-486 audit schema (`actor_id`, `timestamp_utc`, `event_type`, `execution_id`).
-
-```json
-{
-  "$id": "https://laminar.com/dataoutbound/schemas/cloudevent-admin-audit.json",
-  "title": "AdminAuditCloudEvent",
-  "type": "object",
-  "required": ["specversion", "id", "source", "type", "time", "datacontenttype", "data"],
-  "properties": {
-    "specversion": { "type": "string", "const": "1.0" },
-    "id": { "type": "string", "format": "uuid" },
-    "source": { "type": "string", "const": "com.laminar.dataoutbound.do-admin-api" },
-    "type": {
+    "specversion": { "const": "1.0" },
+    "id": { "type": "string", "description": "EventBridge event id; the idempotency key." },
+    "source": { "const": "com.laminar.dataoutbound.scheduler" },
+    "type": { "const": "com.laminar.dataoutbound.scheduler.fired" },
+    "time": {
       "type": "string",
-      "enum": [
-        "com.laminar.dataoutbound.config.updated",
-        "com.laminar.dataoutbound.orchestrator.triggered",
-        "com.laminar.dataoutbound.audit.admin"
-      ]
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
     },
-    "time": { "type": "string", "format": "date-time" },
-    "datacontenttype": { "type": "string", "const": "application/json" },
-    "subject": { "type": "string", "description": "config_id" },
+    "datacontenttype": { "const": "application/json" },
     "data": {
       "type": "object",
-      "required": ["actor_id", "timestamp_utc", "event_type", "execution_id"],
+      "required": ["cadence", "rule_name", "schedule_time_utc"],
+      "additionalProperties": false,
       "properties": {
-        "actor_id": { "type": "string", "description": "authenticated Acme user id, or system:<component-name>" },
-        "timestamp_utc": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$" },
-        "event_type": {
+        "cadence": {
           "type": "string",
-          "enum": ["ADMIN_CREATE", "ADMIN_UPDATE", "ADMIN_DELETE", "ADMIN_MANUAL_TRIGGER", "EXECUTION_STARTED", "EXECUTION_COMPLETED", "TRANSFER_STARTED", "TRANSFER_COMPLETED", "TRANSFER_FAILED"]
+          "enum": ["daily", "weekly", "biweekly", "monthly", "hourly_fast_batch"]
         },
-        "execution_id": { "type": "string", "description": "lineage UUID generated by orchestrator" },
-        "config_id": { "type": "string" },
-        "status": { "type": "string" }
+        "rule_name": { "type": "string" },
+        "schedule_time_utc": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
+        }
       }
     }
   }
 }
 ```
 
-### 3.6. Local Design Assumptions
-<a id="laminar-sec-c.imp_standard_standard_api_1.asm"></a>
-1. **Credential encryption mechanism.** Credentials are written to SSM Parameter Store as `SecureString` parameters encrypted with the solution KMS CMK, and only the parameter name is persisted in **cofig_db** as `credentials_ref`. This satisfies SCRUM-479 AC#1/AC#6 ("stored value differs from submitted plaintext", "no retrieve call returns credential in plaintext") using the blueprint's existing `common/clients/aws/ssm` client rather than introducing a new KMS client. The KMS key alias is read from `apis/config.yml`.
-2. **Trigger response code.** The frozen contract for the `do-admin-api → orchestrator` edge specifies `200 OK` with the DAG run ID, so the trigger endpoint returns `200 OK`. SCRUM-480 AC#5's "HTTP 202" is satisfied semantically by an accepted asynchronous trigger; the frozen contract wins where the two differ.
-3. **Stop semantics.** `POST /api/v1/exports/{config_id}/stop` returns `202 Accepted` and calls the MWAA REST API to terminate the orchestrator DAG run. Terminating the orchestrator run is what guarantees "no further child run in child_export_dag is started for that execution" (SCRUM-480 AC#6).
-4. **Role model.** A single role `export-admin` gates every endpoint; there is no separate read-only role, because SCRUM-479 AC#7 only distinguishes "no valid credentials" (`401`) from "without admin role" (`403`).
-5. **Rate limiting.** A token-bucket limiter of 60 requests/minute per authenticated subject is applied at the boundary; this is a mainstream default for an administrative API and protects the scripted-client path (SCRUM-479 AC#6).
-6. **Audit failure isolation.** `AuditPublisher.publish` never raises into the caller's flow, so an **audit_bucket** outage degrades audit completeness but never fails an administrative response; the failure is logged locally with the correlation id.
-7. **Idempotency.** Create uses a server-generated UUID v4 `config_id`; update is an upsert keyed by `config_id`; trigger is idempotent via the logical execution date and run id. `util/idempotency.py`'s `IdempotencyKey.build(*parts)` is used for the trigger key.
-8. **Open question — log retention.** The organisation logging-standard retention value is not stated in the inputs; this design assumes **365 days** for the pipeline log groups and the audit store, to be confirmed in days before sprint commitment (SCRUM-486 AC#4).
+#### 4.5.3 Worked example
 
-## 4. Component Design: scheduler
-<a id="laminar-sec-c.imp_aws_aws_eventbridge_2"></a>
-
-### 4.1. Component Contract (Bi-Directional Inputs & Outputs)
-<a id="laminar-sec-c.imp_aws_aws_eventbridge_2.contract"></a>
-- **Component Name**: `scheduler`
-- **Service Type**: `aws_eventbridge`
-- **Inbound Interfaces & Triggers**:
-  - Cron schedule trigger configured via EventBridge rule definitions (`scheduler`).
-- **Outbound Interfaces**:
-  - Invokes `orchestrator` (`aws_mwaa_dag`) via EventBridge rule target integration, dispatching CloudEvents-formatted cadence payloads.
-- **Configuration Properties (Authoritative)**:
-  - `rule_name`: `scheduler`
-
-### 4.2. Class and Interface Definitions
-<a id="laminar-sec-c.imp_aws_aws_eventbridge_2.classes"></a>
-```python
-from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any, Dict
-
-@dataclass
-class SchedulerEventPayload:
-    source: str = "com.laminar.dataoutbound.scheduler"
-    detail_type: str = "ExportScheduleTrigger"
-    time: str = field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
-    detail: Dict[str, Any] = field(default_factory=dict)
-
-    to_dict = lambda self: {
-        "source": self.source,
-        "detail-type": self.detail_type,
-        "time": self.time,
-        "detail": self.detail
-    }
-```
-
-### 4.3. Implementation Code Skeleton (Stubs & Handlers)
-<a id="laminar-sec-c.imp_aws_aws_eventbridge_2.skeleton"></a>
-```python
-# Illustrative skeleton — the Component Contract and Schema Definitions are binding
-from dataoutbound_section_tree.common.clients.aws.eventbridge.eventbridge_client import EventBridgeClient
-from dataoutbound_section_tree.common.logging.logger import get_logger
-from dataoutbound_section_tree.util.exceptions import ClientError
-import json
-
-logger = get_logger(__name__)
-
-class SchedulerEventPublisher:
-    def __init__(self, eb_client: EventBridgeClient, event_bus_name: str):
-        self.eb_client = eb_client
-        self.event_bus_name = event_bus_name
-
-    def trigger_scheduled_runs(self, schedule_expression: str) -> None:
-        event_entry = {
-            "Source": "com.laminar.dataoutbound.scheduler",
-            "DetailType": "ExportScheduleTrigger",
-            "Detail": json.dumps({"schedule_expression": schedule_expression}),
-            "EventBusName": self.event_bus_name
-        }
-        try:
-            response = self.eb_client.put_events([event_entry])
-            logger.info("Scheduler event published successfully", extra={"response": response})
-        except ClientError as e:
-            logger.error("Failed to publish scheduler event", extra={"error": str(e)})
-            raise
-```
-
-### 4.4. Cross-Component Interaction Sequence (Local Mermaid/ASCII Flow)
-<a id="laminar-sec-c.imp_aws_aws_eventbridge_2.seq"></a>
-1. **Trigger Generation**: The EventBridge rule (`scheduler`) fires on its configured cron schedule (`@daily` or custom cadence).
-2. **Event Dispatch**: EventBridge evaluates rule patterns and routes the event payload to its configured target (`orchestrator` MWAA DAG).
-3. **Ingestion**: The orchestrator receives the event containing the schedule timestamp and event source.
-4. **Retry & DLQ**: If target invocation fails, EventBridge applies its built-in retry policy (up to 3 attempts with exponential backoff). Unrecoverable failures are routed to a Dead-Letter Queue (DLQ).
-```mermaid
-sequenceDiagram
-autonumber
-participant scheduler
-participant orchestrator
-participant DLQ
-Note over scheduler: Cron schedule @daily fires
-scheduler->>orchestrator: CloudEvents payload with event source and timestamp
-alt Success
-orchestrator-->>scheduler: HTTP 200 Event acknowledged
-else Failure
-scheduler->>scheduler: Retry up to 3 attempts with exponential backoff
-scheduler->>DLQ: Route unrecoverable failure
-end
-```
-
-### 4.5. Schema Definitions (DB Tables / API JSON / Telemetry CloudEvents)
-<a id="laminar-sec-c.imp_aws_aws_eventbridge_2.schema"></a>
 ```json
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "SchedulerCloudEvent",
-  "type": "object",
-  "properties": {
-    "version": { "type": "string", "const": "0" },
-    "id": { "type": "string", "format": "uuid" },
-    "detail-type": { "type": "string", "const": "ExportScheduleTrigger" },
-    "source": { "type": "string", "const": "com.laminar.dataoutbound.scheduler" },
-    "account": { "type": "string" },
-    "time": { "type": "string", "format": "date-time" },
-    "region": { "type": "string" },
-    "resources": { "type": "array", "items": { "type": "string" } },
-    "detail": {
-      "type": "object",
-      "properties": {
-        "schedule_expression": { "type": "string" }
-      },
-      "required": ["schedule_expression"]
-    }
-  },
-  "required": ["version", "id", "detail-type", "source", "account", "time", "region", "detail"]
+  "specversion": "1.0",
+  "id": "6d2f8a41-3c07-4b9e-a1d5-7e0c4f2b9a13",
+  "source": "com.laminar.dataoutbound.scheduler",
+  "type": "com.laminar.dataoutbound.scheduler.fired",
+  "time": "2025-01-31T02:00:00.000Z",
+  "datacontenttype": "application/json",
+  "data": {
+    "cadence": "daily",
+    "rule_name": "scheduler",
+    "schedule_time_utc": "2025-01-31T02:00:00.000Z"
+  }
+}
+```
+
+#### 4.5.4 EventBridge transport wrapper (for reference — not the contract)
+
+EventBridge wraps the document above in its native envelope. The CloudEvents `id` is set from the wrapper's `id`, so the two identifiers are the same value:
+
+```json
+{
+  "version": "0",
+  "id": "6d2f8a41-3c07-4b9e-a1d5-7e0c4f2b9a13",
+  "detail-type": "com.laminar.dataoutbound.scheduler.fired",
+  "source": "aws.events",
+  "account": "123456789012",
+  "time": "2025-01-31T02:00:00Z",
+  "region": "eu-west-1",
+  "resources": ["arn:aws:events:eu-west-1:123456789012:rule/scheduler"],
+  "detail": { "...": "the CloudEvents document above" }
+}
+```
+
+#### 4.5.5 Telemetry record written to audit_bucket
+
+The scheduler's scheduled-trigger leg is recorded by the orchestrator as an `EXECUTION_STARTED` event with `actor_id = system:export-scheduler`, conforming to the audit record schema owned by `audit_bucket`:
+
+```json
+{
+  "specversion": "1.0",
+  "id": "a7c3e9b2-5f18-4d60-9b21-3e8a0c7d4f56",
+  "source": "com.laminar.dataoutbound.orchestrator",
+  "type": "com.laminar.dataoutbound.scheduler.fired",
+  "time": "2025-01-31T02:00:03.114Z",
+  "subject": "b2e4d7a9-1c63-4f80-8a52-9d0e6b3c1f47",
+  "datacontenttype": "application/json",
+  "data": {
+    "actor_id": "system:export-scheduler",
+    "timestamp_utc": "2025-01-31T02:00:03.114Z",
+    "event_type": "EXECUTION_STARTED",
+    "execution_id": "b2e4d7a9-1c63-4f80-8a52-9d0e6b3c1f47",
+    "component": "orchestrator",
+    "status": "SUCCESS",
+    "details": { "cadence": "daily", "rule_name": "scheduler", "schedule_time_utc": "2025-01-31T02:00:00.000Z" }
+  }
 }
 ```
 
 ### 4.6. Local Design Assumptions
 <a id="laminar-sec-c.imp_aws_aws_eventbridge_2.asm"></a>
-- **Assumption 1**: EventBridge rule scheduling leverages standard cron expressions evaluated in UTC to determine execution windows.
-- **Assumption 2**: Target invocation relies on IAM role permissions allowing EventBridge to trigger MWAA DAG runs securely without exposing public endpoints.
+- **Bi-weekly cadence.** EventBridge cron cannot express "every two weeks" natively. Assumption: bi-weekly is implemented as two rules offset by one week, each firing fortnightly via day-of-month constraints, or the orchestrator filters bi-weekly connections from a weekly event using the config's cadence metadata. The orchestrator's ±10-minute window logic remains the single selection authority in either case.
+- **Envelope.** Assumption: the scheduler-to-orchestrator event is a CloudEvents 1.0 document carried as the EventBridge rule target's input, with the CloudEvents `id` set from the EventBridge event `id`. This is the single envelope used by the scheduler, the orchestrator's inbound contract, and the `com.laminar.dataoutbound.scheduler.fired` telemetry record; no EventBridge-native-only shape is used as a contract.
+- **Organisation logging-standard retention value.** Not stated in the inputs. Assumption: a single confirmed value (in days) is supplied per environment before sprint commitment and applied uniformly to every pipeline log group and to the audit store. Until confirmed, the value is parameterised in configuration and never hardcoded.
+- **Scheduler hosting in the allowlist check.** SCRUM-485 lists the scheduler "where hosted". Assumption: the scheduler is realised as EventBridge rules attached to the MWAA environment's eventing and is reported in the allowlist verification report as part of the MWAA-managed stack, not as a separate resource type.
+- **Time zone.** Assumption: all cron schedules are evaluated in UTC, consistent with the ISO-8601 UTC audit timestamp requirement.
+- **DLQ replay is manual.** Assumption: DLQ replay is an operational action, never automatic, to avoid duplicate runs; replayed events retain their original CloudEvents `id` so the orchestrator's idempotency check suppresses duplicates.
+- **No per-connection events.** Assumption: the scheduler emits one event per scheduled time, never one per connection. Fan-out to one **child_export_dag** run per connection is exclusively the orchestrator's responsibility.
+- **Event size.** Assumption: events are metadata-only and remain far below the 256 KB EventBridge payload limit; no claim-check pattern is required on this path.
 
 ## 5. Component Design: orchestrator
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_3"></a>
 
+<!-- laminar:diagram-settings:imp-aws-aws_mwaa_dag-3 -->
+**Diagram settings (user decisions — authoritative)**
+
+| Setting | Value |
+| --- | --- |
+| `schedule` | `@daily` |
+| `catchup` | `false` |
+| `max_active_runs` | `1` |
+| `dag_name` | `orchestrator` |
+
+<!-- /laminar:diagram-settings -->
+
+
 ### 5.1. Component Contract (Bi-Directional Inputs & Outputs)
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_3.contract"></a>
-**Component:** `orchestrator` — MWAA DAG `orchestrator` (`@daily`, `catchup=False`, `max_active_runs=1`), deployed from `src/dataoutbound_section_tree/dags/export_orchestrator_dag.py`.
+**Diagram settings (user decisions — authoritative)**
 
-**Role.** The orchestrator is the fan-out control point of the pipeline. It is triggered either by **scheduler** (EventBridge cadence event) or by **do-admin-api** (manual trigger), reads active export configurations from **cofig_db**, selects only those whose `cron_schedule` falls within *T ± 10 minutes*, generates exactly one RFC 4122 v4 lineage UUID per run, and submits one **child_export_dag** run per selected connection carrying that same lineage UUID.
+| Setting | Value |
+|---|---|
+| `dag_name` | `orchestrator` |
+| `schedule` | `@daily` |
+| `catchup` | `False` |
+| `max_active_runs` | `1` |
+| `tags` | `{}` |
 
-#### 5.1.1 Inbound Contracts (what the orchestrator consumes)
+#### 5.1.1 Inbound Contracts
 
-| # | From | Trigger | Request payload | Response | Errors | Idempotency | Telemetry event |
+| # | Source | Trigger | Protocol | Payload | Response | Failure / Retry | Idempotency |
 |---|---|---|---|---|---|---|---|
-| I1 | **scheduler** | EventBridge rule `scheduler` fires at cadence *T* | CloudEvents envelope with `source`, `detail-type`, `time`, `detail.schedule_timestamp` | Event acknowledged (HTTP 200 to EventBridge) | EventBridge built-in retry, max 3 attempts | Idempotent via EventBridge `event_id` + logical execution date | `com.laminar.dataoutbound.scheduler.fired` |
-| I2 | **do-admin-api** | Manual API invocation (`POST /api/v1/exports/{id}/trigger`) | DAG run trigger payload with `config_id` and `execution_date` | `200 OK` with DAG run ID | `502 Bad Gateway`; retried with exponential backoff by the API | Idempotent via logical execution date + `config_id` | `com.laminar.dataoutbound.orchestrator.triggered` |
-| I3 | **cofig_db** | DAG task execution start | `SELECT` for active export configurations matching the schedule window | ResultSet of active export configurations | Connection timeout / query error; retried up to 3 times | Idempotent read-only query | none |
+| I-1 | **scheduler** | Cron schedule (`@daily`) | EventBridge event → MWAA | CloudEvents 1.0 envelope (`specversion`, `id`, `source`, `type` = `com.laminar.dataoutbound.scheduler.fired`, `time`, `data.cadence`, `data.schedule_time_utc`) | HTTP 200 / event acknowledged | EventBridge built-in retry, max 3 attempts, then DLQ | EventBridge `id` + logical execution date |
+| I-2 | **do-admin-api** | Manual API invocation | HTTPS (Airflow REST API) | DAG run trigger payload `{ config_id, execution_date, actor_id }` | `200 OK` with `dag_run_id` | `502 Bad Gateway` retried with exponential backoff | Logical execution date + `config_id` |
+| I-3 | Airflow scheduler (internal) | `@daily` schedule | MWAA internal | DAG run conf `{ trigger_source: "schedule" }` | DAG run created | Airflow task retry policy | Logical execution date |
 
-#### 5.1.2 Outbound Contracts (what the orchestrator produces)
+#### 5.1.2 Configuration the Design Actually Sets
 
-| # | To | Trigger | Request payload | Response | Errors | Idempotency | Telemetry event |
-|---|---|---|---|---|---|---|---|
-| O1 | **cofig_db** | DAG task execution start | Parameterised `SELECT` (read-only) | ResultSet | Retried up to 3 times | Idempotent read-only query | none |
-| O2 | **child_export_dag** | Orchestrator task completion, one task instance per selected connection | `DagRun` payload with `config_id`, `lineage_uuid`, `connection_json`, `execution_date` | Trigger confirmation with `run_id` | DAG trigger failure; retried via Airflow task retry policy | Idempotent via execution date + `config_id` | `com.laminar.dataoutbound.child.triggered` |
-| O3 | **audit_bucket** | Run start, run success, run failure, manual trigger, stop | Audit record per the SCRUM-486 schema | S3 upload success ETag | S3 error; logged with warning, run continues | Idempotent via DAG run ID naming | `com.laminar.dataoutbound.audit.orchestrator` |
-
-#### 5.1.3 Configuration the design actually sets
-
-| Setting | Value | Rationale |
+| Property | Value | Rationale |
 |---|---|---|
-| `schedule` | `@daily` | User decision on the canvas; the per-connection cadence is enforced by the ±10-minute cron-window filter, not by the DAG schedule. |
-| `catchup` | `False` | User decision; prevents backfill storms when the DAG is first deployed or re-enabled. |
-| `max_active_runs` | `1` | User decision; guarantees a single lineage UUID per logical run and prevents overlapping fan-outs. |
-| `retries` | `3` | Mainstream Airflow default for idempotent tasks; matches the frozen contract's "retried up to 3 times" for the cofig_db read. |
-| `retry_delay` | `timedelta(minutes=1)` | Bounded backoff that still fits the 24-hour delivery SLA. |
-| `schedule_window_minutes` | `10` | SCRUM-480 AC#1 / SCRUM-481 AC#3 — the ±10-minute selection window. |
-| `lineage_uuid_version` | `4` | SCRUM-480 AC#3 — RFC 4122 version 4. |
+| `dag_name` | `orchestrator` | Unique DAG identifier matching the blueprint module `dags/export_orchestrator_dag.py`. |
+| `schedule` | `@daily` | User-set. Provides a daily safety-net run in addition to the scheduler-driven and manual triggers. |
+| `catchup` | `False` | Prevents historical backfill storms on deployment or restart. |
+| `max_active_runs` | `1` | Single-threaded execution per schedule window; prevents overlapping extractions. |
+| `tags` | `{}` | User-set; no additional tags. |
 
-All other Airflow tunables (pool, priority weight, SLA, executor) are left at MWAA defaults; deferring to defaults is itself a decision.
+**Recommendation:** Because the DAG is primarily trigger-driven (scheduler event I-1 and manual trigger I-2), a `schedule=None` (trigger-only) posture would avoid a redundant daily run. The user's `@daily` setting is honoured as authoritative; the trigger-only posture is recorded here as a recommendation only.
+
+---
 
 ### 5.2. Class and Interface Definitions
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_3.classes"></a>
-The orchestrator is a `dag` module: its public surface is the DAG object plus the pure helpers its tasks call. All cross-cutting concerns are imported from the blueprint foundation — the DAG never constructs a boto3 client, a logger or an audit publisher of its own.
-
 ```python
-# src/dataoutbound_section_tree/dags/export_orchestrator_dag.py
+"""Typed contracts for the Export Orchestrator DAG (orchestrator).
+
+Blueprint module: src/dataoutbound_section_tree/dags/export_orchestrator_dag.py
+Shared foundation imports only — no SDK clients are constructed here.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from typing import Any, Iterable, Sequence
-from uuid import UUID
+from datetime import datetime
+from typing import Any, Literal, Optional
 
+from pydantic import BaseModel, Field, field_validator
+
+from dataoutbound_section_tree.common.clients.aws.mwaa.mwaa_client import MwaaClient
 from dataoutbound_section_tree.common.clients.db.db_client import DbClient
 from dataoutbound_section_tree.common.logging.logger import get_logger
 from dataoutbound_section_tree.common.telemetry.auditor import AuditPublisher
 from dataoutbound_section_tree.config.config_loader import ConfigLoader
-from dataoutbound_section_tree.util.constants import (
-    EVENT_CHILD_TRIGGERED,
-    EVENT_EXECUTION_COMPLETED,
-    EVENT_EXECUTION_STARTED,
-    EVENT_ORCHESTRATOR_TRIGGERED,
-)
+from dataoutbound_section_tree.util.exceptions import ValidationError
 from dataoutbound_section_tree.util.idempotency import IdempotencyKey
 
 logger = get_logger(__name__)
 
+# ---------------------------------------------------------------------------
+# Inbound: scheduler → orchestrator (CloudEvents 1.0)
+# ---------------------------------------------------------------------------
 
-@dataclass(frozen=True)
-class ExportConnection:
-    """One active export configuration as read from cofig_db (secrets excluded)."""
+Cadence = Literal["daily", "weekly", "biweekly", "monthly", "hourly_fast_batch"]
+
+
+class CadenceEventData(BaseModel):
+    """`data` member of the CloudEvents envelope emitted by the scheduler."""
+    cadence: Cadence
+    schedule_time_utc: datetime = Field(..., description="ISO-8601 UTC, millisecond precision, Z suffix")
+    rule_name: str = Field(default="scheduler", max_length=64)
+
+
+class CadenceEvent(BaseModel):
+    """CloudEvents 1.0 envelope for the scheduler → orchestrator trigger."""
+    specversion: Literal["1.0"] = "1.0"
+    id: str = Field(..., description="EventBridge event id — idempotency key part 1")
+    source: str = Field(default="com.laminar.dataoutbound.scheduler")
+    type: Literal["com.laminar.dataoutbound.scheduler.fired"] = (
+        "com.laminar.dataoutbound.scheduler.fired"
+    )
+    time: datetime
+    datacontenttype: Literal["application/json"] = "application/json"
+    data: CadenceEventData
+
+    @field_validator("time")
+    @classmethod
+    def _utc(cls, v: datetime) -> datetime:
+        if v.tzinfo is None:
+            raise ValidationError("CadenceEvent.time must be timezone-aware UTC")
+        return v
+
+
+# ---------------------------------------------------------------------------
+# Inbound: do-admin-api → orchestrator (manual trigger)
+# ---------------------------------------------------------------------------
+
+class ManualTriggerRequest(BaseModel):
+    """Body of the manual-trigger call forwarded by do-admin-api."""
+    config_id: str = Field(..., min_length=1, max_length=64)
+    execution_date: datetime
+    actor_id: str = Field(..., min_length=1, max_length=128)
+
+
+# ---------------------------------------------------------------------------
+# Read model: cofig_db export_configurations row (canonical DDL owned by cofig_db)
+# ---------------------------------------------------------------------------
+
+class ExportConfigurationRecord(BaseModel):
+    """Read-only projection of a row in cofig_db.export_configurations.
+
+    The canonical DDL for this table is declared once in the cofig_db
+    component chapter; this model mirrors it and is never re-declared.
+    """
     config_id: str
     connection_name: str
-    target_type: str            # s3 | azure_blob | gcs | sftp
-    dataset: str                # identity_profiles | subscription_statuses | campaigns_reactions | reservation_items
-    mode: str                   # initial | incremental
-    cron_schedule: str          # 5-field cron expression
+    target_type: Literal["s3", "azure_blob", "gcs", "sftp"]
+    dataset: Literal[
+        "identity_profiles",
+        "subscription_statuses",
+        "campaigns_reactions",
+        "reservation_items",
+    ]
+    mode: Literal["initial", "incremental"]
+    cron_schedule: str
     is_active: bool
+    credentials_ref: str  # SSM SecureString reference — never plaintext
+    created_at: datetime
     updated_at: datetime
 
-    def to_run_conf(self) -> dict[str, Any]:
-        """Serialisable form carried into the child DAG run conf (no credentials)."""
-        return {
-            "config_id": self.config_id,
-            "connection_name": self.connection_name,
-            "target_type": self.target_type,
-            "dataset": self.dataset,
-            "mode": self.mode,
-            "cron_schedule": self.cron_schedule,
-        }
+
+# ---------------------------------------------------------------------------
+# Internal selection model
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class SelectedConnection:
+    """A connection selected for this run, with its resolved lineage UUID."""
+    config_id: str
+    connection: ExportConfigurationRecord
+    lineage_uuid: str
+    execution_date: datetime
 
 
 @dataclass(frozen=True)
-class OrchestratorRunContext:
-    """Immutable per-run context: one lineage UUID, one logical execution date."""
-    lineage_uuid: UUID
+class OrchestratorRunConf:
+    """Run conf of the orchestrator DAG itself."""
+    trigger_source: Literal["schedule", "scheduler", "manual"]
+    schedule_time_utc: datetime
+    lineage_uuid: str
+    actor_id: str = "system:orchestrator"
+    selected_config_ids: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class ChildRunConf:
+    """Run conf handed to each child_export_dag run."""
+    lineage_uuid: str
+    config_id: str
+    connection: dict[str, Any]
     execution_date: datetime
-    trigger_source: str          # "scheduler" | "manual"
-    actor_id: str                # "system:orchestrator" | authenticated Acme user id
-    selected: tuple[ExportConnection, ...] = field(default_factory=tuple)
-
-    @property
-    def execution_id(self) -> str:
-        return str(self.lineage_uuid)
-
-    def child_run_id(self, connection: ExportConnection) -> str:
-        """Deterministic child run id — makes the fan-out idempotent."""
-        return IdempotencyKey.build(
-            "child", self.execution_date.date().isoformat(), connection.config_id
-        )
+    mode: Literal["initial", "incremental"]
 
 
-class CronWindowSelector:
-    """Pure selection logic: which connections are in the ±window of T."""
+# ---------------------------------------------------------------------------
+# DAG-level interface
+# ---------------------------------------------------------------------------
 
-    def __init__(self, window_minutes: int = 10) -> None:
-        self._window = timedelta(minutes=window_minutes)
+class OrchestratorDag:
+    """Export Orchestrator DAG — orchestration-only, no data processing.
 
-    def is_in_window(self, cron_schedule: str, reference: datetime) -> bool:
-        """True when the cron expression fires within [reference - window, reference + window]."""
-        raise NotImplementedError  # implemented in the DAG module
-
-    def select(
-        self, connections: Iterable[ExportConnection], reference: datetime
-    ) -> list[ExportConnection]:
-        return [c for c in connections if self.is_in_window(c.cron_schedule, reference)]
-
-
-class OrchestratorRepository:
-    """Read-only access to cofig_db through the shared DbClient."""
-
-    def __init__(self, db: DbClient) -> None:
-        self._db = db
-
-    def load_active_configurations(self) -> list[ExportConnection]:
-        """SELECT every active configuration; the cron window is applied in-process."""
-        raise NotImplementedError
-
-    def record_run(self, ctx: OrchestratorRunContext, status: str) -> None:
-        """Append one row to export_execution_log for this lineage UUID."""
-        raise NotImplementedError
-
-
-class OrchestratorService:
-    """Business operations behind the DAG tasks. No Airflow types leak in here."""
+    Responsibilities:
+      * select active connections whose cron falls within ±10 minutes of the
+        trigger time;
+      * generate exactly one RFC 4122 v4 lineage UUID per run;
+      * fan out one child_export_dag run per selected connection;
+      * emit EXECUTION_STARTED / EXECUTION_COMPLETED audit events.
+    """
 
     def __init__(
         self,
-        config: ConfigLoader,
-        repository: OrchestratorRepository,
+        config_loader: ConfigLoader,
+        db_client: DbClient,
+        mwaa_client: MwaaClient,
         auditor: AuditPublisher,
-        selector: CronWindowSelector,
     ) -> None:
-        self._config = config
-        self._repo = repository
+        self._config = config_loader
+        self._db = db_client
+        self._mwaa = mwaa_client
         self._auditor = auditor
-        self._selector = selector
 
-    def start_run(self, execution_date: datetime, trigger_source: str, actor_id: str) -> OrchestratorRunContext:
-        """Generate the single lineage UUID and emit EXECUTION_STARTED."""
-        raise NotImplementedError
+    def select_connections(
+        self, trigger_time: datetime, window_minutes: int = 10
+    ) -> list[ExportConfigurationRecord]:
+        """Return active connections whose cron matches trigger_time ± window."""
+        ...
 
-    def select_connections(self, ctx: OrchestratorRunContext) -> OrchestratorRunContext:
-        """Read active configs and keep only those inside the ±10-minute window."""
-        raise NotImplementedError
+    def build_lineage_uuid(self) -> str:
+        """Return a fresh RFC 4122 v4 UUID string."""
+        ...
 
-    def fan_out(self, ctx: OrchestratorRunContext) -> Sequence[str]:
-        """Return the deterministic child run ids to be triggered."""
-        raise NotImplementedError
+    def fan_out(
+        self, run_conf: OrchestratorRunConf, selected: list[SelectedConnection]
+    ) -> list[str]:
+        """Trigger one child_export_dag run per selected connection."""
+        ...
 
-    def complete_run(self, ctx: OrchestratorRunContext, status: str) -> None:
-        """Emit EXECUTION_COMPLETED / failure audit and persist the run record."""
-        raise NotImplementedError
+    def idempotency_key(self, execution_date: datetime, config_id: str) -> str:
+        """Deterministic key for a (execution_date, config_id) pair."""
+        return IdempotencyKey.build("orchestrator", execution_date.isoformat(), config_id)
 ```
+
+---
 
 ### 5.3. Implementation Code Skeleton (Stubs & Handlers)
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_3.skeleton"></a>
 *Illustrative skeleton — the Component Contract and Schema Definitions are binding.*
 
 ```python
-# src/dataoutbound_section_tree/dags/export_orchestrator_dag.py
-"""Export Orchestrator DAG (MWAA).
+"""Export Orchestrator DAG — illustrative skeleton.
 
-Fan-out control point: reads active export configurations, selects those whose
-cron_schedule falls within T ± 10 minutes, generates one RFC 4122 v4 lineage UUID
-per run and submits one child_export_dag run per selected connection.
+Blueprint module: src/dataoutbound_section_tree/dags/export_orchestrator_dag.py
+Deployed as-is to the MWAA DAGs bucket. Top-level code is instantaneous:
+no network calls, no DB queries, no heavy computation outside operator
+execute() methods.
 """
 from __future__ import annotations
 
@@ -1365,618 +1857,508 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 
+from dataoutbound_section_tree.common.clients.aws.mwaa.mwaa_client import MwaaClient
 from dataoutbound_section_tree.common.clients.db.db_client import DbClient
 from dataoutbound_section_tree.common.logging.logger import get_logger
 from dataoutbound_section_tree.common.telemetry.auditor import AuditPublisher
 from dataoutbound_section_tree.config.config_loader import ConfigLoader
 from dataoutbound_section_tree.util.constants import (
-    EVENT_CHILD_TRIGGERED,
     EVENT_EXECUTION_COMPLETED,
     EVENT_EXECUTION_STARTED,
 )
-from dataoutbound_section_tree.util.exceptions import LaminarError
+from dataoutbound_section_tree.util.exceptions import ClientError, ValidationError
 
 logger = get_logger(__name__)
 
-CONFIG = ConfigLoader(module="dags")
-DB = DbClient(config=CONFIG)
-AUDITOR = AuditPublisher(config=CONFIG)
-WINDOW_MINUTES = int(CONFIG.get("orchestrator.schedule_window_minutes", 10))
-CHILD_DAG_ID = CONFIG.get("orchestrator.child_dag_id", "child_export_dag")
+# ---------------------------------------------------------------------------
+# DAG-level configuration — read from config.yml via ConfigLoader.
+# The diagram sets schedule=@daily, catchup=False, max_active_runs=1, tags={}.
+# ---------------------------------------------------------------------------
+_CONFIG = ConfigLoader.load(module="dags", dag="orchestrator")
 
 DEFAULT_ARGS = {
     "owner": "dataoutbound",
     "retries": 3,
-    "retry_delay": timedelta(minutes=1),
-    "depends_on_past": False,
+    "retry_delay": timedelta(minutes=2),
+    "retry_exponential_backoff": True,
+    "email_on_failure": False,
 }
 
-
-def _load_active_configurations() -> list[dict]:
-    """Read every active configuration; the cron window is applied in-process."""
-    return DB.fetch_all(
-        """
-        SELECT config_id, connection_name, target_type, dataset, mode,
-               cron_schedule, is_active, updated_at
-          FROM export_configuration
-         WHERE is_active = TRUE
-         ORDER BY config_id
-        """
-    )
+SELECT_ACTIVE_CONNECTIONS_SQL = """
+SELECT config_id, connection_name, target_type, dataset, mode,
+       cron_schedule, is_active, credentials_ref, created_at, updated_at
+FROM   export_configurations
+WHERE  is_active = TRUE
+"""
 
 
-def _is_in_window(cron_schedule: str, reference: datetime, window_minutes: int) -> bool:
-    """True when the 5-field cron expression fires within ±window_minutes of reference."""
-    from croniter import croniter  # pinned dependency
-
-    base = reference.replace(second=0, microsecond=0)
-    itr = croniter(cron_schedule, base - timedelta(minutes=window_minutes))
-    nxt = itr.get_next(datetime)
-    return nxt <= base + timedelta(minutes=window_minutes)
-
-
-def start_run(**context) -> dict:
-    """Generate the single lineage UUID and emit EXECUTION_STARTED."""
-    dag_run = context["dag_run"]
-    execution_date = dag_run.logical_date
-    trigger_source = (dag_run.conf or {}).get("trigger_source", "scheduler")
-    actor_id = (dag_run.conf or {}).get("actor_id", "system:orchestrator")
-
-    lineage_uuid = uuid.uuid4()  # RFC 4122 v4
-    ctx = {
-        "lineage_uuid": str(lineage_uuid),
-        "execution_date": execution_date.isoformat(),
-        "trigger_source": trigger_source,
-        "actor_id": actor_id,
-    }
-    AUDITOR.publish(
-        EVENT_EXECUTION_STARTED,
-        {
-            "actor_id": actor_id,
-            "timestamp_utc": _now_iso(),
-            "event_type": "EXECUTION_STARTED",
-            "execution_id": str(lineage_uuid),
-            "trigger_source": trigger_source,
-        },
-    )
-    logger.info("orchestrator run started", extra={"execution_id": str(lineage_uuid)})
-    return ctx
-
-
-def select_connections(**context) -> list[dict]:
-    """Keep only active configurations whose cron_schedule is inside T ± 10 minutes."""
-    ti = context["ti"]
-    ctx = ti.xcom_pull(task_ids="start_run")
-    reference = datetime.fromisoformat(ctx["execution_date"])
+def _select_connections(**context) -> list[dict]:
+    """Task 1 — read active connections and filter by the ±10-minute window."""
+    db = DbClient.from_config(_CONFIG)
+    trigger_time: datetime = context["data_interval_start"].astimezone(timezone.utc)
+    window = timedelta(minutes=_CONFIG.get("selection_window_minutes", 10))
 
     try:
-        rows = _load_active_configurations()
-    except LaminarError as exc:
-        logger.error("cofig_db read failed", extra={"error": str(exc)})
+        rows = db.fetch_all(SELECT_ACTIVE_CONNECTIONS_SQL)
+    except ClientError as exc:
+        logger.error("cofig_db read failed: %s", exc)
         raise
 
-    selected = [r for r in rows if _is_in_window(r["cron_schedule"], reference, WINDOW_MINUTES)]
-    logger.info(
-        "connections selected",
-        extra={"execution_id": ctx["lineage_uuid"], "selected": len(selected), "total": len(rows)},
-    )
+    selected = [
+        r for r in rows
+        if _cron_matches_within(r["cron_schedule"], trigger_time, window)
+    ]
+    logger.info("selected %d of %d active connections", len(selected), len(rows))
     return selected
 
 
-def fan_out(**context) -> list[dict]:
-    """Build the deterministic child run conf list (one entry per selected connection)."""
-    ti = context["ti"]
-    ctx = ti.xcom_pull(task_ids="start_run")
-    selected = ti.xcom_pull(task_ids="select_connections") or []
-
-    payloads = []
-    for row in selected:
-        payloads.append(
-            {
-                "config_id": row["config_id"],
-                "lineage_uuid": ctx["lineage_uuid"],
-                "connection_json": {
-                    "config_id": row["config_id"],
-                    "connection_name": row["connection_name"],
-                    "target_type": row["target_type"],
-                    "dataset": row["dataset"],
-                    "mode": row["mode"],
-                    "cron_schedule": row["cron_schedule"],
-                },
-                "execution_date": ctx["execution_date"],
-            }
-        )
-        AUDITOR.publish(
-            EVENT_CHILD_TRIGGERED,
-            {
-                "actor_id": ctx["actor_id"],
-                "timestamp_utc": _now_iso(),
-                "event_type": "EXECUTION_STARTED",
-                "execution_id": ctx["lineage_uuid"],
-                "config_id": row["config_id"],
-            },
-        )
-    return payloads
+def _generate_lineage_uuid(**context) -> str:
+    """Task 2 — exactly one RFC 4122 v4 lineage UUID per run."""
+    lineage_uuid = str(uuid.uuid4())
+    context["ti"].xcom_push(key="lineage_uuid", value=lineage_uuid)
+    return lineage_uuid
 
 
-def complete_run(**context) -> None:
-    """Emit EXECUTION_COMPLETED and persist the run record."""
-    ti = context["ti"]
-    ctx = ti.xcom_pull(task_ids="start_run")
-    AUDITOR.publish(
-        EVENT_EXECUTION_COMPLETED,
-        {
-            "actor_id": ctx["actor_id"],
-            "timestamp_utc": _now_iso(),
-            "event_type": "EXECUTION_COMPLETED",
-            "execution_id": ctx["lineage_uuid"],
+def _emit_started(**context) -> None:
+    """Task 3 — EXECUTION_STARTED audit event."""
+    auditor = AuditPublisher.from_config(_CONFIG)
+    auditor.publish(
+        event_type=EVENT_EXECUTION_STARTED,
+        payload={
+            "actor_id": "system:orchestrator",
+            "execution_id": context["ti"].xcom_pull(key="lineage_uuid"),
+            "trigger_source": context["dag_run"].conf.get("trigger_source", "schedule"),
         },
     )
 
 
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+def _fan_out_children(**context) -> list[str]:
+    """Task 4 — trigger one child_export_dag run per selected connection."""
+    mwaa = MwaaClient.from_config(_CONFIG)
+    lineage_uuid = context["ti"].xcom_pull(key="lineage_uuid")
+    selected = context["ti"].xcom_pull(task_ids="select_connections")
+    run_ids: list[str] = []
+    for row in selected:
+        conf = {
+            "lineage_uuid": lineage_uuid,
+            "config_id": row["config_id"],
+            "connection": row,
+            "execution_date": context["data_interval_start"].isoformat(),
+            "mode": row["mode"],
+        }
+        try:
+            run_id = mwaa.trigger_dag_run(dag_id="child_export_dag", conf=conf)
+            run_ids.append(run_id)
+        except ClientError as exc:
+            logger.error("child trigger failed for %s: %s", row["config_id"], exc)
+            raise
+    return run_ids
+
+
+def _emit_completed(**context) -> None:
+    """Task 5 — EXECUTION_COMPLETED audit event."""
+    auditor = AuditPublisher.from_config(_CONFIG)
+    auditor.publish(
+        event_type=EVENT_EXECUTION_COMPLETED,
+        payload={
+            "actor_id": "system:orchestrator",
+            "execution_id": context["ti"].xcom_pull(key="lineage_uuid"),
+            "child_run_ids": context["ti"].xcom_pull(task_ids="fan_out_children"),
+        },
+    )
+
+
+def _cron_matches_within(cron: str, when: datetime, window: timedelta) -> bool:
+    """Return True if `cron` fires within `window` of `when` (UTC)."""
+    # Implementation delegates to croniter; kept out of top-level code.
+    ...
 
 
 with DAG(
     dag_id="orchestrator",
     schedule="@daily",
-    start_date=datetime(2025, 1, 1, tzinfo=timezone.utc),
     catchup=False,
     max_active_runs=1,
+    tags={},
     default_args=DEFAULT_ARGS,
-    tags=["dataoutbound", "orchestrator"],
+    start_date=datetime(2025, 1, 1, tzinfo=timezone.utc),
 ) as dag:
-    t_start = PythonOperator(task_id="start_run", python_callable=start_run)
-    t_select = PythonOperator(task_id="select_connections", python_callable=select_connections)
-    t_fanout = PythonOperator(task_id="fan_out", python_callable=fan_out)
-    t_complete = PythonOperator(task_id="complete_run", python_callable=complete_run)
+    select_connections = PythonOperator(
+        task_id="select_connections", python_callable=_select_connections
+    )
+    generate_lineage_uuid = PythonOperator(
+        task_id="generate_lineage_uuid", python_callable=_generate_lineage_uuid
+    )
+    emit_started = PythonOperator(
+        task_id="emit_started", python_callable=_emit_started
+    )
+    fan_out_children = PythonOperator(
+        task_id="fan_out_children", python_callable=_fan_out_children
+    )
+    emit_completed = PythonOperator(
+        task_id="emit_completed", python_callable=_emit_completed
+    )
 
-    t_start >> t_select >> t_fanout >> t_complete
+    select_connections >> generate_lineage_uuid >> emit_started >> fan_out_children >> emit_completed
 ```
+
+---
 
 ### 5.4. Cross-Component Interaction Sequence (Local Mermaid/ASCII Flow)
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_3.seq"></a>
-The orchestrator is entered from two directions and fans out to one child DAG per selected connection. The ordered interaction is:
+The orchestrator is the fan-out boundary of the pipeline. It is triggered from two independent sources — the **scheduler** (cadence event) and **do-admin-api** (manual trigger) — and it drives two downstream interactions: a read against **cofig_db** and one `TriggerDagRunOperator` invocation per selected connection against **child_export_dag**. Every run emits `EXECUTION_STARTED` and `EXECUTION_COMPLETED` audit records to **audit_bucket**.
 
-1. **Trigger arrival.** Either **scheduler** raises its EventBridge cadence event at time *T* (contract I1), or **do-admin-api** calls the MWAA REST API on a manual trigger (contract I2). Both paths land on the same DAG with `max_active_runs=1`, so a second trigger while a run is active is queued rather than overlapped.
-2. **Run start.** The `start_run` task generates exactly one RFC 4122 v4 lineage UUID, records `trigger_source` and `actor_id` in the run context, and publishes `EXECUTION_STARTED` to **audit_bucket** (contract O3).
-3. **Configuration read.** The `select_connections` task issues a read-only `SELECT` against **cofig_db** (contract I3/O1) for every row with `is_active = TRUE`. A connection timeout or query error is retried up to three times by the Airflow task retry policy; after the third failure the run fails and `EXECUTION_COMPLETED` is emitted with a failure status.
-4. **Window selection.** In-process, each returned row's `cron_schedule` is evaluated against *T ± 10 minutes*. Rows outside the window are discarded; rows inside the window form the fan-out set. This is the SCRUM-480 AC#1 / SCRUM-481 AC#3 behaviour.
-5. **Fan-out.** For each selected connection, the `fan_out` task builds a deterministic child run payload (`config_id`, `lineage_uuid`, `connection_json`, `execution_date`) and publishes `com.laminar.dataoutbound.child.triggered` to **audit_bucket**. The `TriggerDagRunOperator` then submits one **child_export_dag** run per payload (contract O2). A trigger failure is retried by the Airflow task retry policy; the deterministic run id makes the retry idempotent.
-6. **Completion.** The `complete_run` task publishes `EXECUTION_COMPLETED` to **audit_bucket** and persists the run record in **cofig_db**.
+1. **Trigger arrives.** Either the **scheduler** delivers a CloudEvents 1.0 envelope (`type = com.laminar.dataoutbound.scheduler.fired`, `data.schedule_time_utc`) to the MWAA orchestrator DAG endpoint, or **do-admin-api** calls the Airflow REST API with `{ config_id, execution_date, actor_id }`. The DAG run conf records `trigger_source` as `scheduler` or `manual`.
+2. **Selection.** The `select_connections` task opens a pooled JDBC connection to **cofig_db** via `DbClient` and executes the parameterised `SELECT` for active configurations. Each row's `cron_schedule` is evaluated against the trigger time; only connections whose cron fires within ±10 minutes are retained. A connection outside the window is not selected (SCRUM-480 AC#1).
+3. **Lineage UUID.** The `generate_lineage_uuid` task produces exactly one RFC 4122 v4 UUID per run and pushes it to XCom. This UUID is the sole correlation identifier for the run (SCRUM-480 AC#3).
+4. **Audit start.** `emit_started` publishes an `EXECUTION_STARTED` record to **audit_bucket** with `actor_id = system:orchestrator`, `execution_id = <lineage_uuid>`, and the trigger source.
+5. **Fan-out.** `fan_out_children` iterates the selected connections and calls `MwaaClient.trigger_dag_run(dag_id="child_export_dag", conf=...)` once per connection. Each child run conf carries the same `lineage_uuid`, the connection JSON, the execution date, and the mode (SCRUM-480 AC#4). A `ClientError` from the MWAA client aborts the task and is retried by the Airflow task retry policy.
+6. **Audit completion.** `emit_completed` publishes an `EXECUTION_COMPLETED` record with the list of child run IDs.
 
-**Failure paths.** A cofig_db read failure after retries fails the run and emits a failure audit. A child trigger failure after retries fails only that task instance; the remaining children continue, and the failed connection is visible in the run record for operational review. An audit_bucket write failure is logged with a warning and never fails the run (contract O3).
+**Failure handling.** A `cofig_db` read failure retries up to 3 times with exponential backoff; persistent failure fails the DAG and emits no `EXECUTION_COMPLETED`. A child trigger failure retries per the Airflow task policy; if the third attempt fails, the DAG fails and the operator is alerted. A manual stop request accepted by **do-admin-api** terminates the orchestrator run within 30 seconds and prevents any further child run from starting (SCRUM-480 AC#6).
+
+---
 ```mermaid
 sequenceDiagram
     autonumber
-    participant Scheduler as scheduler
-    participant DoAdminAPI as do-admin-api
-    participant Orchestrator as orchestrator
-    participant ConfigDB as cofig_db
-    participant ChildDAG as child_export_dag
-    participant AuditBucket as audit_bucket
+    participant SCH as scheduler
+    participant API as do-admin-api
+    participant ORC as orchestrator
+    participant DB as cofig_db
+    participant CHD as child_export_dag
+    participant AUD as audit_bucket
 
-    alt Trigger arrival - Cron schedule @daily
-        Scheduler->>Orchestrator: CloudEvents payload with event source and schedule timestamp
-        Orchestrator-->>Scheduler: HTTP 200 / Event acknowledged
-    else Trigger arrival - Manual API invocation
-        DoAdminAPI->>Orchestrator: DAG run trigger payload with configuration ID and execution date
-        Orchestrator-->>DoAdminAPI: 200 OK with DAG run ID
+    Note over ORC: Fan-out boundary of the pipeline
+
+    alt Cron schedule @daily
+        SCH->>ORC: CloudEvents payload with event source and schedule timestamp
+        ORC-->>SCH: HTTP 200 / Event acknowledged
+    else Manual API invocation
+        API->>ORC: DAG run trigger payload with configuration ID and execution date
+        ORC-->>API: 200 OK with DAG run ID
     end
 
-    Note right of Orchestrator: start_run generates one RFC 4122 v4 lineage UUID and records trigger_source and actor_id
-    Orchestrator->>AuditBucket: EXECUTION_STARTED
-
-    alt cofig_db read success
-        Orchestrator->>ConfigDB: SQL SELECT query for active export configurations matching schedule
-        ConfigDB-->>Orchestrator: ResultSet containing active export configurations
-    else cofig_db read failure after 3 retries
-        Orchestrator->>AuditBucket: EXECUTION_COMPLETED with failure status
+    alt Trigger delivery failure
+        Note over SCH,ORC: Retried via EventBridge built-in retry policy max 3 attempts
+        Note over API,ORC: 502 Bad Gateway retried with exponential backoff
     end
 
-    Orchestrator->>Orchestrator: Window selection evaluates cron_schedule against T ± 10 minutes
+    Note over ORC: DAG run conf records trigger_source as scheduler or manual
 
-    loop For each selected connection
-        Orchestrator->>AuditBucket: com.laminar.dataoutbound.child.triggered
-        alt child trigger success
-            Orchestrator->>ChildDAG: DagRun payload containing configuration ID and lineage UUID
-            ChildDAG-->>Orchestrator: Trigger confirmation with run_id
-        else child trigger failure after Airflow retries
-            Orchestrator->>AuditBucket: child trigger failure for connection
+    ORC->>DB: SQL SELECT query for active export configurations matching schedule
+    DB-->>ORC: ResultSet containing active export configurations
+
+    alt Read failure
+        Note over ORC,DB: Connection timeout or query error retried up to 3 times
+        Note over ORC: Persistent failure fails the DAG and emits no EXECUTION_COMPLETED
+    else Read success
+        Note over ORC: Evaluate cron_schedule against trigger time and keep connections firing within plus or minus 10 minutes
+        Note over ORC: generate_lineage_uuid produces one RFC 4122 v4 UUID per run pushed to XCom
+        ORC->>AUD: EXECUTION_STARTED record with actor_id system:orchestrator, execution_id lineage_uuid, trigger source
+        loop For each selected connection
+            ORC->>CHD: DagRun payload containing configuration ID and lineage UUID
+            CHD-->>ORC: Trigger confirmation with run_id
+            alt Child trigger failure
+                Note over ORC,CHD: ClientError aborts the task and is retried via Airflow task retry policy
+                Note over ORC: Third attempt fails, DAG fails and operator is alerted
+            end
         end
+        ORC->>AUD: EXECUTION_COMPLETED record with list of child run IDs
     end
 
-    Orchestrator->>AuditBucket: EXECUTION_COMPLETED
-    Orchestrator->>ConfigDB: persist run record
-    Note right of AuditBucket: audit_bucket write failure is logged with warning and never fails the run
+    alt Manual stop request
+        API->>ORC: Manual stop request
+        Note over ORC: Terminates run within 30 seconds and prevents any further child run from starting
+    end
 ```
 
 ### 5.5. Schema Definitions (DB Tables / API JSON / Telemetry CloudEvents)
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_3.schema"></a>
-#### 5.5.1 Child DAG run payload (contract O2)
+#### 5.5.1 Inbound — scheduler → orchestrator (CloudEvents 1.0)
 
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://laminar.com/dataoutbound/schemas/orchestrator-child-run.json",
-  "title": "OrchestratorChildRunPayload",
+  "$id": "com.laminar.dataoutbound.scheduler.fired",
+  "title": "CadenceEvent",
   "type": "object",
-  "required": ["config_id", "lineage_uuid", "connection_json", "execution_date"],
-  "additionalProperties": false,
-  "properties": {
-    "config_id": { "type": "string", "minLength": 1, "maxLength": 64 },
-    "lineage_uuid": {
-      "type": "string",
-      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-    },
-    "execution_date": { "type": "string", "format": "date-time" },
-    "connection_json": {
-      "type": "object",
-      "required": ["config_id", "connection_name", "target_type", "dataset", "mode", "cron_schedule"],
-      "additionalProperties": false,
-      "properties": {
-        "config_id": { "type": "string" },
-        "connection_name": { "type": "string", "minLength": 1, "maxLength": 100 },
-        "target_type": { "enum": ["s3", "azure_blob", "gcs", "sftp"] },
-        "dataset": {
-          "enum": ["identity_profiles", "subscription_statuses", "campaigns_reactions", "reservation_items"]
-        },
-        "mode": { "enum": ["initial", "incremental"] },
-        "cron_schedule": { "type": "string" }
-      }
-    }
-  }
-}
-```
-
-#### 5.5.2 Telemetry CloudEvents emitted by the orchestrator
-
-```json
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://laminar.com/dataoutbound/schemas/orchestrator-audit-cloudevent.json",
-  "title": "OrchestratorAuditCloudEvent",
-  "type": "object",
-  "required": ["specversion", "type", "source", "id", "time", "data"],
+  "required": ["specversion", "id", "source", "type", "time", "data"],
   "properties": {
     "specversion": { "const": "1.0" },
-    "type": {
-      "enum": [
-        "com.laminar.dataoutbound.scheduler.fired",
-        "com.laminar.dataoutbound.orchestrator.triggered",
-        "com.laminar.dataoutbound.child.triggered",
-        "com.laminar.dataoutbound.audit.orchestrator"
-      ]
-    },
-    "source": { "const": "dataoutbound/orchestrator" },
-    "id": { "type": "string", "format": "uuid" },
-    "time": { "type": "string", "format": "date-time" },
+    "id":          { "type": "string", "description": "EventBridge event id" },
+    "source":      { "const": "com.laminar.dataoutbound.scheduler" },
+    "type":        { "const": "com.laminar.dataoutbound.scheduler.fired" },
+    "time":        { "type": "string", "format": "date-time" },
+    "datacontenttype": { "const": "application/json" },
     "data": {
       "type": "object",
-      "required": ["actor_id", "timestamp_utc", "event_type", "execution_id"],
+      "required": ["cadence", "schedule_time_utc", "rule_name"],
       "properties": {
-        "actor_id": { "type": "string" },
-        "timestamp_utc": {
-          "type": "string",
-          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
+        "cadence": {
+          "enum": ["daily", "weekly", "biweekly", "monthly", "hourly_fast_batch"]
         },
-        "event_type": {
-          "enum": [
-            "ADMIN_CREATE", "ADMIN_UPDATE", "ADMIN_DELETE", "ADMIN_MANUAL_TRIGGER",
-            "EXECUTION_STARTED", "EXECUTION_COMPLETED",
-            "TRANSFER_STARTED", "TRANSFER_COMPLETED", "TRANSFER_FAILED"
-          ]
-        },
-        "execution_id": { "type": "string", "format": "uuid" },
-        "config_id": { "type": "string" },
-        "trigger_source": { "enum": ["scheduler", "manual"] }
+        "schedule_time_utc": { "type": "string", "format": "date-time" },
+        "rule_name":         { "type": "string", "maxLength": 64 }
       }
     }
   }
 }
 ```
 
-#### 5.5.3 cofig_db tables the orchestrator reads and writes
+#### 5.5.2 Inbound — do-admin-api → orchestrator (manual trigger)
 
-The orchestrator owns no table; it reads `export_configuration` and appends to `export_execution_log`, both owned by **cofig_db**. The DDL is defined in the cofig_db component section; the orchestrator's read projection is:
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "com.laminar.dataoutbound.orchestrator.triggered",
+  "title": "ManualTriggerRequest",
+  "type": "object",
+  "required": ["config_id", "execution_date", "actor_id"],
+  "properties": {
+    "config_id":      { "type": "string", "minLength": 1, "maxLength": 64 },
+    "execution_date": { "type": "string", "format": "date-time" },
+    "actor_id":       { "type": "string", "minLength": 1, "maxLength": 128 }
+  }
+}
+```
+
+#### 5.5.3 Outbound — orchestrator → child_export_dag (DagRun conf)
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "com.laminar.dataoutbound.child.triggered",
+  "title": "ChildRunConf",
+  "type": "object",
+  "required": ["lineage_uuid", "config_id", "connection", "execution_date", "mode"],
+  "properties": {
+    "lineage_uuid":   { "type": "string", "format": "uuid" },
+    "config_id":      { "type": "string" },
+    "connection":     { "type": "object" },
+    "execution_date": { "type": "string", "format": "date-time" },
+    "mode":           { "enum": ["initial", "incremental"] }
+  }
+}
+```
+
+#### 5.5.4 Outbound — orchestrator → audit_bucket (CloudEvents-shaped audit record)
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "com.laminar.dataoutbound.audit.orchestrator",
+  "title": "OrchestratorAuditEvent",
+  "type": "object",
+  "required": ["actor_id", "timestamp_utc", "event_type", "execution_id"],
+  "properties": {
+    "actor_id":      { "const": "system:orchestrator" },
+    "timestamp_utc": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
+    },
+    "event_type":    { "enum": ["EXECUTION_STARTED", "EXECUTION_COMPLETED"] },
+    "execution_id":  { "type": "string", "format": "uuid" },
+    "trigger_source": { "enum": ["schedule", "scheduler", "manual"] },
+    "child_run_ids": { "type": "array", "items": { "type": "string" } }
+  }
+}
+```
+
+#### 5.5.5 Read — orchestrator → cofig_db
+
+The orchestrator reads `cofig_db.export_configurations`. The canonical DDL for this table is declared once in the **cofig_db** component chapter and is not re-declared here. The orchestrator's read contract is the parameterised query below; no DDL is owned by this component.
 
 ```sql
+-- Parameterised read; no string interpolation of untrusted input.
 SELECT config_id, connection_name, target_type, dataset, mode,
-       cron_schedule, is_active, updated_at
-  FROM export_configuration
- WHERE is_active = TRUE
- ORDER BY config_id;
+       cron_schedule, is_active, credentials_ref, created_at, updated_at
+FROM   export_configurations
+WHERE  is_active = TRUE;
 ```
+
+---
 
 ### 5.6. Local Design Assumptions
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_3.asm"></a>
-- **Cron-window evaluation is in-process, not in SQL.** The `SELECT` returns every active row and the ±10-minute filter runs in Python via `croniter`. Rationale: cron expressions are not natively evaluable in Postgres without an extension, and the active-configuration set is small (per-customer scale target). This satisfies SCRUM-480 AC#1 / SCRUM-481 AC#3.
-- **One lineage UUID per DAG run.** Generated in `start_run` and carried in every child run conf and every audit event. Rationale: SCRUM-480 AC#3 requires exactly one RFC 4122 v4 UUID per run.
-- **Child run ids are deterministic.** `IdempotencyKey.build("child", execution_date, config_id)` makes a retried fan-out idempotent. Rationale: contract O2 idempotency clause.
-- **`max_active_runs=1` is the concurrency guard.** A manual trigger arriving while a scheduled run is active is queued, not overlapped. Rationale: user decision on the canvas; prevents two lineage UUIDs for the same logical run.
-- **Audit failures never fail the run.** `AuditPublisher.publish` is documented as never raising into the caller's flow. Rationale: contract O3 and the foundation's Principle 3.
-- **`cofig_db` credentials are resolved via `ConfigLoader` + SSM SecureString.** No credential is embedded in the DAG file. Rationale: SCRUM-479 AC#1 / SCRUM-481 AC#6.
-- **The orchestrator does not read credentials.** The `connection_json` carried into the child run conf contains only non-secret fields; credential resolution happens in the child DAG and egress DAG. Rationale: least privilege and SCRUM-479 AC#3.
+- **Schedule vs. trigger-only.** The diagram sets `schedule = @daily` for the orchestrator. This is honoured verbatim. **Recommendation:** because the DAG is primarily driven by the scheduler event and by manual triggers, a `schedule = None` (trigger-only) posture would avoid a redundant daily run; the user's `@daily` setting stands as authoritative.
+- **Selection window.** The ±10-minute selection window is a fixed architectural constant (SCRUM-480 AC#1). It is read from `dags/config.yml` (`selection_window_minutes`, default 10) so it can be tuned per environment without a code change.
+- **Cron evaluation library.** Cron matching uses `croniter` (mainstream Python cron parser) evaluated in UTC. All schedules are UTC, consistent with the ISO-8601 UTC audit timestamp requirement.
+- **Bi-weekly cadence.** EventBridge cron cannot express "every two weeks" natively; the scheduler resolves bi-weekly as two fortnightly rules offset by one week. The orchestrator's ±10-minute window logic remains the single selection authority and does not need to know the cadence class.
+- **Lineage UUID generation.** Exactly one RFC 4122 v4 UUID is generated per orchestrator run (SCRUM-480 AC#3). Re-runs generate a new UUID; idempotency is per-lineage, not per-connection.
+- **MWAA worker capacity.** Assumed sufficient to handle concurrent DAG parse cycles and task scheduling without queuing delays; no explicit worker sizing is set by this design.
+- **Airflow REST API authentication.** Manual triggers from **do-admin-api** authenticate to the MWAA REST API via IAM SigV4 signing using the API's execution role; no long-lived tokens are stored.
+- **Audit write failure.** If the `audit_bucket` write fails, the `AuditPublisher` logs locally and does not raise into the DAG flow (per the shared foundation contract); the DAG continues, and the missing audit record is detectable via the expected-event-count check (SCRUM-486 AC#1).
+- **No DDL owned.** The orchestrator owns no database tables; it reads `cofig_db.export_configurations` under the canonical DDL declared in the **cofig_db** chapter.
 
 ## 6. Component Design: child_export_dag
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_4"></a>
 
+<!-- laminar:diagram-settings:imp-aws-aws_mwaa_dag-4 -->
+**Diagram settings (user decisions — authoritative)**
+
+| Setting | Value |
+| --- | --- |
+| `schedule` | `@daily` |
+| `catchup` | `false` |
+| `max_active_runs` | `1` |
+| `dag_name` | `child_export_dag` |
+
+<!-- /laminar:diagram-settings -->
+
+
 ### 6.1. Component Contract (Bi-Directional Inputs & Outputs)
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_4.contract"></a>
-**Component:** `child_export_dag` — MWAA (Airflow) DAG, module `src/dataoutbound_section_tree/dags/child_export_dag.py`, deployed as-is to the MWAA DAGs bucket. One DAG run executes exactly one export connection: it reads the connection's watermark and recipe from **cofig_db**, submits one **emr_do** Spark job, waits for terminal state, and publishes the execution lifecycle audit events.
+**Diagram settings (user decisions — authoritative).** This component is configured exactly as recorded in the Diagram settings table for `child_export_dag`: `dag_name = child_export_dag`, `schedule = @daily`, `catchup = False`, `max_active_runs = 1`, `tags = {}`. These five values are binding and are reproduced verbatim in the DAG definition in `c.imp_aws_aws_mwaa_dag_4.skeleton`; no other schedule, catch-up or concurrency value is substituted anywhere in this chapter.
 
-#### 6.1.1 Configuration the design sets (everything else is Airflow default)
+**Architectural principle: orchestration-only, per-connection isolation.** `child_export_dag` is a per-connection MWAA DAG. It receives the lineage UUID and its connection JSON from `orchestrator`, reads the incremental watermark and recipe reference from `cofig_db`, submits exactly one Export Extract Spark Job to `emr_do`, waits for its terminal state, advances the watermark, and emits lifecycle audit records. It performs no data processing itself and never writes to a customer destination.
 
-| Setting | Value | Rationale |
-|---|---|---|
-| `dag_id` | `child_export_dag` | User-given DAG name; the orchestrator triggers it by this id. |
-| `schedule` | `@daily` | Diagram property. The DAG is **event-triggered** by **orchestrator**; the daily schedule is a safety net only, and `catchup=False` prevents backfill storms. |
-| `catchup` | `False` | Diagram property; no historical runs are materialised. |
-| `max_active_runs` | `1` | Diagram property; one run per connection at a time, so a connection's watermark is never advanced concurrently. |
-| `tags` | `[]` | Diagram property (empty). |
-| `default_args.retries` | `3` | Matches the frozen contract ("retried up to 3 times" for the cofig_db read; "retried with backoff" for the EMR submit). |
-| `default_args.retry_delay` | `timedelta(minutes=2)` | Exponential backoff base for transient JDBC/EMR API errors. |
-| `default_args.execution_timeout` | `timedelta(hours=6)` | Bounded above by the 24-hour delivery SLA with headroom for the egress stage. |
-| `default_args.sla` | `timedelta(hours=24)` | The delivery SLA from the requirements; breaches raise an SLA-miss audit event. |
-| `max_active_tasks` | `4` | One connection's tasks are sequential; 4 allows a few concurrent child runs without saturating the MWAA worker. |
+#### 6.1.1 Inbound contracts
 
-#### 6.1.2 Inbound contract — orchestrator → child_export_dag
-
-| Aspect | Specification |
-|---|---|
-| Trigger | Airflow `TriggerDagRunOperator` fired by **orchestrator** after it selects the connection. |
-| Request | DagRun `conf` containing `config_id` and `lineage_uuid` (RFC 4122 v4), plus `execution_date` and the connection JSON snapshot. |
-| Response | Trigger confirmation carrying `run_id` (Airflow REST API `POST /dags/child_export_dag/dagRuns`). |
-| Errors | DAG trigger failure is retried by the **orchestrator** task's Airflow retry policy; the child DAG itself never retries the trigger. |
-| Idempotency | Keyed by `execution_date` + `config_id`: a re-trigger for the same logical date and connection reuses the same `run_id` semantics and produces the same staged object keys. |
-| Telemetry | `com.laminar.dataoutbound.child.triggered` (emitted by **orchestrator** on the edge). |
-
-#### 6.1.3 Outbound contract — child_export_dag → cofig_db (read)
-
-| Aspect | Specification |
-|---|---|
-| Trigger | First task of the DAG run (`resolve_run_context`). |
-| Request | Parameterised `SELECT` for the export configuration row and the connection's watermark row (see Schema Definitions). |
-| Response | `dict` rows: configuration fields (dataset, mode, target type, recipe path, staging prefix) and the watermark timestamp. |
-| Errors | Connection timeout or query error → retried up to 3 times by the Airflow task; after exhaustion the run fails and `EXECUTION_FAILED`-class audit is published. |
-| Idempotency | Read-only query; safe to repeat. |
-| Telemetry | none (per the frozen contract). |
-
-#### 6.1.4 Outbound contract — child_export_dag → emr_do (async job invocation)
-
-| Aspect | Specification |
-|---|---|
-| Trigger | `submit_emr_job` task, after the run context is resolved. |
-| Request | `StartJobRunRequest`: `applicationId` (the **emr_do** application), `executionRoleArn`, `jobDriver.sparkSubmit` with the job's `entryPoint` and `sparkSubmitParameters` carrying `config_id`, `lineage_uuid`, `execution_date`, `mode`, `dataset`, `watermark`, `recipe_path`, `staging_uri`. |
-| Response | `StartJobRunResponse` with `jobRunId`; the DAG then polls `GetJobRun` until a terminal state. |
-| Errors | EMR API rate limit or validation error → retried with backoff (3 attempts); a job that reaches `FAILED`/`CANCELLED` fails the DAG run. |
-| Idempotency | `clientToken = IdempotencyKey.build(config_id, execution_date, lineage_uuid)` — a retried submit returns the original `jobRunId` instead of starting a second job. |
-| Telemetry | `com.laminar.dataoutbound.emr.started` (CloudEvents, see Schema Definitions). |
-
-#### 6.1.5 Audit contract (SCRUM-486)
-
-The DAG publishes exactly two business audit events per connection execution — `EXECUTION_STARTED` and `EXECUTION_COMPLETED` (or `TRANSFER_FAILED`-equivalent failure signalling via the run's failure callback) — through the foundation `AuditPublisher`, with `actor_id = system:child_export_dag` and `execution_id = lineage_uuid`. The publisher writes to the configured audit sink (**audit_bucket**); it never raises into the DAG's flow.
-
----
+| # | Source | Protocol / mechanism | Trigger | Payload | Sync/Async | Idempotency | Failure handling |
+|---|---|---|---|---|---|---|---|
+| I-1 | `orchestrator` | Airflow `TriggerDagRunOperator` (in-cluster) | Orchestrator task completion, one invocation per selected connection | `ChildExportRunConf` JSON in `dag_run.conf`: `lineage_uuid`, `config_id`, `connection`, `execution_date`, `mode`, `dataset`, `triggered_by` | Async (fire-and-forget trigger; state observed via Airflow REST API) | Idempotent via `execution_date` + `config_id`; a duplicate trigger for the same pair is a no-op | Trigger failure is retried by the orchestrator's Airflow task retry policy; the child DAG itself never retries its own trigger |
+| I-2 | `cofig_db` | JDBC (PostgreSQL) via `common.clients.db.db_client.DbClient` | Child DAG initialisation task | Parameterised `SELECT` for the watermark row (`config_id`, `dataset`, `watermark_ts`) and the recipe path | Sync | Idempotent read-only query | Connection timeout or query error retried up to 3 times with exponential backoff, then the run fails with an audit failure record |
 
 ### 6.2. Class and Interface Definitions
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_4.classes"></a>
 ```python
-# src/dataoutbound_section_tree/dags/child_export_dag.py
-from __future__ import annotations
+"""Typed contracts for the child_export_dag component.
 
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from typing import Any, Literal, Optional
-
-from dataoutbound_section_tree.common.clients.aws.emr.emr_client import EmrClient
-from dataoutbound_section_tree.common.clients.db.db_client import DbClient
-from dataoutbound_section_tree.common.telemetry.auditor import AuditPublisher
-from dataoutbound_section_tree.config.config_loader import ConfigLoader
-from dataoutbound_section_tree.util.exceptions import NotFoundError, ValidationError
-from dataoutbound_section_tree.util.idempotency import IdempotencyKey
-
-ExportMode = Literal["initial", "incremental"]
-DatasetName = Literal[
-    "identity_profiles",
-    "subscription_statuses",
-    "campaigns_reactions",
-    "reservation_items",
-]
-
-
-@dataclass(frozen=True)
-class ChildExportRunConf:
-    """The DagRun `conf` handed over by `orchestrator` (contract: orchestrator -> child_export_dag)."""
-
-    config_id: str
-    lineage_uuid: str
-    execution_date: str          # ISO-8601 UTC, millisecond precision, 'Z' suffix
-    connection: dict[str, Any]   # connection JSON snapshot as read by the orchestrator
-
-    @classmethod
-    def from_dag_conf(cls, conf: dict[str, Any]) -> "ChildExportRunConf":
-        missing = [k for k in ("config_id", "lineage_uuid", "execution_date") if not conf.get(k)]
-        if missing:
-            raise ValidationError(f"child_export_dag conf missing fields: {', '.join(missing)}")
-        return cls(
-            config_id=conf["config_id"],
-            lineage_uuid=conf["lineage_uuid"],
-            execution_date=conf["execution_date"],
-            connection=conf.get("connection", {}),
-        )
-
-
-@dataclass(frozen=True)
-class ExportConfiguration:
-    """Row of `export_config` consumed by this DAG (owned by cofig_db)."""
-
-    config_id: str
-    connection_name: str
-    dataset: DatasetName
-    mode: ExportMode
-    target_type: Literal["s3", "azure_blob", "gcs", "sftp"]
-    cron_schedule: str
-    recipe_path: str
-    staging_prefix: str
-    is_active: bool
-
-
-@dataclass(frozen=True)
-class Watermark:
-    """Row of `export_watermark` consumed by this DAG (owned by cofig_db)."""
-
-    config_id: str
-    dataset: DatasetName
-    watermark_ts: Optional[datetime]   # None => initial full synchronisation
-    last_run_id: Optional[str] = None
-
-
-@dataclass(frozen=True)
-class EmrJobSubmission:
-    """Result of submitting the Spark job to `emr_do`."""
-
-    job_run_id: str
-    application_id: str
-    client_token: str
-    submitted_at: datetime
-
-
-@dataclass(frozen=True)
-class RunContext:
-    """Everything the DAG needs after the cofig_db read."""
-
-    conf: ChildExportRunConf
-    configuration: ExportConfiguration
-    watermark: Watermark
-    effective_mode: ExportMode
-    staging_uri: str
-    audit_payload: dict[str, Any] = field(default_factory=dict)
-
-
-class ChildExportRepository:
-    """Read-only access to cofig_db through the shared foundation DbClient.
-
-    Uses ONLY the canonical DbClient interface (execute / fetch_one / fetch_all /
-    transaction) — no component-local query helpers.
-    """
-
-    _SELECT_CONFIG = """
-        SELECT config_id, connection_name, dataset, mode, target_type,
-               cron_schedule, recipe_path, staging_prefix, is_active
-          FROM export_config
-         WHERE config_id = %s
-    """
-    _SELECT_WATERMARK = """
-        SELECT config_id, dataset, watermark_ts, last_run_id
-          FROM export_watermark
-         WHERE config_id = %s AND dataset = %s
-    """
-
-    def __init__(self, db: DbClient) -> None:
-        self._db = db
-
-    def get_configuration(self, config_id: str) -> ExportConfiguration:
-        row = self._db.fetch_one(self._SELECT_CONFIG, (config_id,))
-        if row is None:
-            raise NotFoundError(f"export configuration {config_id} not found")
-        return ExportConfiguration(**row)
-
-    def get_watermark(self, config_id: str, dataset: str) -> Watermark:
-        row = self._db.fetch_one(self._SELECT_WATERMARK, (config_id, dataset))
-        if row is None:
-            # No watermark row yet => first run of this connection/dataset.
-            return Watermark(config_id=config_id, dataset=dataset, watermark_ts=None)
-        return Watermark(**row)
-
-
-class ChildExportRunner:
-    """Pure orchestration logic of one child export run; no Airflow types."""
-
-    def __init__(
-        self,
-        config: ConfigLoader,
-        repository: ChildExportRepository,
-        emr: EmrClient,
-        auditor: AuditPublisher,
-    ) -> None:
-        self._config = config
-        self._repository = repository
-        self._emr = emr
-        self._auditor = auditor
-
-    def resolve_run_context(self, conf: ChildExportRunConf) -> RunContext:
-        configuration = self._repository.get_configuration(conf.config_id)
-        watermark = self._repository.get_watermark(conf.config_id, configuration.dataset)
-        effective_mode: ExportMode = (
-            "initial" if watermark.watermark_ts is None else configuration.mode
-        )
-        staging_uri = (
-            f"s3://{self._config.get('staging.bucket')}/"
-            f"{configuration.staging_prefix}/config_id={configuration.config_id}/"
-            f"execution_id={conf.lineage_uuid}/"
-        )
-        return RunContext(
-            conf=conf,
-            configuration=configuration,
-            watermark=watermark,
-            effective_mode=effective_mode,
-            staging_uri=staging_uri,
-        )
-
-    def submit_job(self, context: RunContext) -> EmrJobSubmission:
-        client_token = IdempotencyKey.build(
-            context.conf.config_id, context.conf.execution_date, context.conf.lineage_uuid
-        )
-        job_run_id = self._emr.start_job_run(
-            application_id=self._config.get("emr.application_id"),
-            execution_role_arn=self._config.get("emr.execution_role_arn"),
-            entry_point=self._config.get("emr.entry_point"),
-            spark_submit_parameters=self._spark_parameters(context),
-            client_token=client_token,
-        )
-        return EmrJobSubmission(
-            job_run_id=job_run_id,
-            application_id=self._config.get("emr.application_id"),
-            client_token=client_token,
-            submitted_at=datetime.utcnow(),
-        )
-
-    def _spark_parameters(self, context: RunContext) -> str:
-        wm = context.watermark.watermark_ts
-        watermark_arg = wm.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z" if wm else ""
-        return " ".join(
-            [
-                f"--config-id {context.conf.config_id}",
-                f"--lineage-uuid {context.conf.lineage_uuid}",
-                f"--execution-date {context.conf.execution_date}",
-                f"--mode {context.effective_mode}",
-                f"--dataset {context.configuration.dataset}",
-                f"--watermark {watermark_arg}",
-                f"--recipe-path {context.configuration.recipe_path}",
-                f"--staging-uri {context.staging_uri}",
-            ]
-        )
-```
-
----
-
-### 6.3. Implementation Code Skeleton (Stubs & Handlers)
-<a id="laminar-sec-c.imp_aws_aws_mwaa_dag_4.skeleton"></a>
-Illustrative skeleton — the Component Contract and Schema Definitions are binding. Only the public entry points of the DAG module are shown.
-
-```python
-# src/dataoutbound_section_tree/dags/child_export_dag.py
-"""Child Export DAG — one run per export connection.
-
-Triggered by `orchestrator` (TriggerDagRunOperator) with a DagRun conf carrying
-`config_id` and `lineage_uuid`. Reads watermark + recipe from cofig_db, submits one
-EMR Serverless Spark job to `emr_do`, waits for terminal state, publishes audit events.
+Module: src/dataoutbound_section_tree/dags/child_export_dag.py
+Shared concerns (clients, logging, telemetry, config, idempotency, exceptions)
+are imported from the blueprint foundation and are never re-declared here.
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Any, Mapping, Optional, Protocol, Sequence
+
+
+# --------------------------------------------------------------------------- #
+# Run configuration (inbound contract I-1)
+# --------------------------------------------------------------------------- #
+@dataclass(frozen=True)
+class ChildExportRunConf:
+    """The `dag_run.conf` payload produced by `orchestrator` (SCRUM-480 AC#4)."""
+
+    lineage_uuid: str          # RFC 4122 v4, generated once by orchestrator
+    config_id: str             # export_configurations.config_id
+    connection: Mapping[str, Any]  # connection JSON as stored in cofig_db
+    execution_date: str        # ISO-8601 UTC, logical execution date
+    mode: str                  # "initial" | "incremental"
+    dataset: str               # e.g. "identity_profiles", "reservation_items"
+    triggered_by: str = "system:orchestrator"
+
+    def idempotency_key(self) -> str:
+        """Stable key for duplicate-trigger suppression."""
+        return f"{self.execution_date}:{self.config_id}"
+
+
+# --------------------------------------------------------------------------- #
+# Watermark state (inbound contract I-2 / outbound contract O-2)
+# --------------------------------------------------------------------------- #
+@dataclass(frozen=True)
+class WatermarkRecord:
+    """Incremental extraction state read from cofig_db."""
+
+    config_id: str
+    dataset: str
+    watermark_ts: Optional[datetime]  # None => initial full synchronisation
+    recipe_path: str
+
+
+# --------------------------------------------------------------------------- #
+# EMR Serverless submission (outbound contract O-1)
+# --------------------------------------------------------------------------- #
+@dataclass(frozen=True)
+class EmrJobSubmission:
+    """Parameters handed to EmrClient.start_job_run()."""
+
+    application_id: str
+    execution_role_arn: str
+    client_token: str
+    spark_submit_parameters: str
+    job_name: str
+
+
+@dataclass(frozen=True)
+class EmrJobResult:
+    """Terminal state of one Export Extract Spark Job run."""
+
+    job_run_id: str
+    state: str                 # SUCCESS | FAILED | CANCELLED
+    record_counts: Mapping[str, int] = field(default_factory=dict)
+    failure_reason: Optional[str] = None
+
+
+# --------------------------------------------------------------------------- #
+# Ports (implemented by the blueprint foundation clients)
+# --------------------------------------------------------------------------- #
+class EmrJobSubmitter(Protocol):
+    def start_job_run(self, submission: EmrJobSubmission) -> str: ...
+    def get_job_run(self, application_id: str, job_run_id: str) -> EmrJobResult: ...
+
+
+class WatermarkRepository(Protocol):
+    def read_watermark(self, config_id: str, dataset: str) -> WatermarkRecord: ...
+    def advance_watermark(
+        self, config_id: str, dataset: str, new_watermark: datetime
+    ) -> None: ...
+
+
+class AuditSink(Protocol):
+    def publish(self, event_type: str, payload: Mapping[str, Any]) -> None: ...
+
+
+# --------------------------------------------------------------------------- #
+# Service
+# --------------------------------------------------------------------------- #
+class ChildExportService:
+    """Orchestration logic of one child export run. No HTTP, no Airflow types."""
+
+    def __init__(
+        self,
+        emr: EmrJobSubmitter,
+        watermarks: WatermarkRepository,
+        auditor: AuditSink,
+        poll_interval_seconds: int,
+        poll_timeout_seconds: int,
+    ) -> None: ...
+
+    def validate_conf(self, conf: Mapping[str, Any]) -> ChildExportRunConf:
+        """Validate the run conf; raise ValidationError on any missing field."""
+
+    def read_watermark(self, run: ChildExportRunConf) -> WatermarkRecord:
+        """Read the watermark and recipe path for this connection."""
+
+    def submit_job(self, run: ChildExportRunConf, wm: WatermarkRecord) -> str:
+        """Submit exactly one EMR Serverless job; return the job_run_id."""
+
+    def await_job(self, job_run_id: str) -> EmrJobResult:
+        """Poll to a terminal state within the configured timeout."""
+
+    def advance_watermark(self, run: ChildExportRunConf, result: EmrJobResult) -> None:
+        """Monotonic watermark advance, only on SUCCESS."""
+
+    def emit(self, run: ChildExportRunConf, event_type: str, **extra: Any) -> None:
+        """Publish one audit record; never raises into the caller's flow."""
+```
+
+### 6.3. Implementation Code Skeleton (Stubs & Handlers)
+<a id="laminar-sec-c.imp_aws_aws_mwaa_dag_4.skeleton"></a>
+Illustrative skeleton — the Component Contract and Schema Definitions are binding.
+
+```python
+"""child_export_dag — per-connection export orchestration (MWAA).
+
+Module: src/dataoutbound_section_tree/dags/child_export_dag.py
+Deployed as-is to the MWAA DAGs bucket.
+"""
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+from typing import Any, Mapping
 
 from airflow import DAG
 from airflow.operators.python import PythonOperator
@@ -1986,2217 +2368,1775 @@ from dataoutbound_section_tree.common.clients.db.db_client import DbClient
 from dataoutbound_section_tree.common.logging.logger import get_logger
 from dataoutbound_section_tree.common.telemetry.auditor import AuditPublisher
 from dataoutbound_section_tree.config.config_loader import ConfigLoader
-from dataoutbound_section_tree.dags.child_export_dag import (  # same module in the real file
-    ChildExportRepository,
-    ChildExportRunConf,
-    ChildExportRunner,
-)
-from dataoutbound_section_tree.util.constants import (
-    AUDIT_EXECUTION_COMPLETED,
-    AUDIT_EXECUTION_STARTED,
-    EVENT_EMR_STARTED,
-)
-from dataoutbound_section_tree.util.exceptions import LaminarError
+from dataoutbound_section_tree.util.exceptions import ValidationError
+from dataoutbound_section_tree.util.idempotency import IdempotencyKey
 
 log = get_logger(__name__)
 
-# --- Configuration (loaded once at DAG-parse time; no I/O beyond the config file) ---
-config = ConfigLoader(module="dags")
+# --- Diagram settings (user decisions — authoritative) --------------------- #
 DAG_ID = "child_export_dag"
-EMR_TERMINAL_STATES = {"SUCCESS", "FAILED", "CANCELLED"}
+SCHEDULE = "@daily"
+CATCHUP = False
+MAX_ACTIVE_RUNS = 1
+TAGS: dict[str, str] = {}
+# --------------------------------------------------------------------------- #
 
-default_args = {
+DEFAULT_ARGS = {
     "owner": "dataoutbound",
     "retries": 3,
     "retry_delay": timedelta(minutes=2),
-    "execution_timeout": timedelta(hours=6),
-    "sla": timedelta(hours=24),
-    "depends_on_past": False,
+    "retry_exponential_backoff": True,
+    "email_on_failure": False,
 }
 
-
-def _audit(event_type: str, payload: dict) -> None:
-    """Publish through the single foundation AuditPublisher; never raises."""
-    AuditPublisher(config=config).publish(event_type, payload)
-
-
-def resolve_run_context(**context) -> dict:
-    """Task 1 — read configuration + watermark from cofig_db and publish EXECUTION_STARTED."""
-    conf = ChildExportRunConf.from_dag_conf(context["dag_run"].conf or {})
-    runner = ChildExportRunner(
-        config=config,
-        repository=ChildExportRepository(DbClient(config=config)),
-        emr=EmrClient(config=config),
-        auditor=AuditPublisher(config=config),
-    )
-    run_context = runner.resolve_run_context(conf)
-    _audit(
-        AUDIT_EXECUTION_STARTED,
-        {
-            "actor_id": "system:child_export_dag",
-            "timestamp_utc": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
-            "event_type": AUDIT_EXECUTION_STARTED,
-            "execution_id": conf.lineage_uuid,
-            "config_id": conf.config_id,
-            "dataset": run_context.configuration.dataset,
-            "mode": run_context.effective_mode,
-            "status": "STARTED",
-        },
-    )
-    return {
-        "config_id": conf.config_id,
-        "lineage_uuid": conf.lineage_uuid,
-        "execution_date": conf.execution_date,
-        "dataset": run_context.configuration.dataset,
-        "mode": run_context.effective_mode,
-        "staging_uri": run_context.staging_uri,
-        "watermark_ts": (
-            run_context.watermark.watermark_ts.isoformat()
-            if run_context.watermark.watermark_ts
-            else None
-        ),
-    }
-
-
-def submit_emr_job(**context) -> str:
-    """Task 2 — submit the Spark job to `emr_do` with an idempotency client token."""
-    ti = context["ti"]
-    run_context_dict = ti.xcom_pull(task_ids="resolve_run_context")
-    conf = ChildExportRunConf.from_dag_conf(context["dag_run"].conf or {})
-    runner = ChildExportRunner(
-        config=config,
-        repository=ChildExportRepository(DbClient(config=config)),
-        emr=EmrClient(config=config),
-        auditor=AuditPublisher(config=config),
-    )
-    run_context = runner.resolve_run_context(conf)
-    submission = runner.submit_job(run_context)
-    _audit(
-        EVENT_EMR_STARTED,
-        {
-            "actor_id": "system:child_export_dag",
-            "timestamp_utc": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
-            "event_type": EVENT_EMR_STARTED,
-            "execution_id": conf.lineage_uuid,
-            "config_id": conf.config_id,
-            "job_run_id": submission.job_run_id,
-            "application_id": submission.application_id,
-            "staging_uri": run_context_dict["staging_uri"],
-        },
-    )
-    return submission.job_run_id
-
-
-def await_emr_job(**context) -> str:
-    """Task 3 — poll `emr_do` until the job reaches a terminal state."""
-    ti = context["ti"]
-    job_run_id = ti.xcom_pull(task_ids="submit_emr_job")
-    emr = EmrClient(config=config)
-    state = emr.get_job_run(job_run_id=job_run_id)["state"]
-    if state not in EMR_TERMINAL_STATES:
-        raise LaminarError(f"EMR job {job_run_id} not terminal yet: {state}")
-    if state != "SUCCESS":
-        raise LaminarError(f"EMR job {job_run_id} ended in state {state}")
-    return state
-
-
-def publish_completion(**context) -> None:
-    """Task 4 — publish EXECUTION_COMPLETED with the lineage UUID."""
-    conf = ChildExportRunConf.from_dag_conf(context["dag_run"].conf or {})
-    _audit(
-        AUDIT_EXECUTION_COMPLETED,
-        {
-            "actor_id": "system:child_export_dag",
-            "timestamp_utc": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
-            "event_type": AUDIT_EXECUTION_COMPLETED,
-            "execution_id": conf.lineage_uuid,
-            "config_id": conf.config_id,
-            "status": "COMPLETED",
-        },
-    )
-
-
-def on_failure(context) -> None:
-    """Failure callback — one audit record per failed execution, never raises."""
-    conf = ChildExportRunConf.from_dag_conf(context["dag_run"].conf or {})
-    _audit(
-        AUDIT_EXECUTION_COMPLETED,
-        {
-            "actor_id": "system:child_export_dag",
-            "timestamp_utc": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
-            "event_type": AUDIT_EXECUTION_COMPLETED,
-            "execution_id": conf.lineage_uuid,
-            "config_id": conf.config_id,
-            "status": "FAILED",
-        },
-    )
-
-
+# Top-level code stays instantaneous: no clients, no I/O, no queries here.
 with DAG(
     dag_id=DAG_ID,
-    schedule="@daily",
-    catchup=False,
-    max_active_runs=1,
-    max_active_tasks=4,
-    tags=[],
-    default_args=default_args,
-    on_failure_callback=on_failure,
-    doc_md=__doc__,
+    schedule=SCHEDULE,
+    catchup=CATCHUP,
+    max_active_runs=MAX_ACTIVE_RUNS,
+    tags=TAGS,
+    default_args=DEFAULT_ARGS,
+    start_date=datetime(2025, 1, 1, tzinfo=timezone.utc),
+    render_template_as_native_obj=True,
 ) as dag:
-    t_resolve = PythonOperator(task_id="resolve_run_context", python_callable=resolve_run_context)
+
+    def _conf(context: Mapping[str, Any]) -> Mapping[str, Any]:
+        """Return the run conf, or {} for a self-scheduled run with no conf."""
+        return (context.get("dag_run").conf or {}) if context.get("dag_run") else {}
+
+    def validate_conf(**context: Any) -> str:
+        conf = _conf(context)
+        if not conf.get("lineage_uuid"):
+            # A @daily self-scheduled run carries no conf. It is a no-op: the
+            # DAG is trigger-only in practice (see Local Design Assumptions).
+            log.info("child_export_dag.no_conf_noop", dag_run_id=context["run_id"])
+            return "NOOP"
+        if not conf.get("config_id") or not conf.get("connection"):
+            raise ValidationError("run conf missing config_id or connection")
+        return conf["lineage_uuid"]
+
+    def read_watermark(**context: Any) -> dict[str, Any]:
+        conf = _conf(context)
+        if not conf:
+            return {}
+        cfg = ConfigLoader(module="dags").load()
+        with DbClient(cfg.db("cofig_db")) as db:
+            row = db.fetch_one(
+                "SELECT watermark_ts, recipe_path FROM export_watermarks "
+                "WHERE config_id = %(config_id)s AND dataset = %(dataset)s",
+                {"config_id": conf["config_id"], "dataset": conf["dataset"]},
+            )
+        return {"watermark_ts": row["watermark_ts"] if row else None,
+                "recipe_path": row["recipe_path"] if row else conf["connection"]["recipe_path"]}
+
+    def submit_emr_job(**context: Any) -> str:
+        conf = _conf(context)
+        if not conf:
+            return ""
+        cfg = ConfigLoader(module="dags").load()
+        emr = EmrClient(cfg.aws("emr_serverless"))
+        submission = {
+            "application_id": cfg.aws("emr_serverless")["application_id"],
+            "execution_role_arn": cfg.aws("emr_serverless")["job_role_arn"],
+            "client_token": IdempotencyKey.build(
+                conf["lineage_uuid"], conf["config_id"], conf["execution_date"]
+            ),
+            "job_name": f"export-extract-{conf['lineage_uuid']}",
+            "spark_submit_parameters": " ".join([
+                "--lineage-uuid", conf["lineage_uuid"],
+                "--config-id", conf["config_id"],
+                "--dataset", conf["dataset"],
+                "--mode", conf["mode"],
+                "--watermark-ts", str(context["ti"].xcom_pull(task_ids="read_watermark")["watermark_ts"]),
+                "--recipe-path", context["ti"].xcom_pull(task_ids="read_watermark")["recipe_path"],
+            ]),
+        }
+        job_run_id = emr.start_job_run(submission)
+        AuditPublisher().publish(
+            "com.laminar.dataoutbound.emr.started",
+            {"execution_id": conf["lineage_uuid"], "job_run_id": job_run_id,
+             "config_id": conf["config_id"]},
+        )
+        return job_run_id
+
+    def await_emr_job(**context: Any) -> dict[str, Any]:
+        conf = _conf(context)
+        if not conf:
+            return {}
+        cfg = ConfigLoader(module="dags").load()
+        emr = EmrClient(cfg.aws("emr_serverless"))
+        job_run_id = context["ti"].xcom_pull(task_ids="submit_emr_job")
+        result = emr.get_job_run(cfg.aws("emr_serverless")["application_id"], job_run_id)
+        if result.state != "SUCCESS":
+            AuditPublisher().publish(
+                "com.laminar.dataoutbound.child.failed",
+                {"execution_id": conf["lineage_uuid"], "job_run_id": job_run_id,
+                 "reason": result.failure_reason},
+            )
+            raise RuntimeError(f"EMR job {job_run_id} ended in state {result.state}")
+        return {"job_run_id": job_run_id, "record_counts": dict(result.record_counts)}
+
+    def advance_watermark(**context: Any) -> None:
+        conf = _conf(context)
+        if not conf:
+            return
+        cfg = ConfigLoader(module="dags").load()
+        with DbClient(cfg.db("cofig_db")) as db:
+            db.execute(
+                "UPDATE export_watermarks SET watermark_ts = GREATEST("
+                "  COALESCE(watermark_ts, %(new_ts)s), %(new_ts)s), updated_at = now() "
+                "WHERE config_id = %(config_id)s AND dataset = %(dataset)s",
+                {"config_id": conf["config_id"], "dataset": conf["dataset"],
+                 "new_ts": conf["execution_date"]},
+            )
+
+    t_validate = PythonOperator(task_id="validate_conf", python_callable=validate_conf)
+    t_watermark = PythonOperator(task_id="read_watermark", python_callable=read_watermark)
     t_submit = PythonOperator(task_id="submit_emr_job", python_callable=submit_emr_job)
     t_await = PythonOperator(task_id="await_emr_job", python_callable=await_emr_job)
-    t_complete = PythonOperator(task_id="publish_completion", python_callable=publish_completion)
+    t_advance = PythonOperator(task_id="advance_watermark", python_callable=advance_watermark)
 
-    t_resolve >> t_submit >> t_await >> t_complete
+    t_validate >> t_watermark >> t_submit >> t_await >> t_advance
 ```
-
----
 
 ### 6.4. Cross-Component Interaction Sequence (Local Mermaid/ASCII Flow)
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_4.seq"></a>
-The child export run is a strictly sequential, single-connection pipeline. **orchestrator** has already selected the connection and generated the lineage UUID; `child_export_dag` never re-selects connections and never generates a UUID of its own.
-
-1. **orchestrator → child_export_dag** — `TriggerDagRunOperator` posts a DagRun with `conf = {config_id, lineage_uuid, execution_date, connection}`. Contract: *orchestrator → child_export_dag*, telemetry `com.laminar.dataoutbound.child.triggered` (emitted by the orchestrator). A trigger failure is retried by the orchestrator's task retry policy; the child DAG does not retry the trigger.
-2. **child_export_dag → cofig_db** (`resolve_run_context`) — a parameterised `SELECT` reads the `export_config` row and the `export_watermark` row for `(config_id, dataset)`. Contract: *child_export_dag → cofig_db*, read-only, retried up to 3 times. A missing configuration raises `NotFoundError` and fails the run; a missing watermark row is normal and means initial full synchronisation.
-3. **child_export_dag → audit sink** — `EXECUTION_STARTED` is published with `actor_id = system:child_export_dag`, `execution_id = lineage_uuid`, `status = STARTED`. The publisher never raises, so an audit-sink outage cannot fail the export.
-4. **child_export_dag → emr_do** (`submit_emr_job`) — `StartJobRun` with the application id, execution role and Spark submit parameters (`config_id`, `lineage_uuid`, `execution_date`, `mode`, `dataset`, `watermark`, `recipe_path`, `staging_uri`). The `clientToken` is `IdempotencyKey.build(config_id, execution_date, lineage_uuid)`, so a retried submit returns the original `jobRunId`. Contract: *child_export_dag → emr_do*; telemetry `com.laminar.dataoutbound.emr.started`.
-5. **emr_do → dev / staging_bucet_internal / audit_bucket** — the Spark job reads Golden Entity tables from **dev**, writes staged Parquet/JSON datasets to **staging_bucet_internal** under the deterministic `execution_id=<lineage_uuid>` prefix, and pushes its execution metrics to **audit_bucket**. These are `emr_do`'s own contracts and are not re-specified here.
-6. **child_export_dag → emr_do** (`await_emr_job`) — `GetJobRun` polling until `SUCCESS`, `FAILED` or `CANCELLED`. A non-`SUCCESS` terminal state raises and fails the DAG run; the failure callback publishes the failure audit record.
-7. **child_export_dag → audit sink** (`publish_completion`) — `EXECUTION_COMPLETED` with `status = COMPLETED` (or `FAILED` from the failure callback), same `execution_id`.
-8. **staging_bucet_internal → egress-lambda** — the staged objects written in step 5 raise S3 `ObjectCreated` notifications that invoke **egress-lambda**, which triggers **egress dag**. This is downstream of the child DAG and is not awaited by it.
-
-Failure paths: a cofig_db read failure after 3 retries fails the run before any EMR job is submitted (no partial staging output). An EMR submit failure after 3 retries fails the run with no job started. An EMR job failure leaves the watermark unadvanced, so the next run re-extracts the same window — the extraction is idempotent because staged keys are deterministic per `execution_id`.
-
----
+1. **`orchestrator` → `child_export_dag` (I-1).** After selecting a connection within the ±10-minute window, `orchestrator` invokes one `TriggerDagRunOperator` per connection, passing `ChildExportRunConf` (`lineage_uuid`, `config_id`, `connection`, `execution_date`, `mode`, `dataset`). The child DAG never generates or alters the UUID.
+2. **`child_export_dag` → `cofig_db` (I-2).** The `read_watermark` task issues a parameterised `SELECT` for `(config_id, dataset)` and obtains `watermark_ts` (NULL for initial mode) and `recipe_path`. A read error is retried up to 3 times with exponential backoff; persistent failure fails the run and emits an audit failure record.
+3. **`child_export_dag` → `emr_do` (O-1).** The `submit_emr_job` task calls `EmrClient.start_job_run` with a deterministic `clientToken`, so a retried submission returns the same `job_run_id` rather than starting a second job. On success it publishes `com.laminar.dataoutbound.emr.started`.
+4. **`emr_do` → `dev` → `staging_bucet_internal`.** The Spark job reads Golden Entities from `dev` (strictly-greater-than watermark filtering in incremental mode) and writes partitioned staged files plus a manifest to `staging_bucet_internal`. Those S3 `ObjectCreated` events are the trigger for the downstream `egress-lambda` → `egress dag` chain; the child DAG does not participate in that chain.
+5. **`child_export_dag` → `emr_do` (poll).** The `await_emr_job` task polls `get_job_run` to a terminal state. `SUCCESS` proceeds; `FAILED`/`CANCELLED` raises, which fails the DAG run and emits a failure audit record with the same `execution_id`.
+6. **`child_export_dag` → `cofig_db` (O-2).** Only on `SUCCESS`, `advance_watermark` performs a monotonic `UPDATE` of `watermark_ts` for `(config_id, dataset)`. A failure here fails the run; because extraction is strictly-greater-than, the next run safely re-extracts the same window.
+7. **`child_export_dag` → `audit_bucket` (O-3).** Throughout, `AuditPublisher` writes one CloudEvents-shaped record per lifecycle event (`EXECUTION_STARTED` at run start, `EXECUTION_COMPLETED` on success, `EXECUTION_FAILED` on failure) with `actor_id = system:child-export-dag`, ISO-8601 UTC millisecond timestamps and the lineage UUID as `execution_id`. Publish failures are logged locally and never fail the run.
+8. **Stop path.** If `do-admin-api` accepts a stop request, `orchestrator` terminates within 30 seconds and no further child run is started for that execution; an in-flight child run is cancelled and its partial staging output is treated as failed, with a failure audit record carrying the same `execution_id`.
 ```mermaid
 sequenceDiagram
+    autonumber
     participant ORC as orchestrator
     participant CED as child_export_dag
-    participant CDB as cofig_db
-    participant AUD as audit sink
+    participant CFG as cofig_db
     participant EMR as emr_do
+    participant DEV as dev
+    participant STG as staging_bucet_internal
+    participant AUD as audit_bucket
 
-    Note over ORC,CED: child_export_dag never re-selects connections and never generates a UUID of its own
+    Note over ORC,CED: I-1 async workflow invocation - Airflow TriggerDagRunOperator - trigger is orchestrator DAG task completion
 
-    ORC->>CED: TriggerDagRunOperator DagRun conf = {config_id, lineage_uuid, execution_date, connection}
-    Note over ORC: telemetry com.laminar.dataoutbound.child.triggered
-    alt trigger accepted
+    ORC->>CED: TriggerDagRunOperator DagRun payload with ChildExportRunConf lineage_uuid, config_id, connection, execution_date, mode, dataset
+    alt DAG trigger failure
+        ORC->>CED: retry per Airflow task retry policy, idempotent via execution_date and configuration ID
+    else Trigger accepted
         CED-->>ORC: Trigger confirmation with run_id
-    else DAG trigger failure
-        Note over ORC,CED: retried via Airflow task retry policy - child DAG does not retry the trigger
+        CED->>AUD: telemetry com.laminar.dataoutbound.child.triggered
     end
 
-    CED->>CDB: resolve_run_context parameterised SELECT export_config row and export_watermark row for (config_id, dataset)
-    alt read succeeds
-        CDB-->>CED: ResultSet with watermark timestamps and recipe path
-    else database read error after 3 retries
-        CDB-->>CED: Database read error
-        Note over CED: missing configuration raises NotFoundError and fails the run before any EMR job is submitted - missing watermark row is normal and means initial full synchronisation
+    CED->>AUD: AuditPublisher CloudEvent EXECUTION_STARTED, actor_id system:child-export-dag, execution_id lineage_uuid, ISO-8601 UTC millisecond timestamp
+
+    Note over CED,CFG: I-2 read_watermark task - JDBC PostgreSQL - trigger is child export DAG initialization
+
+    CED->>CFG: SQL SELECT watermarks and export recipe details for config_id and dataset
+    CFG-->>CED: ResultSet with watermark_ts NULL for initial mode and recipe_path
+    alt Database read error
+        CED->>CFG: retry SELECT up to 3 times with exponential backoff
+        CFG-->>CED: persistent read error
+        CED->>AUD: EXECUTION_FAILED audit record, run fails
+    else Read succeeded
+        Note over CED: watermark_ts and recipe_path available for EMR submission
     end
 
-    CED->>AUD: EXECUTION_STARTED actor_id = system:child_export_dag execution_id = lineage_uuid status = STARTED
-    Note over AUD: publisher never raises - an audit sink outage cannot fail the export
+    Note over CED,EMR: O-1 async job invocation - boto3 EMR Serverless API - trigger is child export DAG task execution
 
-    CED->>EMR: submit_emr_job StartJobRunRequest application_id, execution role, spark submit parameters (config_id, lineage_uuid, execution_date, mode, dataset, watermark, recipe_path, staging_uri) clientToken = IdempotencyKey.build(config_id, execution_date, lineage_uuid)
-    Note over EMR: telemetry com.laminar.dataoutbound.emr.started
-    alt submit accepted
+    CED->>EMR: StartJobRunRequest with application_id, execution role, spark submit parameters, deterministic clientToken
+    alt API rate limit or validation error
+        CED->>EMR: retry with backoff, idempotent via client token and job run parameters
+    else StartJobRun accepted
         EMR-->>CED: StartJobRunResponse with job_run_id
-    else API rate limit or validation error after 3 retries
-        EMR-->>CED: StartJobRun error
-        Note over CED: run fails with no job started - a retried submit returns the original jobRunId
+        CED->>AUD: telemetry com.laminar.dataoutbound.emr.started
     end
 
-    Note over EMR: Spark job reads Golden Entity tables from dev, writes staged Parquet/JSON to staging_bucet_internal under execution_id = lineage_uuid, pushes execution metrics to audit_bucket - emr_do contracts, not awaited by the child DAG
+    Note over EMR,STG: Downstream Spark execution, child_export_dag not a participant in this chain
 
-    loop await_emr_job GetJobRun polling
-        CED->>EMR: GetJobRun job_run_id
-        EMR-->>CED: job run status
+    EMR->>DEV: Spark read Golden Entities with strictly-greater-than watermark filtering in incremental mode
+    EMR->>STG: write partitioned staged files plus manifest
+    Note over STG: S3 ObjectCreated events trigger egress-lambda then egress dag
+
+    Note over CED,EMR: await_emr_job task polling
+
+    CED->>EMR: get_job_run poll on job_run_id
+    EMR-->>CED: terminal state SUCCESS or FAILED or CANCELLED
+    alt FAILED or CANCELLED
+        CED->>AUD: EXECUTION_FAILED audit record with same execution_id, DAG run fails
+    else SUCCESS
+        Note over CED: proceed to watermark advance
     end
-    alt terminal state SUCCESS
-        Note over CED: proceed to completion audit
-    else terminal state FAILED or CANCELLED
-        Note over CED: raises and fails the DAG run - failure callback publishes the failure audit record - watermark stays unadvanced so the next run re-extracts the same window, extraction is idempotent because staged keys are deterministic per execution_id
+
+    Note over CED,CFG: O-2 advance_watermark task on SUCCESS only
+
+    CED->>CFG: monotonic UPDATE of watermark_ts for config_id and dataset
+    alt Watermark update failure
+        CED->>AUD: EXECUTION_FAILED audit record, run fails
+        Note over CED: strictly-greater-than extraction safely re-extracts the same window next run
+    else Watermark advanced
+        CED->>AUD: AuditPublisher CloudEvent EXECUTION_COMPLETED, actor_id system:child-export-dag, execution_id lineage_uuid
     end
 
-    CED->>AUD: publish_completion EXECUTION_COMPLETED execution_id = lineage_uuid status = COMPLETED or FAILED from the failure callback
+    Note over CED,AUD: O-3 AuditPublisher writes one CloudEvents record per lifecycle event throughout, publish failures are logged locally and never fail the run
 
-    Note over EMR: staging_bucet_internal ObjectCreated notifications invoke egress-lambda which triggers egress dag - downstream of the child DAG and not awaited by it
+    alt do-admin-api accepts stop request
+        ORC->>CED: cancel in-flight child run, no further child run started for that execution
+        CED->>AUD: EXECUTION_FAILED audit record with same execution_id, partial staging output treated as failed
+    else No stop request
+        Note over ORC,CED: orchestrator terminates within 30 seconds and child run continues to terminal state
+    end
 ```
 
 ### 6.5. Schema Definitions (DB Tables / API JSON / Telemetry CloudEvents)
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_4.schema"></a>
-#### 6.5.1 DagRun conf — orchestrator → child_export_dag
+#### 6.5.1 Run configuration (inbound, I-1)
 
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "com.laminar.dataoutbound.child_export_dag.run_conf",
+  "$id": "https://laminar/dataoutbound/child_export_dag/run_conf.json",
   "title": "ChildExportRunConf",
   "type": "object",
-  "required": ["config_id", "lineage_uuid", "execution_date"],
+  "required": ["lineage_uuid", "config_id", "connection", "execution_date", "mode", "dataset"],
   "additionalProperties": false,
   "properties": {
-    "config_id": { "type": "string", "format": "uuid" },
     "lineage_uuid": {
       "type": "string",
       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
     },
-    "execution_date": {
-      "type": "string",
-      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
-    },
+    "config_id": { "type": "string", "minLength": 1 },
     "connection": {
       "type": "object",
-      "description": "Connection JSON snapshot as read by the orchestrator; must equal the stored row for config_id."
-    }
+      "required": ["connection_name", "target_type", "dataset", "mode", "cron_schedule"],
+      "properties": {
+        "connection_name": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "target_type": { "enum": ["s3", "azure_blob", "gcs", "sftp"] },
+        "dataset": {
+          "enum": ["identity_profiles", "subscription_statuses",
+                   "campaigns_reactions", "reservation_items"]
+        },
+        "mode": { "enum": ["initial", "incremental"] },
+        "cron_schedule": { "type": "string" },
+        "recipe_path": { "type": "string" },
+        "gzip_enabled": { "type": "boolean" },
+        "pgp_enabled": { "type": "boolean" },
+        "split_threshold_records": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "execution_date": { "type": "string", "format": "date-time" },
+    "mode": { "enum": ["initial", "incremental"] },
+    "dataset": { "type": "string" },
+    "triggered_by": { "type": "string", "default": "system:orchestrator" }
   }
 }
 ```
 
-#### 6.5.2 EMR Serverless StartJobRun request — child_export_dag → emr_do
+#### 6.5.2 EMR Serverless submission (outbound, O-1)
 
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "com.laminar.dataoutbound.child_export_dag.start_job_run",
+  "$id": "https://laminar/dataoutbound/child_export_dag/start_job_run_request.json",
   "title": "StartJobRunRequest",
   "type": "object",
-  "required": ["applicationId", "executionRoleArn", "clientToken", "jobDriver"],
+  "required": ["application_id", "execution_role_arn", "client_token", "spark_submit_parameters"],
   "properties": {
-    "applicationId": { "type": "string", "description": "The emr_do EMR Serverless application id." },
-    "executionRoleArn": { "type": "string" },
-    "clientToken": { "type": "string", "maxLength": 64, "description": "IdempotencyKey.build(config_id, execution_date, lineage_uuid)." },
-    "jobDriver": {
-      "type": "object",
-      "required": ["sparkSubmit"],
-      "properties": {
-        "sparkSubmit": {
-          "type": "object",
-          "required": ["entryPoint", "sparkSubmitParameters"],
-          "properties": {
-            "entryPoint": { "type": "string", "description": "s3://<artifacts>/export_extract_spark_job/main.py" },
-            "sparkSubmitParameters": {
-              "type": "string",
-              "description": "--config-id <id> --lineage-uuid <uuid> --execution-date <iso> --mode <initial|incremental> --dataset <name> --watermark <iso|empty> --recipe-path <s3 uri> --staging-uri <s3 uri>"
-            }
-          }
-        }
-      }
+    "application_id": { "type": "string" },
+    "execution_role_arn": { "type": "string" },
+    "client_token": { "type": "string", "maxLength": 64 },
+    "job_name": { "type": "string" },
+    "spark_submit_parameters": {
+      "type": "string",
+      "description": "--lineage-uuid <uuid> --config-id <id> --dataset <name> --mode <initial|incremental> --watermark-ts <iso8601|NULL> --recipe-path <s3-uri>"
     }
   }
 }
 ```
 
-#### 6.5.3 cofig_db rows consumed (read-only; DDL is owned by the cofig_db component)
-
-```sql
--- Consumed by child_export_dag; created and owned by cofig_db.
--- SELECT config_id, connection_name, dataset, mode, target_type,
---        cron_schedule, recipe_path, staging_prefix, is_active
---   FROM export_config WHERE config_id = %s;
-
--- SELECT config_id, dataset, watermark_ts, last_run_id
---   FROM export_watermark WHERE config_id = %s AND dataset = %s;
-```
-
-#### 6.5.4 Telemetry — CloudEvents 1.0
+#### 6.5.3 Audit CloudEvents (outbound, O-3)
 
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "com.laminar.dataoutbound.emr.started",
-  "title": "com.laminar.dataoutbound.emr.started",
+  "$id": "https://laminar/dataoutbound/child_export_dag/audit_cloudevent.json",
+  "title": "ChildExportAuditCloudEvent",
   "type": "object",
   "required": ["specversion", "id", "source", "type", "time", "subject", "data"],
   "properties": {
     "specversion": { "const": "1.0" },
     "id": { "type": "string", "format": "uuid" },
     "source": { "const": "com.laminar.dataoutbound.child_export_dag" },
-    "type": { "const": "com.laminar.dataoutbound.emr.started" },
-    "time": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$" },
-    "subject": { "type": "string", "description": "config_id" },
-    "data": {
-      "type": "object",
-      "required": ["actor_id", "timestamp_utc", "event_type", "execution_id", "job_run_id"],
-      "properties": {
-        "actor_id": { "const": "system:child_export_dag" },
-        "timestamp_utc": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$" },
-        "event_type": { "const": "EXECUTION_STARTED" },
-        "execution_id": { "type": "string", "format": "uuid" },
-        "config_id": { "type": "string" },
-        "job_run_id": { "type": "string" },
-        "application_id": { "type": "string" },
-        "staging_uri": { "type": "string" }
-      }
-    }
-  }
-}
-```
-
-The `EXECUTION_COMPLETED` audit record uses the same envelope with `event_type = "EXECUTION_COMPLETED"` and `status ∈ {"COMPLETED", "FAILED"}`; `event_type` values are restricted to the SCRUM-486 enumeration (`ADMIN_CREATE`, `ADMIN_UPDATE`, `ADMIN_DELETE`, `ADMIN_MANUAL_TRIGGER`, `EXECUTION_STARTED`, `EXECUTION_COMPLETED`, `TRANSFER_STARTED`, `TRANSFER_COMPLETED`, `TRANSFER_FAILED`).
-
----
-
-### 6.6. Local Design Assumptions
-<a id="laminar-sec-c.imp_aws_aws_mwaa_dag_4.asm"></a>
-1. **Watermark semantics.** `export_watermark.watermark_ts` is the exclusive lower bound of the next incremental extract: the Spark job selects records with `updated_at > watermark_ts`, satisfying SCRUM-481 AC#5 (exactly the 100 records strictly after *T*). A missing watermark row means initial full synchronisation, and the DAG overrides `mode` to `initial` for that run.
-2. **Watermark advancement.** The watermark is advanced by **emr_do** on successful job completion, not by this DAG, so a failed or retried child run can never skip a window. This DAG only reads it.
-3. **Polling.** `await_emr_job` is modelled as a single task that raises when the job is not terminal; in the generated code it is an `EmrServerlessJobSensor`-equivalent with a 60-second poke interval and the 6-hour execution timeout as its ceiling. The task-level retry policy (3 attempts) covers transient `GetJobRun` API errors.
-4. **Audit sink.** `AuditPublisher` writes CloudEvents-shaped records to the configured audit sink (**audit_bucket**); the diagram has no explicit `child_export_dag → audit_bucket` edge, so the write is made through the foundation publisher rather than a component-owned S3 client. This is the single place where this DAG's audit records are produced.
-5. **`max_active_runs = 1` scope.** The limit is per DAG, so concurrent child runs for *different* connections are still possible; per-connection serialisation is guaranteed because each connection's run is a distinct logical execution date and the orchestrator submits at most one run per connection per window.
-6. **Retry budget.** Three attempts with a 2-minute base delay are used for both the cofig_db read and the EMR submit, matching the frozen contract wording ("retried up to 3 times" / "retried with backoff"). No infinite retry is configured, so a persistent failure surfaces as a failed run and a failure audit record within the 24-hour SLA.
-7. **Open question — does the child DAG write to `audit_bucket` directly?** No: it publishes through the shared `AuditPublisher`, which owns the sink configuration; this keeps one audit write path across all components and avoids a second S3 client in the DAG.
-8. **Open question — how is the stop request from **do-admin-api** honoured?** The stop terminates the **orchestrator** run; this DAG does not poll for cancellation. A child run already submitted to **emr_do** completes or fails on its own, and no further child run is started for that execution because the orchestrator stops fanning out.
-
-## 7. Component Design: emr_do
-<a id="laminar-sec-c.imp_aws_aws_emr_serverless_5"></a>
-
-### 7.1. Component Contract (Bi-Directional Inputs & Outputs)
-<a id="laminar-sec-c.imp_aws_aws_emr_serverless_5.contract"></a>
-**Component:** `emr_do` — EMR Serverless Spark application (`application_name = emr_do`, `job_type = SPARK`, `release_label = emr-7.0.0`, `max_capacity_units = 200`).
-**Code root:** `src/dataoutbound_section_tree/spark_emr/export_extract_spark_job`
-**Role:** the extraction engine. It reads Golden Entity datasets from **dev** (Redshift), applies the connection's recipe, and writes staged Parquet/JSON datasets plus a run manifest to **staging_bucet_internal**. It owns no database tables and no bucket; it owns only its own codebase and recipes.
-
-#### 7.1.1 Inbound contract — `child_export_dag` → `emr_do`
-
-| Aspect | Value |
-|---|---|
-| Trigger | Child export DAG task execution (`EmrServerlessStartJobOperator` / `boto3 emr-serverless start_job_run`) |
-| Protocol | boto3 EMR Serverless API (`StartJobRun`) |
-| Request | `StartJobRunRequest` — `applicationId`, `executionRoleArn`, `jobDriver.sparkSubmit` with `entryPoint = s3://<artifacts>/export_extract_spark_job/main.py`, `sparkSubmitParameters`, and `arguments` (the job argument vector below) |
-| Response | `StartJobRunResponse` — `applicationId`, `jobRunId` |
-| Errors | API rate limit / validation error → retried with backoff by the caller; job-level failure surfaces as `JobRunState = FAILED` and is polled by the caller |
-| Idempotency | `clientToken = IdempotencyKey.build(config_id, execution_id)` — a re-submission for the same lineage UUID returns the original `jobRunId` |
-| Telemetry | `com.laminar.dataoutbound.emr.started` — emitted by **child_export_dag**, not by `emr_do` |
-
-**Job argument vector (the job's own runtime contract, passed in `arguments`):**
-
-| Argument | Type | Meaning |
-|---|---|---|
-| `--config-id` | string | Export configuration identifier (partition key of the staging prefix) |
-| `--execution-id` | string | Lineage UUID (RFC 4122 v4) generated by **orchestrator**; propagated into every staging key and audit record |
-| `--mode` | `initial` \| `incremental` | Full synchronisation or watermark-bounded extraction |
-| `--watermark` | ISO-8601 UTC string, optional | Required when `--mode=incremental`; records with `GREATEST(created_at, modified_at) > watermark` are extracted |
-| `--recipe-path` | `s3://…/config/recipes/<dataset>.json` | Declarative extract recipe resolved by **child_export_dag** from **cofig_db** |
-| `--staging-prefix` | `s3://staging_bucet_internal/<config_id>/<execution_id>/` | Deterministic output prefix |
-| `--run-date` | `YYYY-MM-DD` | Logical execution date, used for audit naming |
-
-#### 7.1.2 Outbound contracts
-
-| Target | Protocol | Payload | Failure behaviour | Idempotency | Telemetry |
-|---|---|---|---|---|---|
-| **dev** (Redshift) | JDBC over TLS, partitioned read | Distributed `SELECT` against the Golden Entity tables named by the recipe | Redshift query timeout / connection error → Spark task retried 3 times, then job fails | Read-only, idempotent | none |
-| **staging_bucet_internal** | S3 API (Spark S3A committer) | Parquet data parts + `manifest_<execution_id>.json` | S3 throttling / network error → Spark task retried automatically | Deterministic object keys containing `config_id` + `execution_id`; overwrite-on-rerun | `com.laminar.dataoutbound.staging.written` |
-| **audit_bucket** | S3 API (boto3 via `S3Client`) | Spark execution metrics + audit execution log record | S3 error → logged at WARNING, **job continues** | Object key derived from `jobRunId` | `com.laminar.dataoutbound.audit.spark` |
-
-#### 7.1.3 Configuration this design actually sets
-
-| Setting | Value | Rationale |
-|---|---|---|
-| `release_label` | `emr-7.0.0` | User decision; Spark 3.5 / Java 17 baseline. |
-| `job_type` | `SPARK` | User decision. |
-| `max_capacity_units` | `200` | User decision; caps concurrent vCPU/memory so a fan-out of child runs cannot exhaust the account quota. |
-| `application_name` | `emr_do` | User decision; one shared application reused by every child run (warm start, no per-run provisioning). |
-| Spark conf | `spark.sql.sources.partitionOverwriteMode=dynamic`, `spark.hadoop.fs.s3a.committer.name=magic` | Deterministic, atomic partition replacement so a re-run of the same `execution_id` produces the same objects. |
-| Everything else | EMR Serverless defaults | No other property is overridden by this design. |
-
-### 7.2. Class and Interface Definitions
-<a id="laminar-sec-c.imp_aws_aws_emr_serverless_5.classes"></a>
-```python
-# src/dataoutbound_section_tree/spark_emr/export_extract_spark_job/util/constants.py
-from typing import Final
-
-MODE_INITIAL: Final = "initial"
-MODE_INCREMENTAL: Final = "incremental"
-
-DATASET_IDENTITY_PROFILES: Final = "identity_profiles"
-DATASET_SUBSCRIPTION_STATUSES: Final = "subscription_statuses"
-DATASET_CAMPAIGNS_REACTIONS: Final = "campaigns_reactions"
-DATASET_RESERVATION_ITEMS: Final = "reservation_items"
-ALLOWED_DATASETS: Final = frozenset(
-    {
-        DATASET_IDENTITY_PROFILES,
-        DATASET_SUBSCRIPTION_STATUSES,
-        DATASET_CAMPAIGNS_REACTIONS,
-        DATASET_RESERVATION_ITEMS,
-    }
-)
-
-RESERVATION_SUBTYPES: Final = frozenset(
-    {"room_stay", "restaurant_reservation", "tee_time", "spa_treatment"}
-)
-
-WATERMARK_COLUMNS: Final = ("created_at", "modified_at")
-MANIFEST_PREFIX: Final = "manifest_"
-MANIFEST_SUFFIX: Final = ".json"
-PART_PREFIX: Final = "part-"
-```
-
-```python
-# src/dataoutbound_section_tree/spark_emr/export_extract_spark_job/main.py
-from __future__ import annotations
-
-from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any, Mapping, Sequence
-
-from pyspark.sql import DataFrame, SparkSession
-
-
-@dataclass(frozen=True)
-class JobArguments:
-    """Typed view of the spark-submit argument vector (the job's inbound contract)."""
-
-    config_id: str
-    execution_id: str          # lineage UUID, RFC 4122 v4
-    mode: str                  # MODE_INITIAL | MODE_INCREMENTAL
-    recipe_path: str
-    staging_prefix: str
-    run_date: str
-    watermark: datetime | None = None
-
-    def __post_init__(self) -> None:
-        if self.mode not in (MODE_INITIAL, MODE_INCREMENTAL):
-            raise ValidationError(f"invalid mode: {self.mode}")
-        if self.mode == MODE_INCREMENTAL and self.watermark is None:
-            raise ValidationError("--watermark is required when --mode=incremental")
-
-
-@dataclass(frozen=True)
-class EntityExtractSpec:
-    """One entity to extract, as declared by the recipe."""
-
-    dataset: str                       # one of ALLOWED_DATASETS
-    source_table: str                  # e.g. golden.unified_identity_profile
-    columns: Sequence[str]
-    watermark_column: str = "modified_at"
-    partition_column: str = "tenant_id"
-    partition_count: int = 8
-    output_format: str = "parquet"     # parquet | json
-
-
-@dataclass(frozen=True)
-class RecipeSpec:
-    """Declarative extract recipe loaded from --recipe-path."""
-
-    recipe_version: str
-    dataset: str
-    entities: Sequence[EntityExtractSpec]
-    split_threshold_records: int = 500_000
-
-
-@dataclass(frozen=True)
-class ExtractResult:
-    """Outcome of one entity extraction, carried into the manifest and the audit record."""
-
-    dataset: str
-    record_count: int
-    part_keys: Sequence[str] = field(default_factory=tuple)
-    bytes_written: int = 0
-    sha256: Mapping[str, str] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class StagingWriteResult:
-    """Outcome of the staging write phase for the whole run."""
-
-    manifest_key: str
-    total_records: int
-    total_bytes: int
-    results: Sequence[ExtractResult]
-```
-
-```python
-# src/dataoutbound_section_tree/spark_emr/export_extract_spark_job/io/child_export_golden_entity_source_store_reader.py
-class ChildExportGoldenEntitySourceStoreReader:
-    """Partitioned JDBC reads against dev (Redshift). No business logic."""
-
-    def __init__(self, spark: SparkSession, jdbc_options: Mapping[str, str]) -> None: ...
-
-    def read_entity(
-        self,
-        spec: EntityExtractSpec,
-        mode: str,
-        watermark: datetime | None,
-    ) -> DataFrame:
-        """Return the entity DataFrame; incremental mode applies a STRICT > watermark filter."""
-```
-
-```python
-# src/dataoutbound_section_tree/spark_emr/export_extract_spark_job/io/customer_staging_buckets_audit_execution_log_store_writer.py
-class CustomerStagingBucketsAuditExecutionLogStoreWriter:
-    """Writes staged datasets to staging_bucet_internal and audit records to audit_bucket."""
-
-    def __init__(self, s3_client: S3Client, staging_prefix: str, execution_id: str) -> None: ...
-
-    def write_entity(self, df: DataFrame, spec: EntityExtractSpec) -> ExtractResult: ...
-
-    def write_manifest(self, results: Sequence[ExtractResult]) -> StagingWriteResult:
-        """Writes manifest_<execution_id>.json LAST so the S3 notification fires once per run."""
-```
-
-```python
-# src/dataoutbound_section_tree/spark_emr/export_extract_spark_job/processor/export_extract_input_processor.py
-class ExportExtractInputProcessor:
-    """Schema enforcement, type casting and job-parameter filtering. No I/O."""
-
-    def __init__(self, spec: EntityExtractSpec) -> None: ...
-
-    def process(self, df: DataFrame) -> DataFrame: ...
-```
-
-```python
-# src/dataoutbound_section_tree/spark_emr/export_extract_spark_job/transform/export_extract_transformer.py
-class ExportExtractTransformer:
-    """Default column mapping / renaming / derivation applied when a recipe names no transformer."""
-
-    def __init__(self, spec: EntityExtractSpec) -> None: ...
-
-    def transform(self, df: DataFrame) -> DataFrame: ...
-```
-
-```python
-# src/dataoutbound_section_tree/spark_emr/export_extract_spark_job/processor/export_extract_output_processor.py
-class ExportExtractOutputProcessor:
-    """Ordering, partition columns, split threshold and manifest assembly. No I/O."""
-
-    def __init__(self, spec: EntityExtractSpec, split_threshold_records: int) -> None: ...
-
-    def process(self, df: DataFrame) -> DataFrame: ...
-```
-
-```python
-# src/dataoutbound_section_tree/spark_emr/export_extract_spark_job/helper/spark_session_helper.py
-def get_spark_session(app_name: str, config: ConfigLoader) -> SparkSession:
-    """Build the SparkSession with the job's Spark conf, Glue catalog and S3 committer settings."""
-```
-
-### 7.3. Implementation Code Skeleton (Stubs & Handlers)
-<a id="laminar-sec-c.imp_aws_aws_emr_serverless_5.skeleton"></a>
-Illustrative skeleton — the Component Contract and Schema Definitions are binding.
-
-```python
-# src/dataoutbound_section_tree/spark_emr/export_extract_spark_job/main.py
-"""Entrypoint of the emr_do Spark job. Orchestrates processors and I/O; owns no business rules."""
-from __future__ import annotations
-
-import argparse
-import json
-import sys
-from datetime import datetime, timezone
-
-from dataoutbound_section_tree.common.clients.aws.s3.s3_client import S3Client
-from dataoutbound_section_tree.common.clients.aws.ssm.ssm_client import SsmClient
-from dataoutbound_section_tree.common.logging.logger import get_logger
-from dataoutbound_section_tree.common.telemetry.auditor import AuditPublisher
-from dataoutbound_section_tree.config.config_loader import ConfigLoader
-from dataoutbound_section_tree.spark_emr.export_extract_spark_job.helper.spark_session_helper import (
-    get_spark_session,
-)
-from dataoutbound_section_tree.spark_emr.export_extract_spark_job.io.child_export_golden_entity_source_store_reader import (
-    ChildExportGoldenEntitySourceStoreReader,
-)
-from dataoutbound_section_tree.spark_emr.export_extract_spark_job.io.customer_staging_buckets_audit_execution_log_store_writer import (
-    CustomerStagingBucketsAuditExecutionLogStoreWriter,
-)
-from dataoutbound_section_tree.spark_emr.export_extract_spark_job.processor.export_extract_input_processor import (
-    ExportExtractInputProcessor,
-)
-from dataoutbound_section_tree.spark_emr.export_extract_spark_job.processor.export_extract_output_processor import (
-    ExportExtractOutputProcessor,
-)
-from dataoutbound_section_tree.spark_emr.export_extract_spark_job.transform.export_extract_transformer import (
-    ExportExtractTransformer,
-)
-from dataoutbound_section_tree.spark_emr.export_extract_spark_job.util.constants import (
-    MODE_INCREMENTAL,
-)
-from dataoutbound_section_tree.util.exceptions import LaminarError, ValidationError
-from dataoutbound_section_tree.util.utils import utc_now_iso_ms
-
-log = get_logger(__name__)
-
-
-def parse_args(argv: list[str]) -> JobArguments:
-    parser = argparse.ArgumentParser(prog="export_extract_spark_job")
-    parser.add_argument("--config-id", required=True)
-    parser.add_argument("--execution-id", required=True)
-    parser.add_argument("--mode", required=True, choices=["initial", "incremental"])
-    parser.add_argument("--recipe-path", required=True)
-    parser.add_argument("--staging-prefix", required=True)
-    parser.add_argument("--run-date", required=True)
-    parser.add_argument("--watermark", required=False, default=None)
-    ns = parser.parse_args(argv)
-    watermark = (
-        datetime.fromisoformat(ns.watermark.replace("Z", "+00:00"))
-        if ns.watermark
-        else None
-    )
-    return JobArguments(
-        config_id=ns.config_id,
-        execution_id=ns.execution_id,
-        mode=ns.mode,
-        recipe_path=ns.recipe_path,
-        staging_prefix=ns.staging_prefix,
-        run_date=ns.run_date,
-        watermark=watermark,
-    )
-
-
-def load_recipe(s3: S3Client, recipe_path: str) -> RecipeSpec:
-    raw = json.loads(s3.download_bytes_from_uri(recipe_path))
-    return RecipeSpec(
-        recipe_version=raw["recipe_version"],
-        dataset=raw["dataset"],
-        entities=[EntityExtractSpec(**e) for e in raw["entities"]],
-        split_threshold_records=raw.get("split_threshold_records", 500_000),
-    )
-
-
-def run(argv: list[str]) -> int:
-    args = parse_args(argv)
-    config = ConfigLoader(module="spark_emr/export_extract_spark_job")
-    auditor = AuditPublisher(config=config)
-    s3 = S3Client(config=config)
-    ssm = SsmClient(config=config)
-
-    auditor.publish(
-        "com.laminar.dataoutbound.audit.spark",
-        {
-            "actor_id": "system:emr_do",
-            "timestamp_utc": utc_now_iso_ms(),
-            "event_type": "EXECUTION_STARTED",
-            "execution_id": args.execution_id,
-            "config_id": args.config_id,
-            "mode": args.mode,
-        },
-    )
-
-    spark = get_spark_session(app_name="emr_do", config=config)
-    try:
-        recipe = load_recipe(s3, args.recipe_path)
-        jdbc_options = _redshift_jdbc_options(config, ssm)
-        reader = ChildExportGoldenEntitySourceStoreReader(spark, jdbc_options)
-        writer = CustomerStagingBucketsAuditExecutionLogStoreWriter(
-            s3_client=s3,
-            staging_prefix=args.staging_prefix,
-            execution_id=args.execution_id,
-        )
-
-        results: list[ExtractResult] = []
-        for spec in recipe.entities:
-            df = reader.read_entity(spec, args.mode, args.watermark)
-            df = ExportExtractInputProcessor(spec).process(df)
-            df = ExportExtractTransformer(spec).transform(df)
-            df = ExportExtractOutputProcessor(
-                spec, recipe.split_threshold_records
-            ).process(df)
-            results.append(writer.write_entity(df, spec))
-
-        write_result = writer.write_manifest(results)   # written LAST
-        auditor.publish(
-            "com.laminar.dataoutbound.staging.written",
-            {
-                "actor_id": "system:emr_do",
-                "timestamp_utc": utc_now_iso_ms(),
-                "event_type": "EXECUTION_COMPLETED",
-                "execution_id": args.execution_id,
-                "config_id": args.config_id,
-                "manifest_key": write_result.manifest_key,
-                "total_records": write_result.total_records,
-                "total_bytes": write_result.total_bytes,
-            },
-        )
-        return 0
-    except LaminarError as exc:
-        log.error("emr_do job failed", extra={"execution_id": args.execution_id, "error": str(exc)})
-        return 2
-    finally:
-        spark.stop()
-
-
-def _redshift_jdbc_options(config: ConfigLoader, ssm: SsmClient) -> dict[str, str]:
-    """JDBC properties for dev (Redshift); the password is resolved from SSM SecureString."""
-    return {
-        "url": config.get("redshift.jdbc_url"),
-        "user": config.get("redshift.user"),
-        "password": ssm.get_parameter(config.get("redshift.password_param"), decrypt=True),
-        "driver": "com.amazon.redshift.jdbc42.Driver",
-        "tempdir": config.get("spark.s3a_temp_dir"),
-    }
-
-
-if __name__ == "__main__":
-    sys.exit(run(sys.argv[1:]))
-```
-
-```python
-# src/dataoutbound_section_tree/spark_emr/export_extract_spark_job/io/child_export_golden_entity_source_store_reader.py
-"""Illustrative skeleton — the Component Contract and Schema Definitions are binding."""
-from __future__ import annotations
-
-from datetime import datetime
-from typing import Mapping
-
-from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql import functions as F
-
-from dataoutbound_section_tree.spark_emr.export_extract_spark_job.util.constants import (
-    MODE_INCREMENTAL,
-    WATERMARK_COLUMNS,
-)
-
-
-class ChildExportGoldenEntitySourceStoreReader:
-    def __init__(self, spark: SparkSession, jdbc_options: Mapping[str, str]) -> None:
-        self._spark = spark
-        self._jdbc = dict(jdbc_options)
-
-    def read_entity(
-        self, spec: EntityExtractSpec, mode: str, watermark: datetime | None
-    ) -> DataFrame:
-        predicate = "1=1"
-        if mode == MODE_INCREMENTAL:
-            if watermark is None:
-                raise ValidationError("watermark required for incremental extraction")
-            ts = watermark.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")
-            greatest = f"GREATEST({', '.join(WATERMARK_COLUMNS)})"
-            predicate = f"{greatest} > TIMESTAMP '{ts}'"
-
-        return (
-            self._spark.read.format("jdbc")
-            .option("url", self._jdbc["url"])
-            .option("user", self._jdbc["user"])
-            .option("password", self._jdbc["password"])
-            .option("driver", self._jdbc["driver"])
-            .option("dbtable", f"(SELECT * FROM {spec.source_table} WHERE {predicate}) t")
-            .option("partitionColumn", spec.partition_column)
-            .option("numPartitions", str(spec.partition_count))
-            .load()
-        )
-```
-
-```python
-# src/dataoutbound_section_tree/spark_emr/export_extract_spark_job/io/customer_staging_buckets_audit_execution_log_store_writer.py
-"""Illustrative skeleton — the Component Contract and Schema Definitions are binding."""
-from __future__ import annotations
-
-import hashlib
-import json
-from typing import Sequence
-
-from pyspark.sql import DataFrame
-
-from dataoutbound_section_tree.common.clients.aws.s3.s3_client import S3Client
-from dataoutbound_section_tree.spark_emr.export_extract_spark_job.util.constants import (
-    MANIFEST_PREFIX,
-    MANIFEST_SUFFIX,
-)
-from dataoutbound_section_tree.util.utils import utc_now_iso_ms
-
-
-class CustomerStagingBucketsAuditExecutionLogStoreWriter:
-    def __init__(self, s3_client: S3Client, staging_prefix: str, execution_id: str) -> None:
-        self._s3 = s3_client
-        self._prefix = staging_prefix.rstrip("/")
-        self._execution_id = execution_id
-
-    def write_entity(self, df: DataFrame, spec: EntityExtractSpec) -> ExtractResult:
-        target = f"{self._prefix}/{spec.dataset}/"
-        writer = df.write.mode("overwrite")
-        if spec.output_format == "json":
-            writer = writer.option("compression", "none")
-        writer.format(spec.output_format).save(target)
-        return ExtractResult(dataset=spec.dataset, record_count=df.count())
-
-    def write_manifest(self, results: Sequence[ExtractResult]) -> StagingWriteResult:
-        key = f"{self._prefix}/{MANIFEST_PREFIX}{self._execution_id}{MANIFEST_SUFFIX}"
-        body = {
-            "execution_id": self._execution_id,
-            "generated_at_utc": utc_now_iso_ms(),
-            "entities": [
-                {
-                    "dataset": r.dataset,
-                    "record_count": r.record_count,
-                    "bytes_written": r.bytes_written,
-                    "sha256": dict(r.sha256),
-                }
-                for r in results
-            ],
-        }
-        self._s3.put_object(key=key, body=json.dumps(body).encode("utf-8"))
-        return StagingWriteResult(
-            manifest_key=key,
-            total_records=sum(r.record_count for r in results),
-            total_bytes=sum(r.bytes_written for r in results),
-            results=results,
-        )
-```
-
-### 7.4. Cross-Component Interaction Sequence (Local Mermaid/ASCII Flow)
-<a id="laminar-sec-c.imp_aws_aws_emr_serverless_5.seq"></a>
-1. **child_export_dag** resolves the connection's recipe path and watermark from **cofig_db**, then calls `emr-serverless:StartJobRun` on the `emr_do` application with `clientToken = IdempotencyKey.build(config_id, execution_id)` and the job argument vector (`--config-id`, `--execution-id`, `--mode`, `--watermark`, `--recipe-path`, `--staging-prefix`, `--run-date`). It receives `jobRunId` and emits `com.laminar.dataoutbound.emr.started`.
-2. `emr_do` starts, builds its `SparkSession`, loads the recipe from `--recipe-path` via `S3Client`, and resolves the Redshift JDBC password from SSM `SecureString`. It publishes the `EXECUTION_STARTED` audit record to **audit_bucket** (`com.laminar.dataoutbound.audit.spark`).
-3. For each entity in the recipe, `emr_do` issues a partitioned JDBC read against **dev** (Redshift). In `incremental` mode the read predicate is `GREATEST(created_at, modified_at) > watermark` — strictly greater, so records at or before the watermark are never re-extracted. A Redshift timeout or connection error is retried up to 3 times by the Spark task; after the third failure the job fails and the caller observes `JobRunState = FAILED`.
-4. Each entity DataFrame passes through the input processor (schema enforcement, type casting), the transformer (column mapping/derivation) and the output processor (ordering, partition columns, split threshold), then is written to **staging_bucet_internal** under the deterministic prefix `<config_id>/<execution_id>/<dataset>/`. S3 throttling is absorbed by Spark task retries; the deterministic keys make a re-run of the same `execution_id` overwrite rather than duplicate.
-5. After all entities are written, `emr_do` writes `manifest_<execution_id>.json` **last**. This ordering guarantees that the S3 `ObjectCreated` notification consumed by **egress-lambda** fires exactly once per staged run, carrying the lineage UUID.
-6. `emr_do` publishes `com.laminar.dataoutbound.staging.written` (with `manifest_key`, `total_records`, `total_bytes`) and the `EXECUTION_COMPLETED` audit record to **audit_bucket**. An S3 error on the audit write is logged at WARNING and the job still exits `0` — audit failure never fails an extraction.
-7. On any `LaminarError` the job logs the failure with the `execution_id` and exits non-zero; **child_export_dag** observes the failed `jobRunId` and applies its own Airflow retry policy. No partial manifest is written, so **egress-lambda** is never triggered for a failed run.
-```mermaid
-sequenceDiagram
-  participant child_export_dag
-  participant emr_do
-  participant dev
-  participant staging_bucet_internal
-  participant audit_bucket
-
-  child_export_dag->>emr_do: StartJobRunRequest with application_id, execution role, and spark submit parameters
-  Note over child_export_dag: clientToken from IdempotencyKey.build(config_id, execution_id) with args --config-id --execution-id --mode --watermark --recipe-path --staging-prefix --run-date
-  alt Invocation accepted
-    emr_do-->>child_export_dag: StartJobRunResponse with job_run_id
-    Note over child_export_dag: telemetry com.laminar.dataoutbound.emr.started
-  else API rate limit or validation error
-    emr_do-->>child_export_dag: API rate limit or validation error
-    Note over child_export_dag: retried with backoff
-  end
-
-  Note over emr_do: build SparkSession, load recipe from --recipe-path, resolve Redshift JDBC password from SSM SecureString
-  emr_do->>audit_bucket: Spark job execution metrics and audit execution log upload
-  Note over emr_do: EXECUTION_STARTED audit record, telemetry com.laminar.dataoutbound.audit.spark
-  audit_bucket-->>emr_do: S3 upload success ETag
-
-  loop for each entity in recipe
-    emr_do->>dev: Distributed SQL query against golden data source tables
-    alt Read succeeded
-      dev-->>emr_do: Spark DataFrame containing extracted golden entities
-    else Redshift query timeout or connection error
-      Note over dev,emr_do: retried 3 times by Spark task, then JobRunState = FAILED
-      emr_do-->>child_export_dag: failed jobRunId
-    end
-    Note over emr_do: input processor schema enforcement and type casting, transformer column mapping and derivation, output processor ordering partition columns split threshold
-    emr_do->>staging_bucet_internal: Parquet/JSON data files and manifest written to staging bucket
-    staging_bucet_internal-->>emr_do: S3 multipart upload success confirmation
-    Note over emr_do: telemetry com.laminar.dataoutbound.staging.written with manifest_key total_records total_bytes
-  end
-
-  Note over emr_do: manifest_execution_id.json written last so ObjectCreated fires exactly once per staged run
-  emr_do->>audit_bucket: Spark job execution metrics and audit execution log upload
-  Note over emr_do: EXECUTION_COMPLETED audit record
-  alt Audit write succeeded
-    audit_bucket-->>emr_do: S3 upload success ETag
-  else S3 error
-    Note over emr_do: logged with warning, job continues and exits 0
-  end
-
-  alt LaminarError raised
-    emr_do-->>child_export_dag: failed jobRunId with execution_id logged, exit non-zero
-    Note over child_export_dag: Airflow retry policy applied, no partial manifest written so egress-lambda is never triggered
-  end
-```
-
-### 7.5. Schema Definitions (DB Tables / API JSON / Telemetry CloudEvents)
-<a id="laminar-sec-c.imp_aws_aws_emr_serverless_5.schema"></a>
-**DDL owned by `emr_do`: none.** `emr_do` owns no database tables — it reads **dev** (Redshift, externally owned) and writes objects to **staging_bucet_internal** and **audit_bucket**. Watermark tables live in **cofig_db** and are owned by that component.
-
-#### 7.5.1 Recipe JSON (`s3://…/config/recipes/<dataset>.json`)
-
-```json
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://laminar.com/dataoutbound/recipes/export_extract_recipe.json",
-  "title": "ExportExtractRecipe",
-  "type": "object",
-  "required": ["recipe_version", "dataset", "entities"],
-  "additionalProperties": false,
-  "properties": {
-    "recipe_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+$" },
-    "dataset": {
-      "type": "string",
-      "enum": ["identity_profiles", "subscription_statuses", "campaigns_reactions", "reservation_items"]
-    },
-    "split_threshold_records": { "type": "integer", "minimum": 1, "default": 500000 },
-    "entities": {
-      "type": "array",
-      "minItems": 1,
-      "items": {
-        "type": "object",
-        "required": ["dataset", "source_table", "columns"],
-        "additionalProperties": false,
-        "properties": {
-          "dataset": { "type": "string" },
-          "source_table": { "type": "string", "pattern": "^[a-z_]+\\.[a-z_]+$" },
-          "columns": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
-          "watermark_column": { "type": "string", "default": "modified_at" },
-          "partition_column": { "type": "string", "default": "tenant_id" },
-          "partition_count": { "type": "integer", "minimum": 1, "default": 8 },
-          "output_format": { "type": "string", "enum": ["parquet", "json"], "default": "parquet" }
-        }
-      }
-    }
-  }
-}
-```
-
-#### 7.5.2 Staging manifest (`s3://staging_bucet_internal/<config_id>/<execution_id>/manifest_<execution_id>.json`)
-
-```json
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://laminar.com/dataoutbound/staging/staging_manifest.json",
-  "title": "StagingManifest",
-  "type": "object",
-  "required": ["execution_id", "generated_at_utc", "entities"],
-  "additionalProperties": false,
-  "properties": {
-    "execution_id": { "type": "string", "format": "uuid" },
-    "generated_at_utc": {
-      "type": "string",
-      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
-    },
-    "entities": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["dataset", "record_count", "bytes_written", "sha256"],
-        "additionalProperties": false,
-        "properties": {
-          "dataset": { "type": "string" },
-          "record_count": { "type": "integer", "minimum": 0 },
-          "bytes_written": { "type": "integer", "minimum": 0 },
-          "sha256": {
-            "type": "object",
-            "additionalProperties": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
-          }
-        }
-      }
-    }
-  }
-}
-```
-
-#### 7.5.3 Telemetry CloudEvents emitted by `emr_do`
-
-```json
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://laminar.com/dataoutbound/telemetry/emr_do_cloudevent.json",
-  "title": "EmrDoCloudEvent",
-  "type": "object",
-  "required": ["specversion", "id", "source", "type", "time", "subject", "datacontenttype", "data"],
-  "properties": {
-    "specversion": { "const": "1.0" },
-    "id": { "type": "string", "format": "uuid" },
-    "source": { "const": "com.laminar.dataoutbound.emr_do" },
     "type": {
-      "type": "string",
       "enum": [
-        "com.laminar.dataoutbound.staging.written",
-        "com.laminar.dataoutbound.audit.spark"
+        "com.laminar.dataoutbound.child.triggered",
+        "com.laminar.dataoutbound.emr.started",
+        "com.laminar.dataoutbound.child.failed"
       ]
     },
-    "time": {
-      "type": "string",
-      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
-    },
-    "subject": { "type": "string", "description": "the lineage UUID (execution_id)" },
-    "datacontenttype": { "const": "application/json" },
+    "time": { "type": "string", "format": "date-time" },
+    "subject": { "type": "string", "description": "config_id" },
     "data": {
       "type": "object",
       "required": ["actor_id", "timestamp_utc", "event_type", "execution_id"],
       "properties": {
-        "actor_id": { "const": "system:emr_do" },
+        "actor_id": { "const": "system:child-export-dag" },
         "timestamp_utc": {
           "type": "string",
           "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
         },
-        "event_type": { "type": "string", "enum": ["EXECUTION_STARTED", "EXECUTION_COMPLETED"] },
-        "execution_id": { "type": "string", "format": "uuid" },
+        "event_type": {
+          "enum": ["EXECUTION_STARTED", "EXECUTION_COMPLETED", "EXECUTION_FAILED"]
+        },
+        "execution_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+        },
         "config_id": { "type": "string" },
-        "mode": { "type": "string", "enum": ["initial", "incremental"] },
-        "manifest_key": { "type": "string" },
-        "total_records": { "type": "integer", "minimum": 0 },
-        "total_bytes": { "type": "integer", "minimum": 0 }
+        "job_run_id": { "type": "string" },
+        "record_counts": { "type": "object", "additionalProperties": { "type": "integer" } },
+        "status": { "enum": ["SUCCESS", "FAILED", "CANCELLED"] }
       }
     }
   }
 }
 ```
 
-#### 7.5.4 Audit execution log record (`s3://audit_bucket/emr_do/<run_date>/<job_run_id>.json`)
+#### 6.5.4 Database tables
 
+**No DDL is owned by this component.** `child_export_dag` reads and updates `export_watermarks` in `cofig_db`; that table is owned by the `cofig_db` component and its canonical DDL is declared once in the `cofig_db` chapter. This chapter references it and never re-declares it.
+
+### 6.6. Local Design Assumptions
+<a id="laminar-sec-c.imp_aws_aws_mwaa_dag_4.asm"></a>
+- **`schedule = @daily` is honoured verbatim.** The diagram sets `schedule = @daily` for `child_export_dag` and the DAG definition uses exactly that value; it is not replaced with `None`. Because the DAG is in practice trigger-only (it is invoked by `orchestrator` with a run conf), a self-scheduled run that carries no `lineage_uuid` short-circuits in `validate_conf` and performs no work — it emits no audit record and starts no Spark job, so the SCRUM-486 event-count formula (`admin ops + 2N + 2N`) is unaffected. **Recommendation:** set `schedule = None` for this DAG so that only orchestrator-triggered runs exist; the reason is that a trigger-only DAG with a cron schedule produces empty runs that add noise to the Airflow UI and to run-state polling. This is a recommendation only — the user's `@daily` stands as the configured value.
+- **Watermark write ownership.** The frozen contract labels the `child_export_dag → cofig_db` edge as a read. The watermark advance after a successful Spark run is performed by this DAG's `advance_watermark` task over the same connection, because `child_export_dag` is the only component in the diagram with a `cofig_db` connection other than `do-admin-api` and `orchestrator`. The update is monotonic and keyed by `(config_id, dataset)`, so a re-run is safe.
+- **`EXECUTION_FAILED` event type.** SCRUM-486 enumerates nine event types and does not include an execution-failure value. This design uses `EXECUTION_FAILED` as the failure counterpart of `EXECUTION_COMPLETED` so that the "2 per connection execution" count holds (start plus completion-or-failure). If the organisation requires the enumerated set to be closed, `EXECUTION_FAILED` is recorded as `EXECUTION_COMPLETED` with `status = "FAILED"`; no other contract changes.
+- **MWAA worker capacity.** Assumed sufficient to parse and schedule concurrent child DAG runs without queuing delays; `max_active_runs = 1` bounds concurrency per DAG, and parallelism across connections comes from separate DAG runs.
+- **EMR Serverless warm pools.** Assumed configured to minimise job submission latency; the DAG's `await_emr_job` polling interval is read from `dags/config.yml` and is not hardcoded.
+- **Airflow REST API authentication.** Assumed to use IAM-authenticated SigV4 calls from `do-admin-api` and `egress-lambda`; the child DAG itself does not call the REST API.
+- **Stop semantics.** Assumed that a stop accepted by `do-admin-api` terminates the orchestrator run within 30 seconds and that Airflow's own run cancellation prevents any further child task from starting; partial staging output from a cancelled child run is treated as failed and is not delivered.
+
+## 7. Component Design: emr_do
+<a id="laminar-sec-c.imp_aws_aws_emr_serverless_5"></a>
+
+<!-- laminar:diagram-settings:imp-aws-aws_emr_serverless-5 -->
+**Diagram settings (user decisions — authoritative)**
+
+| Setting | Value |
+| --- | --- |
+| `release_label` | `emr-7.0.0` |
+| `job_type` | `SPARK` |
+| `max_capacity_units` | `200` |
+| `application_name` | `emr_do` |
+
+<!-- /laminar:diagram-settings -->
+
+
+### 7.1. Component Contract (Bi-Directional Inputs & Outputs)
+<a id="laminar-sec-c.imp_aws_aws_emr_serverless_5.contract"></a>
+| Diagram settings (user decisions — authoritative) | |
+|---|---|
+| `application_name` | `emr_do` |
+| `release_label` | `emr-7.0.0` |
+| `job_type` | `SPARK` |
+| `max_capacity_units` | `200` |
+
+The **emr_do** component (Export Extract Spark Job on EMR Serverless) operates as a stateless, distributed batch compute engine. It executes Spark applications driven by declarative recipes and runtime parameters provided by the invoking **child_export_dag**.
+
+- **Incoming Contract (Trigger & Inputs)**:
+  - **Trigger**: `child_export_dag` invokes EMR Serverless via `boto3` `start_job_run` API using the `emr_client`.
+  - **Payload / Arguments**: JSON configuration passed via Spark submit arguments containing `lineage_uuid`, `connection_id`, `dataset` (e.g., `identity_profiles`, `reservation_items`), `mode` (`initial` or `incremental`), `watermark_timestamp`, and recipe file path.
+- **Outgoing Contract (Data Sinks & Telemetry)**:
+  - **Golden Entity Source Store (`dev`)**: Executes distributed JDBC read queries against Redshift tables using credentials retrieved securely via SSM/database clients.
+  - **Customer Staging Buckets (`staging_bucet_internal`)**: Writes partitioned Parquet/JSON data files and JSON manifest control files (`manifest_<lineage_uuid>.json`) via S3 committers.
+  - **Audit & Execution Log Store (`audit_bucket`)**: Publishes CloudEvents-compliant lifecycle records (`com.laminar.dataoutbound.emr.started`, `com.laminar.dataoutbound.staging.written`) to `audit_bucket`.
+- **Error & Retry Handling**: Transient S3 throttling or Redshift connection timeouts are caught and retried up to 3 times with exponential backoff. Fatal configuration or schema mismatch errors fail the job run immediately, publishing a `TRANSFER_FAILED` or execution failure audit event.
+
+---
+
+### 7.2. Class and Interface Definitions
+<a id="laminar-sec-c.imp_aws_aws_emr_serverless_5.classes"></a>
+```python
+from dataclasses import dataclass, field
+from typing import Dict, Any, List, Optional
+from pyspark.sql import DataFrame, SparkSession
+
+@dataclass
+class SparkJobConfig:
+    application_id: str
+    execution_role_arn: str
+    release_label: str = "emr-7.0.0"
+    job_type: str = "SPARK"
+    max_capacity_units: int = 200
+    spark_conf: Dict[str, str] = field(default_factory=dict)
+
+@dataclass
+class ExportExtractJobArguments:
+    lineage_uuid: str
+    connection_id: str
+    dataset_name: str
+    mode: str
+    watermark_value: Optional[str] = None
+    recipe_path: str = ""
+
+class SparkSessionHelper:
+    @staticmethod
+    def get_spark_session(app_name: str, config: Dict[str, Any]) -> SparkSession:
+        """Constructs and returns an optimised SparkSession with S3 committer and Hive catalog support."""
+        pass
+
+class ChildExportGoldenEntitySourceStoreReader:
+    def __init__(self, spark: SparkSession, db_client: Any):
+        self.spark = spark
+        self.db_client = db_client
+
+    def read_entity(self, spec: Dict[str, Any], mode: str, watermark: Optional[str]) -> DataFrame:
+        """Reads partitioned JDBC datasets from Redshift applying full or incremental watermark filters."""
+        pass
+
+class CustomerStagingBucketsAuditExecutionLogStoreWriter:
+    def __init__(self, s3_client: Any, auditor: AuditPublisher):
+        self.s3_client = s3_client
+        self.auditor = auditor
+
+    def write_staged_dataset(self, df: DataFrame, lineage_uuid: str, dataset_name: str, output_path: str) -> Dict[str, Any]:
+        """Writes DataFrame to S3 staging bucket as partitioned Parquet/JSON files and generates JSON manifest."""
+        pass
+```
+
+---
+
+### 7.3. Implementation Code Skeleton (Stubs & Handlers)
+<a id="laminar-sec-c.imp_aws_aws_emr_serverless_5.skeleton"></a>
+> Illustrative skeleton — the Component Contract and Schema Definitions are binding.
+
+```python
+import sys
+import argparse
+from typing import Dict, Any
+from dataoutbound_section_tree.spark_emr.export_extract_spark_job.helper.spark_session_helper import SparkSessionHelper
+from dataoutbound_section_tree.spark_emr.export_extract_spark_job.io.child_export_golden_entity_source_store_reader import ChildExportGoldenEntitySourceStoreReader
+from dataoutbound_section_tree.spark_emr.export_extract_spark_job.io.customer_staging_buckets_audit_execution_log_store_writer import CustomerStagingBucketsAuditExecutionLogStoreWriter
+from dataoutbound_section_tree.spark_emr.export_extract_spark_job.processor.export_extract_input_processor import ExportExtractInputProcessor
+from dataoutbound_section_tree.spark_emr.export_extract_spark_job.processor.export_extract_output_processor import ExportExtractOutputProcessor
+from dataoutbound_section_tree.common.logging.logger import get_logger
+from dataoutbound_section_tree.common.telemetry.auditor import AuditPublisher
+from dataoutbound_section_tree.common.clients.db.db_client import DbClient
+from dataoutbound_section_tree.common.clients.aws.s3.s3_client import S3Client
+
+logger = get_logger("emr_do.main")
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Export Extract Spark Job Entrypoint")
+    parser.add_argument("--lineage-uuid", required=True, help="RFC 4122 v4 lineage UUID")
+    parser.add_argument("--connection-id", required=True, help="Target export connection identifier")
+    parser.add_argument("--dataset", required=True, help="Dataset recipe name")
+    parser.add_argument("--mode", required=True, choices=["initial", "incremental"], help="Extraction mode")
+    parser.add_argument("--watermark", required=False, help="Watermark timestamp for incremental runs")
+    parser.add_argument("--recipe-path", required=True, help="Path to declarative recipe JSON")
+    args = parser.parse_args()
+
+    logger.info("Starting Export Extract Spark Job", extra={"lineage_uuid": args.lineage_uuid, "dataset": args.dataset})
+
+    spark = SparkSessionHelper.get_spark_session("ExportExtractSparkJob", {})
+    db_client = DbClient()
+    s3_client = S3Client()
+    auditor = AuditPublisher()
+
+    try:
+        auditor.publish("EXECUTION_STARTED", {
+            "actor_id": "system:emr_do",
+            "execution_id": args.lineage_uuid,
+            "dataset": args.dataset
+        })
+
+        reader = ChildExportGoldenEntitySourceStoreReader(spark, db_client)
+        writer = CustomerStagingBucketsAuditExecutionLogStoreWriter(s3_client, auditor)
+
+        recipe_spec = {"table": args.dataset, "recipe_path": args.recipe_path}
+        raw_df = reader.read_entity(recipe_spec, args.mode, args.watermark)
+
+        normalized_df = ExportExtractInputProcessor.validate_and_normalize(raw_df, recipe_spec)
+        processed_df = ExportExtractOutputProcessor.assemble(normalized_df)
+
+        output_path = f"s3://staging_bucet_internal/staging/{args.connection_id}/{args.lineage_uuid}/{args.dataset}/"
+        manifest_metadata = writer.write_staged_dataset(processed_df, args.lineage_uuid, args.dataset, output_path)
+
+        auditor.publish("EXECUTION_COMPLETED", {
+            "actor_id": "system:emr_do",
+            "execution_id": args.lineage_uuid,
+            "manifest": manifest_metadata
+        })
+        logger.info("Export Extract Spark Job completed successfully", extra={"lineage_uuid": args.lineage_uuid})
+    except Exception as e:
+        logger.error(f"Export Extract Spark Job failed: {str.format('{}', e)}", exc_info=True, extra={"lineage_uuid": args.lineage_uuid})
+        auditor.publish("TRANSFER_FAILED", {
+            "actor_id": "system:emr_do",
+            "execution_id": args.lineage_uuid,
+            "error": str(e)
+        })
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
+```
+
+---
+
+### 7.4. Cross-Component Interaction Sequence (Local Mermaid/ASCII Flow)
+<a id="laminar-sec-c.imp_aws_aws_emr_serverless_5.seq"></a>
+1. The `child_export_dag` invokes `emr_do` via the EMR Serverless client (`EmrClient.start_job_run`) passing the `lineage_uuid`, connection parameters, and recipe paths.
+2. `emr_do` initialises its Spark session and emits an `EXECUTION_STARTED` audit event to `audit_bucket`.
+3. `emr_do` invokes `dev` (Redshift source store) via distributed JDBC queries to extract Golden Entity datasets in full or incremental mode.
+4. Spark executors process and validate the datasets in memory before writing partitioned Parquet/JSON files and the `manifest_<lineage_uuid>.json` file to `staging_bucet_internal`.
+5. Upon successful write completion, `emr_do` publishes an `EXECUTION_COMPLETED` audit event (along with execution metrics) to `audit_bucket` and terminates the ephemeral worker cluster.
+6. On failure (e.g., query timeout or S3 throttling), `emr_do` captures the exception, logs stack traces, publishes a `TRANSFER_FAILED` audit event to `audit_bucket`, and exits with a non-zero exit code to trigger Airflow task retries.
+
+---
+```mermaid
+sequenceDiagram
+participant child_export_dag
+participant emr_do
+participant dev
+participant staging_bucet_internal
+participant audit_bucket
+child_export_dag->>emr_do: StartJobRunRequest
+emr_do-->>child_export_dag: StartJobRunResponse
+emr_do->>audit_bucket: EXECUTION_STARTED event
+emr_do->>dev: Distributed SQL query
+dev-->>emr_do: Spark DataFrame
+emr_do->>staging_bucet_internal: Parquet and JSON files
+staging_bucet_internal-->>emr_do: S3 upload success confirmation
+emr_do->>audit_bucket: Spark job execution metrics
+audit_bucket-->>emr_do: S3 upload success ETag
+alt Job Failure
+dev--xemr_do: Query timeout or S3 throttling error
+emr_do->>audit_bucket: TRANSFER_FAILED audit event
+end
+```
+
+### 7.5. Schema Definitions (DB Tables / API JSON / Telemetry CloudEvents)
+<a id="laminar-sec-c.imp_aws_aws_emr_serverless_5.schema"></a>
 ```json
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://laminar.com/dataoutbound/audit/emr_execution_log.json",
-  "title": "EmrExecutionLogRecord",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "EmrServerlessJobSubmitPayload",
   "type": "object",
-  "required": ["actor_id", "timestamp_utc", "event_type", "execution_id", "status"],
-  "additionalProperties": false,
   "properties": {
-    "actor_id": { "const": "system:emr_do" },
-    "timestamp_utc": {
-      "type": "string",
-      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
-    },
-    "event_type": { "type": "string", "enum": ["EXECUTION_STARTED", "EXECUTION_COMPLETED"] },
-    "execution_id": { "type": "string", "format": "uuid" },
-    "config_id": { "type": "string" },
-    "job_run_id": { "type": "string" },
-    "status": { "type": "string", "enum": ["STARTED", "SUCCEEDED", "FAILED"] },
-    "record_counts": { "type": "object", "additionalProperties": { "type": "integer" } },
-    "duration_ms": { "type": "integer", "minimum": 0 }
-  }
+    "lineage_uuid": { "type": "string", "format": "uuid" },
+    "connection_id": { "type": "string" },
+    "dataset": { "type": "string" },
+    "mode": { "type": "string", "enum": ["initial", "incremental"] },
+    "watermark_value": { "type": ["string", "null"] },
+    "recipe_path": { "type": "string" }
+  },
+  "required": ["lineage_uuid", "connection_id", "dataset", "mode", "recipe_path"]
 }
 ```
 
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "EmrExecutionAuditCloudEvent",
+  "type": "object",
+  "properties": {
+    "specversion": { "type": "string", "example": "1.0" },
+    "type": { "type": "string", "example": "com.laminar.dataoutbound.emr.started" },
+    "source": { "type": "string", "example": "urn:acme:dataoutbound:emr_do" },
+    "id": { "type": "string", "format": "uuid" },
+    "time": { "type": "string", "format": "date-time" },
+    "datacontenttype": { "type": "string", "example": "application/json" },
+    "data": {
+      "type": "object",
+      "properties": {
+        "actor_id": { "type": "string", "example": "system:emr_do" },
+        "timestamp_utc": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$" },
+        "event_type": { "type": "string", "enum": ["EXECUTION_STARTED", "EXECUTION_COMPLETED", "TRANSFER_FAILED"] },
+        "execution_id": { "type": "string", "format": "uuid" },
+        "dataset": { "type": "string" }
+      },
+      "required": ["actor_id", "timestamp_utc", "event_type", "execution_id"]
+    }
+  },
+  "required": ["specversion", "type", "source", "id", "time", "data"]
+}
+```
+
+---
+
 ### 7.6. Local Design Assumptions
 <a id="laminar-sec-c.imp_aws_aws_emr_serverless_5.asm"></a>
-- **Watermark semantics.** Incremental extraction uses a strict `GREATEST(created_at, modified_at) > watermark` predicate, satisfying SCRUM-481 AC#5 (records at or before *T* are never re-extracted). The watermark value is supplied by **child_export_dag** from **cofig_db**; `emr_do` never advances it — the child DAG advances it only after a successful job run, so a failed run is safely re-runnable.
-- **Watermark column choice.** `GREATEST(created_at, modified_at)` is the default because the source tables carry both columns; a recipe may override `watermark_column` per entity.
-- **Output format.** Staged datasets are written as Parquet by default (columnar, compact, schema-preserving) with JSON selectable per recipe; the JSON/TXT customer-facing formatting, GZIP and PGP steps belong to **egress dag**, not to `emr_do`.
-- **Split threshold.** The recipe's `split_threshold_records` (default 500,000) bounds the records per staged part so the downstream egress worker stays within its memory budget (SCRUM-483 AC#2); the 1 GB / 100,000-record customer package limit is enforced at egress.
-- **Manifest written last.** The run manifest is the final object written, so the S3 `ObjectCreated` notification that triggers **egress-lambda** fires exactly once per staged run and carries the lineage UUID (SCRUM-482 AC#3).
-- **Audit failure is non-fatal.** An S3 error while writing to **audit_bucket** is logged at WARNING and the job continues, per the frozen contract; extraction correctness is never sacrificed to audit availability.
-- **Credentials.** The Redshift password is read at runtime from SSM Parameter Store as a `SecureString` and is never written to logs, Spark conf or the staging manifest.
-- **Retry ownership.** `emr_do` relies on Spark's own task-level retries for transient Redshift and S3 errors (3 attempts); job-level retries are owned by **child_export_dag**'s Airflow task retry policy, so retries are not nested.
-- **Capacity.** `max_capacity_units = 200` is the user's decision and is shared across all concurrent child runs; no per-run capacity override is set, so a fan-out of connections queues rather than over-provisions.
-- **Log retention.** The `emr_do` CloudWatch log group is provisioned explicitly with the single organisation logging-standard `retention_in_days` value (SCRUM-486 AC#4); the exact number of days is an open input to be confirmed before sprint commitment and is read from environment configuration, never hardcoded.
-- **Deletion protection.** The `emr_do` application is stateless and carries no deletion-protection flag; the stateful resources it writes to (**staging_bucet_internal**, **audit_bucket**) read their flags from per-environment configuration (SCRUM-485 AC#3).
+- **Assumption 1**: EMR Serverless worker allocation dynamically scales between minimum and maximum capacity units (capped at `max_capacity_units = 200`), ensuring sufficient parallelism for heavy entity extractions without idling resources.
+- **Assumption 2**: S3 output data written to `staging_bucet_internal` adheres strictly to non-sequential partitioning keys prefixed by lineage UUID and dataset name to prevent S3 hot-partition throttling.
+- **Assumption 3**: Declarative recipes (`*.json`) for the eight supported entities (Unified Identity Profile, Pii Restricted Profile, Contact Method Subscription, Enriched Campaigns, Enriched Campaign Reactions, Room stay, Restaurant reservation, Tee time, Spa treatment) are bundled within the job deployment package and referenced via environment configuration.
+
+---
 
 ## 8. Component Design: dev
 <a id="laminar-sec-c.imp_aws_aws_redshift_6"></a>
 
+<!-- laminar:diagram-settings:imp-aws-aws_redshift-6 -->
+**Diagram settings (user decisions — authoritative)**
+
+| Setting | Value |
+| --- | --- |
+| `node_type` | `dc2.large` |
+| `number_of_nodes` | `2` |
+| `database_name` | `dev` |
+| `cluster_identifier` | `golden_data_source` |
+
+<!-- /laminar:diagram-settings -->
+
+
 ### 8.1. Component Contract (Bi-Directional Inputs & Outputs)
 <a id="laminar-sec-c.imp_aws_aws_redshift_6.contract"></a>
-The Redshift cluster **dev** (Cluster Identifier: `golden_data_source`, Database Name: `dev`, Node Type: `dc2.large`, Number of Nodes: `2`) acts as the Golden Entity Source Store. It is an existing externally owned analytical data warehouse providing read-only distributed data access to the EMR Serverless Spark job (`emr_do`).
+| Diagram settings (user decisions — authoritative) | |
+|---|---|
+| `cluster_identifier` | `golden_data_source` |
+| `database_name` | `dev` |
+| `node_type` | `dc2.large` |
+| `number_of_nodes` | `2` |
 
-#### 8.1.1 Inbound Contracts
-- **emr_do → dev [Data Read; JDBC / PostgreSQL wire protocol]**
-  - **Trigger**: Spark job execution (`export_extract_spark_job/main.py`) via the JDBC reader module.
-  - **Request**: Distributed SQL SELECT queries with partitioning predicates (e.g., incremental watermark filters `updated_at > :watermark` or full table scans).
-  - **Response**: Spark DataFrame streams containing extracted golden entity records.
-  - **Error Handling**: Redshift query timeout or connection refusal results in client-side retry up to 3 times with exponential backoff via `common/clients/db/db_client.py`.
-  - **Idempotency**: Read-only query execution is inherently idempotent.
-  - **Telemetry Event**: None (low-level database read; execution milestones are audited at the Spark job level).
+The **dev** component (Golden Entity Source Store backed by Amazon Redshift) serves as the authoritative analytical data warehouse containing enterprise golden entities.
+
+- **Incoming Contract (Reads)**:
+  - **Trigger**: Distributed JDBC read requests initiated by the **emr_do** Spark job (`ChildExportGoldenEntitySourceStoreReader`).
+  - **Payload / Query**: Parameterized SQL queries selecting columns from golden entity tables with partition range filters or incremental watermark conditions (`WHERE updated_at > :watermark`).
+- **Outgoing Contract (Results)**:
+  - **Response**: Tabular result sets streamed over JDBC to Spark executors containing the requested entity attributes.
+- **Error & Retry Handling**: Connection drops or query timeouts trigger client-side retries up to 3 times via `DbClient` connection pooling rules. Syntax or schema mismatch errors abort execution immediately without side effects.
+
+---
 
 ### 8.2. Class and Interface Definitions
 <a id="laminar-sec-c.imp_aws_aws_redshift_6.classes"></a>
-The following typed Python dataclasses and interface helper models define the interaction contracts for querying the **dev** Redshift cluster from the Spark job, aligning with blueprint foundation patterns.
-
 ```python
 from dataclasses import dataclass
 from typing import Optional, Dict, Any
-from datetime import datetime
+from pyspark.sql import DataFrame, SparkSession
 
 @dataclass
 class RedshiftConnectionConfig:
-    host: str
-    port: int
-    database: str
-    user: str
-    password_secret_ref: str
-    jdbc_url: str
-    driver: str = "com.amazon.redshift.jdbc.Driver"
+    cluster_identifier: str = "golden_data_source"
+    database_name: str = "dev"
+    node_type: str = "dc2.large"
+    number_of_nodes: int = 2
+    port: int = 5439
 
-@dataclass
-class GoldenEntityExtractQuerySpec:
-    entity_type: str
-    table_name: str
-    incremental_column: Optional[str] = None
-    watermark_value: Optional[datetime] = None
-    partition_column: Optional[str] = None
-    lower_bound: Optional[int] = None
-    upper_bound: Optional[int] = None
-    num_partitions: int = 10
+class ChildExportGoldenEntitySourceStoreReader:
+    """Canonical reader shared across Spark job operations to query Redshift golden entities."""
+    def __init__(self, spark: SparkSession, db_client: Any):
+        self.spark = spark
+        self.db_client = db_client
+
+    def read_entity(self, spec: Dict[str, Any], mode: str, watermark: Optional[str]) -> DataFrame:
+        """Executes parameterized JDBC queries against Redshift golden entity tables."""
+        pass
 ```
+
+---
 
 ### 8.3. Implementation Code Skeleton (Stubs & Handlers)
 <a id="laminar-sec-c.imp_aws_aws_redshift_6.skeleton"></a>
-Illustrative skeleton — the Component Contract and Schema Definitions are binding. This module corresponds to blueprint path `src/dataoutbound_section_tree/spark_emr/export_extract_spark_job/io/child_export_golden_entity_source_store_reader.py`.
+> Illustrative skeleton — the Component Contract and Schema Definitions are binding.
 
 ```python
-"""
-Illustrative skeleton — the Component Contract and Schema Definitions are binding.
-Path: src/dataoutbound_section_tree/spark_emr/export_extract_spark_job/io/child_export_golden_entity_source_store_reader.py
-"""
-
-from typing import Optional
-from pyspark.sql import DataFrame, SparkSession
+from typing import Dict, Any, Optional
+from pyspark.sql import SparkSession, DataFrame
+from dataoutbound_section_tree.spark_emr.export_extract_spark_job.io.child_export_golden_entity_source_store_reader import ChildExportGoldenEntitySourceStoreReader
 from dataoutbound_section_tree.common.logging.logger import get_logger
-from dataoutbound_section_tree.util.exceptions import ClientError
 
-logger = get_logger(__name__)
+logger = get_logger("dev.redshift_reader")
 
-class ChildExportGoldenEntitySourceStoreReader:
-    """Reader for extracting Golden Entity datasets from the dev Redshift cluster."""
+class RedshiftSourceStoreHandler:
+    def __init__(self, spark: SparkSession, jdbc_url: str, connection_properties: Dict[str, str]):
+        self.spark = spark
+        self.jdbc_url = jdbc_url
+        self.connection_properties = connection_properties
 
-    def __init__(self, spark_session: SparkSession, jdbc_config: dict):
-        self.spark = spark_session
-        self.config = jdbc_config
+    def fetch_entity_data(self, table_name: str, mode: str, watermark_value: Optional[str] = None) -> DataFrame:
+        query = f"(SELECT * FROM {table_name}"
+        if mode == "incremental" and watermark_value:
+            query += f" WHERE updated_at > '{watermark_value}'"
+        query += ") AS src"
 
-    def read_entity_dataset(
-        self,
-        table_name: str,
-        incremental_column: Optional[str] = None,
-        watermark_value: Optional[str] = None
-    ) -> DataFrame:
-        """
-        Executes a distributed JDBC read against Redshift with optional incremental watermark filtering.
-        """
-        logger.info(f"Reading golden entity dataset from table: {table_name}", extra={"incremental_col": incremental_column})
-
-        try:
-            query = f"(SELECT * FROM {table_name}"
-            if incremental_column and watermark_value:
-                query += f" WHERE {incremental_column} > '{watermark_value}'"
-            query += ") AS source_subq"
-
-            df = (
-                self.spark.read.format("jdbc")
-                .option("url", self.config["jdbc_url"])
-                .option("dbtable", query)
-                .option("user", self.config["user"])
-                .option("password", self.config["password"])
-                .option("driver", self.config["driver"])
-                .option("fetchsize", 10000)
-                .load()
-            )
-            return df
-        except Exception as e:
-            logger.error(f"Failed to read from Redshift table {table_name}: {str(e)}")
-            raise ClientError(f"Redshift read failed for {table_name}: {str(e)}") from e
+        logger.info(f"Executing Redshift query against table {table_name} in mode {mode}")
+        return self.spark.read.jdbc(url=self.jdbc_url, table=query, properties=self.connection_properties)
 ```
+
+---
 
 ### 8.4. Cross-Component Interaction Sequence (Local Mermaid/ASCII Flow)
 <a id="laminar-sec-c.imp_aws_aws_redshift_6.seq"></a>
-The interaction sequence between `emr_do` and `dev` follows these operational steps:
-1. **Job Initialization**: The EMR Serverless Spark job (`emr_do`) initializes and resolves Redshift connection credentials from SSM Parameter Store via `ConfigLoader`.
-2. **Connection Establishment**: The `ChildExportGoldenEntitySourceStoreReader` establishes a JDBC connection pool to the **dev** Redshift cluster (`golden_data_source`).
-3. **Query Execution**: Distributed Spark executors execute parallelized SQL queries against **dev** tables (Unified Identity Profiles, Pii Restricted Profiles, Contact Method Subscriptions, Enriched Campaigns, Enriched Campaign Reactions, and reservation items).
-4. **Data Stream Ingestion**: Records are streamed into Spark DataFrames for transformation and staging.
-5. **Failure Handling**: In case of transient JDBC connection timeouts or query errors, the operation is retried up to 3 times with exponential backoff. If failures persist, a `ClientError` is raised, causing the EMR job run to fail and propagating a failure event to the audit log store.
-```mermaid
-sequenceDiagram
-    autonumber
-    participant emr_do
-    participant dev
-    participant audit
-    emr_do->>dev: Distributed SQL query
-    alt Success
-        dev-->>emr_do: Spark DataFrame containing extracted golden entities
-    else Failure Path
-        Note over emr_do,dev: Retry up to 3 times with exponential backoff
-        emr_do->>dev: Retry Distributed SQL query
-        dev-->>emr_do: Redshift query timeout or connection error
-        emr_do->>audit: Raise ClientError and propagate failure event
-    end
-```
-
-### 8.5. Schema Definitions (DB Tables / API JSON / Telemetry CloudEvents)
-<a id="laminar-sec-c.imp_aws_aws_redshift_6.schema"></a>
-The **dev** Redshift cluster contains the master tables for Golden Entities. Below is the structural DDL representing the schema definitions owned by the golden data source.
-
-```sql
--- DDL for Golden Entity Source Store (dev / golden_data_source)
-
-CREATE TABLE IF NOT EXISTS unified_identity_profile (
-    profile_id VARCHAR(64) NOT NULL PRIMARY KEY,
-    tenant_id VARCHAR(64) NOT NULL,
-    first_name VARCHAR(128),
-    last_name VARCHAR(128),
-    email VARCHAR(256),
-    created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
-    updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS pii_restricted_profile (
-    profile_id VARCHAR(64) NOT NULL PRIMARY KEY,
-    tenant_id VARCHAR(64) NOT NULL,
-    ssn_encrypted VARCHAR(512),
-    credit_card_hash VARCHAR(256),
-    updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS contact_method_subscription (
-    subscription_id VARCHAR(64) NOT NULL PRIMARY KEY,
-    profile_id VARCHAR(64) NOT NULL,
-    channel VARCHAR(32) NOT NULL,
-    is_subscribed BOOLEAN NOT NULL,
-    updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS enriched_campaign (
-    campaign_id VARCHAR(64) NOT NULL PRIMARY KEY,
-    campaign_name VARCHAR(256) NOT NULL,
-    campaign_type VARCHAR(64),
-    updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS enriched_campaign_reaction (
-    reaction_id VARCHAR(64) NOT NULL PRIMARY KEY,
-    campaign_id VARCHAR(64) NOT NULL,
-    profile_id VARCHAR(64) NOT NULL,
-    reaction_type VARCHAR(64) NOT NULL,
-    reacted_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
-    updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS reservation_item (
-    reservation_id VARCHAR(64) NOT NULL PRIMARY KEY,
-    profile_id VARCHAR(64) NOT NULL,
-    reservation_type VARCHAR(32) NOT NULL, -- Room stay, Restaurant reservation, Tee time, Spa treatment
-    start_time TIMESTAMP WITHOUT TIME ZONE NOT NULL,
-    status VARCHAR(32) NOT NULL,
-    updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL
-);
-```
-
-### 8.6. Local Design Assumptions
-<a id="laminar-sec-c.imp_aws_aws_redshift_6.asm"></a>
-1. **External Ownership**: The **dev** Redshift cluster (`golden_data_source`) is treated as an existing, externally managed analytical data store; Terraform provisioning scope excludes the cluster itself, focusing solely on connection references and IAM secret bindings.
-2. **Network Connectivity**: Redshift is accessible within the VPC private subnets via VPC endpoints or internal routing, permitting secure JDBC data extraction without public internet exposure.
-3. **Partitioning & Fetch Size**: JDBC extraction utilizes batch fetching (`fetchsize=10000`) and distributed Spark partitioning to prevent memory exhaustion on driver nodes.
-
----
-
-## 9. Component Design: cofig_db
-<a id="laminar-sec-c.imp_aws_aws_rds_7"></a>
-
-### 9.1. Component Contract (Bi-Directional Inputs & Outputs)
-<a id="laminar-sec-c.imp_aws_aws_rds_7.contract"></a>
-The `cofig_db` component is a managed PostgreSQL relational database instance (`db.t3.micro`, PostgreSQL 15.4, 20 GB allocated storage, Multi-AZ set to `False`) acting as the centralized configuration and state store for the DataOutbound platform.
-
-#### 9.1.1 Inbound Contracts & Triggers
-- **Database Write (From `do-admin-api`)**:
-  - **Protocol**: JDBC / PostgreSQL wire protocol over TLS.
-  - **Trigger**: Administrative REST API calls (`POST`, `PUT`, `DELETE` on `/api/v1/exports`).
-  - **Payload**: SQL DML statements (INSERT, UPDATE, DELETE) for export configurations containing connection metadata, encrypted credentials, cron schedules, target types, and datasets.
-  - **Response**: Confirmation of persistence, affected row counts, and generated primary keys (`id`).
-- **Data Read (From `orchestrator`)**:
-  - **Protocol**: JDBC over TLS.
-  - **Trigger**: Scheduled DAG execution start (`Export Orchestrator DAG`).
-  - **Payload**: SQL `SELECT` queries filtering active export configurations matching the current execution time window ($\pm$ 10 minutes).
-  - **Response**: Result set containing active connection metadata.
-- **Data Read/Write (From `child_export_dag`)**:
-  - **Protocol**: JDBC over TLS.
-  - **Trigger**: Child DAG task execution initialization.
-  - **Payload**: SQL `SELECT` queries for incremental watermark timestamps and connection recipes; `UPDATE` statements for watermark advancement upon successful extraction.
-  - **Response**: Result set with watermark state and recipes.
-
-#### 9.1.2 Outbound Contracts & Behaviors
-- **Persistence & Integrity**: Enforces strict relational constraints, foreign keys, unique connection names, and check constraints on target types and datasets.
-- **Transaction Management**: All multi-statement operations (such as configuration updates or watermark persistence) are executed within ACID-compliant transaction blocks managed via `common.clients.db.db_client`.
-
----
-
-### 9.2. Class and Interface Definitions
-<a id="laminar-sec-c.imp_aws_aws_rds_7.classes"></a>
-The following Python dataclasses and database client wrappers define the relational data models and data access structures for `cofig_db`, residing within the shared foundation (`src/dataoutbound_section_tree/common/clients/db/db_client.py`).
-
-```python
-from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Optional, List, Dict, Any
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
-from dataoutbound_section_tree.common.logging.logger import get_logger
-from dataoutbound_section_tree.util.exceptions import ClientError
-
-logger = get_logger(__name__)
-
-class ExportConfigurationRecord(BaseModel):
-    id: str
-    connection_name: str
-    target_type: str
-    dataset: str
-    mode: str
-    cron_schedule: str
-    is_active: bool
-    updated_at: datetime
-
-@dataclass
-class ExportWatermarkRecord:
-    config_id: str
-    watermark_timestamp: datetime
-    updated_at: datetime
-
-class ConfigDbRepository:
-    """Repository helper for interacting with cofig_db using SQLAlchemy and DbClient."""
-
-    def __init__(self, db_engine_url: str):
-        self.engine = create_engine(db_engine_url, pool_pre_ping=True, pool_size=5)
-        self.SessionLocal = sessionmaker(bind=self.engine)
-
-    def get_active_configurations(self) -> List[ExportConfigurationRecord]:
-        session = self.SessionLocal()
-        try:
-            query = text(
-                "SELECT id, connection_name, target_type, dataset, mode, cron_schedule, "
-                "encrypted_credentials, is_active, created_at, updated_at "
-                "FROM export_configurations WHERE is_active = TRUE"
-            )
-            result = session.execute(query).fetchall()
-            return [
-                ExportConfigurationRecord(
-                    id=row.id,
-                    connection_name=row.connection_name,
-                    target_type=row.target_type,
-                    dataset=row.dataset,
-                    mode=row.mode,
-                    cron_schedule=row.cron_schedule,
-                    encrypted_credentials=row.encrypted_credentials,
-                    is_active=row.is_active,
-                    created_at=row.created_at,
-                    updated_at=row.updated_at
-                )
-                for row in result
-            ]
-        except Exception as e:
-            logger.error(f"Failed to fetch active export configurations: {e}")
-            raise ClientError(f"Database read error: {e}")
-        finally:
-            session.close()
-
-    def get_watermark(self, config_id: str) -> Optional[datetime]:
-        session = self.SessionLocal()
-        try:
-            query = text(
-                "SELECT watermark_timestamp FROM export_watermarks WHERE config_id = :config_id"
-            )
-            result = session.execute(query, {"config_id": config_id}).fetchone()
-            return result.watermark_timestamp if result else None
-        except Exception as e:
-            logger.error(f"Failed to fetch watermark for config {config_id}: {e}")
-            raise ClientError(f"Database read error: {e}")
-        finally:
-            session.close()
-```
-
-> Same `ExportConfigurationRecord` as defined in *Class and Interface Definitions* — one schema, one definition.
-
----
-
-### 9.3. Implementation Code Skeleton (Stubs & Handlers)
-<a id="laminar-sec-c.imp_aws_aws_rds_7.skeleton"></a>
-*Illustrative skeleton — the Component Contract and Schema Definitions are binding.*
-
-The **cofig_db** component is a managed RDS Postgres instance; it has no application code of its own. The skeleton below is the **single canonical `DbClient` interface** that every caller in this document — **do-admin-api**, **orchestrator**, **child_export_dag** — must use. It lives in the blueprint foundation at `src/dataoutbound_section_tree/common/clients/db/db_client.py` and is imported, never re-declared.
-
-```python
-# src/dataoutbound_section_tree/common/clients/db/db_client.py
-"""Canonical DbClient — the ONLY database access surface in the codebase.
-
-Every caller (do-admin-api, orchestrator, child_export_dag) uses exactly these
-four methods. No caller invents execute_query_single, session_scope or any
-other variant.
-"""
-from __future__ import annotations
-
-from contextlib import contextmanager
-from typing import Any, Iterator, Sequence
-
-from dataoutbound_section_tree.common.logging.logger import get_logger
-from dataoutbound_section_tree.config.config_loader import ConfigLoader
-from dataoutbound_section_tree.util.exceptions import ClientError, NotFoundError
-
-logger = get_logger(__name__)
-
-
-class DbClient:
-    """Pooled Postgres access with parameterised queries and a transaction context."""
-
-    def __init__(self, config: ConfigLoader) -> None:
-        self._config = config
-        self._dsn = config.resolve_secret("cofig_db.dsn")   # SSM SecureString
-        self._pool = self._build_pool()
-
-    def _build_pool(self) -> Any:
-        """Create the connection pool from the resolved DSN. Never logs the DSN."""
-        raise NotImplementedError
-
-    @contextmanager
-    def transaction(self) -> Iterator[Any]:
-        """Yield a connection inside a transaction; commit on success, rollback on error."""
-        conn = self._pool.getconn()
-        try:
-            with conn.cursor() as cur:
-                yield cur
-            conn.commit()
-        except Exception as exc:
-            conn.rollback()
-            logger.error("transaction rolled back", extra={"error": str(exc)})
-            raise ClientError("database transaction failed") from exc
-        finally:
-            self._pool.putconn(conn)
-
-    def execute(self, sql: str, params: Sequence[Any] = ()) -> int:
-        """Run a parameterised statement; return the affected row count."""
-        with self.transaction() as cur:
-            cur.execute(sql, params)
-            return cur.rowcount
-
-    def fetch_one(self, sql: str, params: Sequence[Any] = ()) -> dict | None:
-        """Run a parameterised query; return the first row as a dict, or None."""
-        with self.transaction() as cur:
-            cur.execute(sql, params)
-            row = cur.fetchone()
-            if row is None:
-                return None
-            return dict(zip([d[0] for d in cur.description], row))
-
-    def fetch_all(self, sql: str, params: Sequence[Any] = ()) -> list[dict]:
-        """Run a parameterised query; return every row as a list of dicts."""
-        with self.transaction() as cur:
-            cur.execute(sql, params)
-            cols = [d[0] for d in cur.description]
-            return [dict(zip(cols, row)) for row in cur.fetchall()]
-```
-
-**Call-site consistency (binding).** Every caller in this document uses exactly these methods:
-
-| Caller | Call site |
-|---|---|
-| **do-admin-api** (`export_admin_service.py`) | `self._db.execute(...)`, `self._db.fetch_one(...)`, `self._db.fetch_all(...)` |
-| **orchestrator** (`export_orchestrator_dag.py`) | `DB.fetch_all(...)` |
-| **child_export_dag** (`child_export_dag.py`) | `DB.fetch_one(...)`, `DB.fetch_all(...)` |
-
-No caller uses `session_scope()`, `execute_query_single()` or any other variant.
-
-### 9.4. Cross-Component Interaction Sequence (Local Mermaid/ASCII Flow)
-<a id="laminar-sec-c.imp_aws_aws_rds_7.seq"></a>
-1. **Administration Write Flow**: `do-admin-api` establishes a secure JDBC/SQL session via `common.clients.db.db_client` against `cofig_db`, executing an `INSERT` or `UPDATE` statement for an export configuration with encrypted credentials.
-2. **Orchestrator Read Flow**: `orchestrator` initiates its daily/scheduled DAG run, querying `cofig_db` for all active export configurations whose cron schedules match the current execution window.
-3. **Child Export Watermark & Recipe Read Flow**: `child_export_dag` queries `cofig_db` during task initialization to retrieve incremental extraction watermarks and recipe locations for the targeted connection ID.
-4. **Error Handling & Failure Recovery**: In the event of a connection timeout or query failure, `common.clients.db.db_client` catches database exceptions, wraps them in domain `ClientError` exceptions, rolls back active transactions, and retries up to 3 times with exponential backoff before failing the calling task.
+1. The Spark job (`emr_do`) initializes `ChildExportGoldenEntitySourceStoreReader` with JDBC connection properties pointing to the Redshift cluster (`golden_data_source`).
+2. The reader constructs a parameterized SQL query based on the entity recipe (e.g., Unified Identity Profile, Pii Restricted Profile, Contact Method Subscription, Enriched Campaigns, Enriched Campaign Reactions, or reservation items) and extraction mode (`initial` vs `incremental` with watermark filtering).
+3. Redshift (`dev`) executes the distributed query across its `dc2.large` nodes, optimizing scans via configured sort and distribution keys.
+4. Result sets are streamed concurrently into Spark worker memory partitions.
+5. On connection timeout or network glitch, `DbClient` executes exponential backoff retries (up to 3 attempts); on unrecoverable query errors, the exception is raised upstream to `emr_do`.
 
 ---
 ```mermaid
 sequenceDiagram
 autonumber
-participant admin as do-admin-api
-participant orch as orchestrator
-participant child as child_export_dag
-participant db as cofig_db
-
-admin->>db: Export configuration payload JSON
-alt Success
-    db-->>admin: 201 Created with configuration ID
-else Failure
-    db-->>admin: 400 Bad Request or 500 Internal Server Error
-    Note over admin,db: Retried by client with backoff
-end
-
-orch->>db: SQL SELECT query for active export configurations
-alt Success
-    db-->>orch: ResultSet active export configurations
-else Failure
-    db-->>orch: Connection timeout or query error
-    Note over orch,db: Retried up to 3 times
-end
-
-child->>db: SQL SELECT for watermarks and export recipe details
-alt Success
-    db-->>child: ResultSet watermark timestamps and recipe path
-else Failure
-    db-->>child: Database read error
-    Note over child,db: Retried up to 3 times
+emr_do->>dev: Distributed SQL query against golden data source tables
+alt Successful Execution
+    dev-->>emr_do: Spark DataFrame containing extracted golden entities
+else Timeout or Connection Error
+    Note over emr_do,dev: Exponential backoff retry up to 3 times
+    emr_do->>dev: Retry Distributed SQL query
+    Note over emr_do,dev: If unrecoverable exception is raised upstream
 end
 ```
 
-### 9.5. Schema Definitions (DB Tables / API JSON / Telemetry CloudEvents)
-<a id="laminar-sec-c.imp_aws_aws_rds_7.schema"></a>
-The relational schema owned by `cofig_db` is defined by the following PostgreSQL DDL statements:
-
+### 8.5. Schema Definitions (DB Tables / API JSON / Telemetry CloudEvents)
+<a id="laminar-sec-c.imp_aws_aws_redshift_6.schema"></a>
 ```sql
--- Enable UUID extension if required
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
--- Export Configurations Table
-CREATE TABLE export_configurations (
-    id VARCHAR(64) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
-    connection_name VARCHAR(100) NOT NULL UNIQUE,
-    target_type VARCHAR(32) NOT NULL CHECK (target_type IN ('s3', 'azure_blob', 'gcs', 'sftp')),
-    dataset VARCHAR(64) NOT NULL CHECK (dataset IN ('identity_profiles', 'subscription_statuses', 'campaigns_reactions', 'reservation_items')),
-    mode VARCHAR(16) NOT NULL CHECK (mode IN ('initial', 'incremental')),
-    cron_schedule VARCHAR(64) NOT NULL,
-    encrypted_credentials TEXT NOT NULL,
-    is_active BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+-- DDL definition for Golden Entity Source Store tables residing in Redshift (dev database)
+CREATE TABLE IF NOT EXISTS unified_identity_profile (
+    profile_id VARCHAR(64) NOT NULL DISTKEY,
+    customer_id VARCHAR(64) NOT NULL,
+    profile_status VARCHAR(32),
+    created_at TIMESTAMP WITHOUT TIME ZONE,
+    updated_at TIMESTAMP WITHOUT TIME ZONE SORTKEY
 );
 
--- Export Watermarks Table for Incremental State Tracking
-CREATE TABLE export_watermarks (
-    config_id VARCHAR(64) PRIMARY KEY REFERENCES export_configurations(id) ON DELETE CASCADE,
-    watermark_timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
-    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE IF NOT EXISTS pii_restricted_profile (
+    profile_id VARCHAR(64) NOT NULL DISTKEY,
+    masked_email VARCHAR(256),
+    masked_phone VARCHAR(64),
+    updated_at TIMESTAMP WITHOUT TIME ZONE SORTKEY
 );
 
--- Execution Audit and Run Logs Reference Table
-CREATE TABLE export_execution_logs (
-    run_id VARCHAR(64) PRIMARY KEY,
-    config_id VARCHAR(64) REFERENCES export_configurations(id) ON DELETE CASCADE,
-    execution_id VARCHAR(64) NOT NULL,
-    status VARCHAR(32) NOT NULL,
-    started_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    completed_at TIMESTAMP WITH TIME ZONE NULL
+CREATE TABLE IF NOT EXISTS contact_method_subscription (
+    subscription_id VARCHAR(64) NOT NULL DISTKEY,
+    customer_id VARCHAR(64) NOT NULL,
+    channel VARCHAR(32),
+    subscribed BOOLEAN,
+    updated_at TIMESTAMP WITHOUT TIME ZONE SORTKEY
 );
 
--- Indexes for performance optimization
-CREATE INDEX idx_export_configs_active ON export_configurations(is_active);
-CREATE INDEX idx_export_logs_execution_id ON export_execution_logs(execution_id);
+CREATE TABLE IF NOT EXISTS enriched_campaigns (
+    campaign_id VARCHAR(64) NOT NULL DISTKEY,
+    campaign_name VARCHAR(256),
+    start_date TIMESTAMP WITHOUT TIME ZONE,
+    end_date TIMESTAMP WITHOUT TIME ZONE,
+    updated_at TIMESTAMP WITHOUT TIME ZONE SORTKEY
+);
+
+CREATE TABLE IF NOT EXISTS enriched_campaign_reactions (
+    reaction_id VARCHAR(64) NOT NULL DISTKEY,
+    campaign_id VARCHAR(64),
+    customer_id VARCHAR(64),
+    reaction_type VARCHAR(64),
+    updated_at TIMESTAMP WITHOUT TIME ZONE SORTKEY
+);
+
+CREATE TABLE IF NOT EXISTS room_stay_reservation (
+    reservation_id VARCHAR(64) NOT NULL DISTKEY,
+    property_id VARCHAR(64),
+    guest_id VARCHAR(64),
+    check_in_date DATE,
+    check_out_date DATE,
+    updated_at TIMESTAMP WITHOUT TIME ZONE SORTKEY
+);
+
+CREATE TABLE IF NOT EXISTS restaurant_reservation (
+    reservation_id VARCHAR(64) NOT NULL DISTKEY,
+    restaurant_id VARCHAR(64),
+    guest_id VARCHAR(64),
+    reservation_time TIMESTAMP WITHOUT TIME ZONE,
+    updated_at TIMESTAMP WITHOUT TIME ZONE SORTKEY
+);
+
+CREATE TABLE IF NOT EXISTS tee_time_reservation (
+    reservation_id VARCHAR(64) NOT NULL DISTKEY,
+    course_id VARCHAR(64),
+    player_id VARCHAR(64),
+    tee_time TIMESTAMP WITHOUT TIME ZONE,
+    updated_at TIMESTAMP WITHOUT TIME ZONE SORTKEY
+);
+
+CREATE TABLE IF NOT EXISTS spa_treatment_reservation (
+    reservation_id VARCHAR(64) NOT NULL DISTKEY,
+    spa_id VARCHAR(64),
+    guest_id VARCHAR(64),
+    treatment_time TIMESTAMP WITHOUT TIME ZONE,
+    updated_at TIMESTAMP WITHOUT TIME ZONE SORTKEY
+);
 ```
 
 ---
 
+### 8.6. Local Design Assumptions
+<a id="laminar-sec-c.imp_aws_aws_redshift_6.asm"></a>
+- **Assumption 1**: The Golden Entity Source Store (`dev`) is an existing, externally owned Redshift cluster (`cluster_identifier = golden_data_source`, database `dev`) that is excluded from pipeline Terraform teardowns and deletion protection checks per SCRUM-485.
+- **Assumption 2**: Tables are appropriately indexed and distributed using `DISTKEY` on entity identifiers and `SORTKEY` on `updated_at` timestamps to ensure optimal scan performance during incremental watermark extractions.
+- **Assumption 3**: Credentials for accessing Redshift are retrieved securely at runtime via SSM Parameter Store secrets references managed by `common.clients.db.DbClient`.
+
+## 9. Component Design: cofig_db
+<a id="laminar-sec-c.imp_aws_aws_rds_7"></a>
+
+<!-- laminar:diagram-settings:imp-aws-aws_rds-7 -->
+**Diagram settings (user decisions — authoritative)**
+
+| Setting | Value |
+| --- | --- |
+| `engine` | `postgres` |
+| `engine_version` | `15.4` |
+| `instance_class` | `db.t3.micro` |
+| `allocated_storage` | `20` |
+| `multi_az` | `false` |
+| `db_instance_identifier` | `cofig_db` |
+
+<!-- /laminar:diagram-settings -->
+
+
+### 9.1. Component Contract (Bi-Directional Inputs & Outputs)
+<a id="laminar-sec-c.imp_aws_aws_rds_7.contract"></a>
+**Diagram settings (user decisions — authoritative)**
+
+| Setting | Value |
+|---|---|
+| `engine` | `postgres` |
+| `engine_version` | `15.4` |
+| `instance_class` | `db.t3.micro` |
+| `allocated_storage` | `20` GB |
+| `multi_az` | `False` |
+| `db_instance_identifier` | `cofig_db` |
+
+**Role.** `cofig_db` is the Export Config Store — the authoritative operational data store for the DataOutbound platform. It holds export connection configurations (target type, dataset, mode, cron schedule, encrypted credentials), incremental extraction watermarks, and execution state. It is a passive relational store: it never initiates a call, never publishes an event, and never triggers a workflow. Every interaction is a parameterised SQL statement issued by a caller through the shared `DbClient`.
+
+#### 9.1.1 Inbound contracts (who writes to / reads from `cofig_db`)
+
+| Caller | Direction | Protocol | Trigger | Payload | Response | Errors | Idempotency |
+|---|---|---|---|---|---|---|---|
+| **do-admin-api** | write | HTTPS/REST → JDBC (PostgreSQL) | Admin API request | Export configuration payload (JSON with `tenant_id`, `schedule`, `destination_type`, `credentials_ref`) | `201 Created` with configuration ID | `400 Bad Request`, `500 Internal Server Error`; retried by client with backoff | Idempotent via unique configuration ID or upsert key |
+| **orchestrator** | read | JDBC (PostgreSQL) | DAG task execution start | `SELECT` for active export configurations matching schedule | ResultSet of active export configurations | Connection timeout or query error; retried up to 3 times | Idempotent read-only query |
+| **child_export_dag** | read | JDBC (PostgreSQL) | Child export DAG initialization | `SELECT` for watermarks and export recipe details | ResultSet with watermark timestamps and recipe path | Database read error; retried up to 3 times | Idempotent read-only query |
+
+#### 9.1.2 Outbound contracts (what `cofig_db` produces)
+
+`cofig_db` produces no outbound calls. Its outputs are (1) committed relational rows returned to the calling component as a ResultSet, and (2) committed state changes (configuration rows, watermark advances, execution-state transitions) that are durable and visible to subsequent reads. It emits no telemetry of its own; administrative and execution audit events are written by the calling components to **audit_bucket** (`com.laminar.dataoutbound.config.updated` for admin writes).
+
+#### 9.1.3 Configuration the design actually sets
+
+Only the properties the architecture decides are listed; everything else defers to RDS/PostgreSQL managed defaults, which is itself the decision.
+
+| Property | Value | Rationale |
+|---|---|---|
+| `engine` / `engine_version` | `postgres` / `15.4` | Relational ACID store for configuration and watermark state; version pinned for reproducible migrations. |
+| `instance_class` | `db.t3.micro` | User-set; sized for metadata-only workloads (small transactional reads/writes), not analytical scans. |
+| `allocated_storage` | `20` GB | User-set; sufficient for configuration rows, watermarks and execution-state records. Storage auto-scaling (`gp3`) is enabled so the volume grows rather than failing on disk exhaustion. |
+| `multi_az` | `False` | User-set and authoritative. Single-AZ deployment; see Local Design Assumptions for the availability implication and the recommendation for higher environments. |
+| `db_instance_identifier` | `cofig_db` | Explicit resource identifier used by the Terraform module and by the `DbClient` connection resolver. |
+| Deletion protection | Read from per-environment Terraform variable (dev/staging/prod) | SCRUM-485 AC#3: no hardcoded value; lower environments tear down cleanly, staging/prod are protected. |
+| Network placement | Private database subnets, no public accessibility | Configuration and credentials must never be reachable from the internet. |
+| Encryption at rest | KMS CMK | Protects configuration rows and encrypted credential fields. |
+| Transport encryption | TLS enforced (`rds.force_ssl=1`) | Credentials and configuration travel encrypted in transit. |
+| Credentials source | SSM Parameter Store (SecureString) | No database credential is hardcoded; the `DbClient` resolves it at runtime. |
+
+### 9.2. Class and Interface Definitions
+<a id="laminar-sec-c.imp_aws_aws_rds_7.classes"></a>
+`cofig_db` owns no application code of its own; it is a managed PostgreSQL instance. The classes below are the **typed data contracts** the design owns for its tables, plus the shared client the callers use. All shared concerns are taken from the blueprint foundation — the `DbClient` is imported, never re-declared.
+
+```python
+"""Typed data contracts for the Export Config Store (cofig_db).
+
+These models mirror the canonical DDL in the Schema Definitions section and are
+imported by do-admin-api, orchestrator and child_export_dag. They contain no I/O.
+"""
+from __future__ import annotations
+
+from datetime import datetime
+from enum import Enum
+from typing import Optional
+
+from pydantic import BaseModel, Field, field_validator
+
+
+class TargetType(str, Enum):
+    """Allowed destination types (SCRUM-479 AC#1)."""
+    S3 = "s3"
+    AZURE_BLOB = "azure_blob"
+    GCS = "gcs"
+    SFTP = "sftp"
+
+
+class Dataset(str, Enum):
+    """Allowed Golden Entity datasets (SCRUM-479 AC#1)."""
+    IDENTITY_PROFILES = "identity_profiles"
+    SUBSCRIPTION_STATUSES = "subscription_statuses"
+    CAMPAIGNS_REACTIONS = "campaigns_reactions"
+    RESERVATION_ITEMS = "reservation_items"
+
+
+class ExtractionMode(str, Enum):
+    """Full or incremental extraction (SCRUM-481 AC#4/AC#5)."""
+    INITIAL = "initial"
+    INCREMENTAL = "incremental"
+
+
+class ExportConfigurationRecord(BaseModel):
+    """Read-only projection of a row in cofig_db.export_configurations.
+
+    The canonical DDL for this table is declared once in the cofig_db
+    component chapter; this model mirrors it and is never re-declared.
+    """
+    config_id: str
+    connection_name: str
+    target_type: Literal["s3", "azure_blob", "gcs", "sftp"]
+    dataset: Literal[
+        "identity_profiles",
+        "subscription_statuses",
+        "campaigns_reactions",
+        "reservation_items",
+    ]
+    mode: Literal["initial", "incremental"]
+    cron_schedule: str
+    is_active: bool
+    credentials_ref: str  # SSM SecureString reference — never plaintext
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass(frozen=True)
+class WatermarkRecord:
+    """Incremental extraction state read from cofig_db."""
+
+    config_id: str
+    dataset: str
+    watermark_ts: Optional[datetime]  # None => initial full synchronisation
+    recipe_path: str
+
+
+class ExecutionState(str, Enum):
+    """Lifecycle state of one orchestrator/child execution."""
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    TERMINATED = "terminated"
+
+
+class ExecutionLogRecord(BaseModel):
+    """Execution-state row keyed by the lineage UUID (SCRUM-480 AC#3/AC#7)."""
+    execution_id: str = Field(..., description="RFC 4122 v4 lineage UUID")
+    config_id: str
+    state: ExecutionState
+    started_at: datetime
+    finished_at: Optional[datetime] = None
+```
+
+> Same `ExportConfigurationRecord` as defined in *Class and Interface Definitions* — one schema, one definition.
+> Same `WatermarkRecord` as defined in *Class and Interface Definitions* — one schema, one definition.
+
+The callers reach the store exclusively through the shared foundation client:
+
+```python
+from dataoutbound_section_tree.common.clients.db.db_client import DbClient
+from dataoutbound_section_tree.config.config_loader import ConfigLoader
+from dataoutbound_section_tree.util.exceptions import ClientError, NotFoundError, ConflictError
+```
+
+`DbClient` is the single construction point for the engine and connection pool; it resolves the connection string from `ConfigLoader` (which in turn resolves the SSM SecureString reference), exposes `execute` / `fetch_one` / `fetch_all` helpers and a transaction context manager, and never builds SQL from untrusted strings.
+
+### 9.3. Implementation Code Skeleton (Stubs & Handlers)
+<a id="laminar-sec-c.imp_aws_aws_rds_7.skeleton"></a>
+Illustrative skeleton — the Component Contract and Schema Definitions are binding. `cofig_db` is a managed data store with no custom runtime; the module below is the **repository layer** that the callers import. It is the only place the store's SQL lives, and it is deliberately thin: parameterised statements, typed returns, no business logic.
+
+```python
+"""Repository over the Export Config Store (cofig_db).
+
+Module path: src/dataoutbound_section_tree/common/clients/db/db_client.py provides
+DbClient; this repository is owned by the cofig_db design and imported by
+do-admin-api, orchestrator and child_export_dag.
+"""
+from __future__ import annotations
+
+import logging
+from datetime import datetime, timezone
+from typing import Optional, Sequence
+
+from dataoutbound_section_tree.common.clients.db.db_client import DbClient
+from dataoutbound_section_tree.util.exceptions import ClientError, NotFoundError
+
+from .models import (
+    ExecutionLogRecord,
+    ExecutionState,
+    ExportConfigurationRecord,
+    WatermarkRecord,
+)
+
+logger = logging.getLogger(__name__)
+
+
+class ExportConfigRepository:
+    """Parameterised access to the canonical `export_configurations` table."""
+
+    def __init__(self, db: DbClient) -> None:
+        self._db = db
+
+    def insert(self, record: ExportConfigurationRecord) -> str:
+        """Insert a new configuration; returns the generated config_id.
+
+        Idempotent via the unique config_id / upsert key (frozen contract).
+        """
+        sql = (
+            "INSERT INTO export_configurations "
+            "(config_id, connection_name, target_type, dataset, mode, cron_schedule, "
+            " credentials_encrypted, is_active, created_at, updated_at) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+            "ON CONFLICT (config_id) DO UPDATE SET "
+            " connection_name = EXCLUDED.connection_name, "
+            " target_type = EXCLUDED.target_type, "
+            " dataset = EXCLUDED.dataset, "
+            " mode = EXCLUDED.mode, "
+            " cron_schedule = EXCLUDED.cron_schedule, "
+            " credentials_encrypted = EXCLUDED.credentials_encrypted, "
+            " is_active = EXCLUDED.is_active, "
+            " updated_at = EXCLUDED.updated_at "
+            "RETURNING config_id"
+        )
+        try:
+            row = self._db.fetch_one(sql, (
+                record.config_id, record.connection_name, record.target_type.value,
+                record.dataset.value, record.mode.value, record.cron_schedule,
+                record.credentials_encrypted, record.is_active,
+                record.created_at, record.updated_at,
+            ))
+        except ClientError as exc:
+            logger.error("insert export_configuration failed: %s", exc)
+            raise
+        return row["config_id"]
+
+    def get(self, config_id: str) -> ExportConfigurationRecord:
+        """Fetch one configuration by primary key; raises NotFoundError if absent."""
+        sql = (
+            "SELECT config_id, connection_name, target_type, dataset, mode, cron_schedule, "
+            "       credentials_encrypted, is_active, created_at, updated_at "
+            "FROM export_configurations WHERE config_id = %s"
+        )
+        row = self._db.fetch_one(sql, (config_id,))
+        if row is None:
+            raise NotFoundError(f"export configuration {config_id} not found")
+        return ExportConfigurationRecord(**row)
+
+    def update(self, config_id: str, **fields) -> ExportConfigurationRecord:
+        """Update named non-secret fields; `updated_at` is always refreshed."""
+        allowed = {"connection_name", "target_type", "dataset", "mode",
+                   "cron_schedule", "credentials_encrypted", "is_active"}
+        unknown = set(fields) - allowed
+        if unknown:
+            raise ValueError(f"unknown columns: {sorted(unknown)}")
+        fields["updated_at"] = datetime.now(timezone.utc)
+        assignments = ", ".join(f"{col} = %s" for col in fields)
+        sql = (
+            f"UPDATE export_configurations SET {assignments} "
+            "WHERE config_id = %s RETURNING config_id"
+        )
+        row = self._db.fetch_one(sql, (*fields.values(), config_id))
+        if row is None:
+            raise NotFoundError(f"export configuration {config_id} not found")
+        return self.get(config_id)
+
+    def delete(self, config_id: str) -> None:
+        """Delete a configuration; raises NotFoundError if it did not exist."""
+        row = self._db.fetch_one(
+            "DELETE FROM export_configurations WHERE config_id = %s RETURNING config_id",
+            (config_id,),
+        )
+        if row is None:
+            raise NotFoundError(f"export configuration {config_id} not found")
+
+    def list_active(self) -> Sequence[ExportConfigurationRecord]:
+        """Return every active configuration for the orchestrator's window selection."""
+        sql = (
+            "SELECT config_id, connection_name, target_type, dataset, mode, cron_schedule, "
+            "       credentials_encrypted, is_active, created_at, updated_at "
+            "FROM export_configurations WHERE is_active = TRUE"
+        )
+        return [ExportConfigurationRecord(**row) for row in self._db.fetch_all(sql, ())]
+
+
+class WatermarkRepository:
+    """Reads and advances incremental extraction watermarks."""
+
+    def __init__(self, db: DbClient) -> None:
+        self._db = db
+
+    def get(self, config_id: str, dataset: str) -> Optional[WatermarkRecord]:
+        row = self._db.fetch_one(
+            "SELECT config_id, dataset, watermark_ts, updated_at "
+            "FROM extraction_watermarks WHERE config_id = %s AND dataset = %s",
+            (config_id, dataset),
+        )
+        return WatermarkRecord(**row) if row else None
+
+    def advance(self, config_id: str, dataset: str, watermark_ts: datetime) -> None:
+        """Advance the watermark; strictly-greater-than filtering is the caller's contract."""
+        self._db.execute(
+            "INSERT INTO extraction_watermarks (config_id, dataset, watermark_ts, updated_at) "
+            "VALUES (%s, %s, %s, %s) "
+            "ON CONFLICT (config_id, dataset) DO UPDATE SET "
+            " watermark_ts = EXCLUDED.watermark_ts, updated_at = EXCLUDED.updated_at",
+            (config_id, dataset, watermark_ts, datetime.now(timezone.utc)),
+        )
+
+
+class ExecutionLogRepository:
+    """Records execution state keyed by the lineage UUID."""
+
+    def __init__(self, db: DbClient) -> None:
+        self._db = db
+
+    def start(self, execution_id: str, config_id: str) -> None:
+        self._db.execute(
+            "INSERT INTO execution_logs (execution_id, config_id, state, started_at) "
+            "VALUES (%s, %s, %s, %s) ON CONFLICT (execution_id) DO NOTHING",
+            (execution_id, config_id, ExecutionState.RUNNING.value,
+             datetime.now(timezone.utc)),
+        )
+
+    def finish(self, execution_id: str, state: ExecutionState) -> None:
+        self._db.execute(
+            "UPDATE execution_logs SET state = %s, finished_at = %s WHERE execution_id = %s",
+            (state.value, datetime.now(timezone.utc), execution_id),
+        )
+
+    def get(self, execution_id: str) -> ExecutionLogRecord:
+        row = self._db.fetch_one(
+            "SELECT execution_id, config_id, state, started_at, finished_at "
+            "FROM execution_logs WHERE execution_id = %s",
+            (execution_id,),
+        )
+        if row is None:
+            raise NotFoundError(f"execution {execution_id} not found")
+        return ExecutionLogRecord(**row)
+```
+
+### 9.4. Cross-Component Interaction Sequence (Local Mermaid/ASCII Flow)
+<a id="laminar-sec-c.imp_aws_aws_rds_7.seq"></a>
+`cofig_db` is a passive store: it never initiates an interaction. Every sequence below is driven by a caller, and every statement is issued through the shared `DbClient` over TLS on a private-subnet JDBC connection.
+
+1. **do-admin-api → cofig_db (write).** An authenticated administrator submits a create/update/delete request. `do-admin-api` validates the payload, encrypts the credential fields, and calls `ExportConfigRepository.insert` / `update` / `delete` inside a single transaction. On success the store returns the committed `config_id` (or the updated row); `do-admin-api` then returns `201`/`200`/`204` and writes the corresponding `ADMIN_*` audit event to **audit_bucket**. On a `400`-class validation failure the store is never touched; on a `500`-class failure the transaction rolls back and the client retries with backoff.
+2. **orchestrator → cofig_db (read).** On each scheduled or manual trigger, the orchestrator's first task calls `ExportConfigRepository.list_active()` to read every active configuration, then applies the ±10-minute cron window in memory. The read is idempotent and read-only; a connection timeout or query error is retried up to 3 times before the DAG task fails and an `EXECUTION_FAILED` audit event is written.
+3. **orchestrator → cofig_db (write, execution state).** After selecting connections and generating the lineage UUID, the orchestrator calls `ExecutionLogRepository.start` to record the run. This is the only write the orchestrator performs against the store.
+4. **child_export_dag → cofig_db (read).** On initialisation the child DAG reads its connection JSON and the current watermark via `WatermarkRepository.get`, then passes both to the Spark job. The read is idempotent; failures retry up to 3 times.
+5. **child_export_dag → cofig_db (write, watermark advance).** After the Spark job reports success, the child DAG calls `WatermarkRepository.advance` with the run's extraction timestamp, and `ExecutionLogRepository.finish` with the terminal state. Both writes are idempotent per lineage UUID.
+6. **Failure path.** Any store error surfaces as a typed `ClientError` / `NotFoundError` from the repository. The caller decides: retry (transient connection errors, up to 3 attempts with exponential backoff), fail fast (validation or not-found), or roll back (write transactions). No caller ever writes a partial row — every mutation is wrapped in a transaction with rollback semantics.
+```mermaid
+sequenceDiagram
+    participant Admin as do-admin-api
+    participant Orch as orchestrator
+    participant Child as child_export_dag
+    participant DB as cofig_db
+
+    Note over DB: Passive store, never initiates. All calls via DbClient over TLS JDBC.
+
+    Admin->>DB: write Export configuration payload (JSON with tenant_id, schedule, destination_type, credentials_ref)
+    alt success
+        DB-->>Admin: 201 Created with configuration ID
+        Note over Admin,DB: telemetry com.laminar.dataoutbound.config.updated
+    else 400 Bad Request
+        DB-->>Admin: 400 Bad Request (store never touched)
+    else 500 Internal Server Error
+        DB-->>Admin: 500 Internal Server Error (retried by client with backoff)
+    end
+
+    Orch->>DB: read SQL SELECT query for active export configurations matching schedule
+    alt success
+        DB-->>Orch: ResultSet containing active export configurations
+    else Connection timeout or query error
+        DB-->>Orch: Connection timeout or query error (retried up to 3 times)
+    end
+
+    Orch->>DB: write ExecutionLogRepository.start (run record)
+    alt success
+        DB-->>Orch: ack
+    else store error
+        DB-->>Orch: ClientError / NotFoundError (rollback)
+    end
+
+    Child->>DB: read SQL SELECT for watermarks and export recipe details
+    alt success
+        DB-->>Child: ResultSet with watermark timestamps and recipe path
+    else Database read error
+        DB-->>Child: Database read error (retried up to 3 times)
+    end
+
+    Child->>DB: write WatermarkRepository.advance (extraction timestamp) and ExecutionLogRepository.finish (terminal state)
+    alt success
+        DB-->>Child: ack (idempotent per lineage UUID)
+    else store error
+        DB-->>Child: ClientError / NotFoundError (retry, fail fast, or rollback)
+    end
+
+    Note over DB: Any store error surfaces as typed ClientError / NotFoundError. No partial row, every mutation wrapped in transaction with rollback.
+```
+
+### 9.5. Schema Definitions (DB Tables / API JSON / Telemetry CloudEvents)
+<a id="laminar-sec-c.imp_aws_aws_rds_7.schema"></a>
+#### 9.5.1 Canonical DDL — owned by this design
+
+The `export_configurations` table is declared **once, here**, and is the single canonical definition referenced by the do-admin-api, orchestrator and child_export_dag chapters. No other chapter re-declares it with different columns.
+
+```sql
+-- Canonical definition of the Export Config Store schema (cofig_db).
+-- Referenced (not re-declared) by do-admin-api, orchestrator and child_export_dag.
+
+CREATE TABLE export_configurations (
+    config_id             UUID         PRIMARY KEY,
+    connection_name       VARCHAR(100) NOT NULL CHECK (char_length(connection_name) BETWEEN 1 AND 100),
+    target_type           VARCHAR(16)  NOT NULL CHECK (target_type IN ('s3','azure_blob','gcs','sftp')),
+    dataset               VARCHAR(32)  NOT NULL CHECK (dataset IN
+                              ('identity_profiles','subscription_statuses',
+                               'campaigns_reactions','reservation_items')),
+    mode                  VARCHAR(16)  NOT NULL CHECK (mode IN ('initial','incremental')),
+    cron_schedule         VARCHAR(128) NOT NULL,          -- validated 5-field cron at the API boundary
+    credentials_encrypted TEXT         NOT NULL,          -- KMS-encrypted blob; never plaintext
+    is_active             BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_at            TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    updated_at            TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_export_configurations_active
+    ON export_configurations (is_active)
+    WHERE is_active = TRUE;
+
+CREATE TABLE extraction_watermarks (
+    config_id     UUID         NOT NULL REFERENCES export_configurations (config_id) ON DELETE CASCADE,
+    dataset       VARCHAR(32)  NOT NULL,
+    watermark_ts  TIMESTAMPTZ  NOT NULL,
+    updated_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    PRIMARY KEY (config_id, dataset)
+);
+
+CREATE TABLE execution_logs (
+    execution_id  UUID         PRIMARY KEY,               -- RFC 4122 v4 lineage UUID
+    config_id     UUID         NOT NULL REFERENCES export_configurations (config_id) ON DELETE CASCADE,
+    state         VARCHAR(16)  NOT NULL CHECK (state IN ('running','succeeded','failed','terminated')),
+    started_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    finished_at   TIMESTAMPTZ
+);
+
+CREATE INDEX idx_execution_logs_config_started
+    ON execution_logs (config_id, started_at DESC);
+```
+
+#### 9.5.2 Telemetry — CloudEvents emitted by callers, not by the store
+
+`cofig_db` writes no telemetry. The audit records that describe its state changes are emitted by the calling components to **audit_bucket** in the fixed SCRUM-486 schema. The store's own operational logs (slow queries, connection errors) are forwarded to CloudWatch Logs with the organisation logging-standard retention value.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AuditCloudEvent",
+  "type": "object",
+  "required": ["specversion", "id", "source", "type", "time", "data"],
+  "properties": {
+    "specversion": { "const": "1.0" },
+    "id":          { "type": "string" },
+    "source":      { "type": "string", "examples": ["com.laminar.dataoutbound.do-admin-api"] },
+    "type": {
+      "type": "string",
+      "enum": [
+        "com.laminar.dataoutbound.config.updated",
+        "com.laminar.dataoutbound.orchestrator.triggered",
+        "com.laminar.dataoutbound.child.triggered",
+        "com.laminar.dataoutbound.emr.started",
+        "com.laminar.dataoutbound.staging.written",
+        "com.laminar.dataoutbound.egress.triggered",
+        "com.laminar.dataoutbound.egress_dag.started",
+        "com.laminar.dataoutbound.transfer.sftp",
+        "com.laminar.dataoutbound.transfer.s3",
+        "com.laminar.dataoutbound.transfer.azure",
+        "com.laminar.dataoutbound.transfer.gcs",
+        "com.laminar.dataoutbound.audit.admin",
+        "com.laminar.dataoutbound.audit.spark",
+        "com.laminar.dataoutbound.audit.egress"
+      ]
+    },
+    "time": { "type": "string", "format": "date-time" },
+    "data": {
+      "type": "object",
+      "required": ["actor_id", "timestamp_utc", "event_type", "execution_id"],
+      "properties": {
+        "actor_id":      { "type": "string" },
+        "timestamp_utc": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$" },
+        "event_type": {
+          "type": "string",
+          "enum": ["ADMIN_CREATE", "ADMIN_UPDATE", "ADMIN_DELETE", "ADMIN_MANUAL_TRIGGER",
+                   "EXECUTION_STARTED", "EXECUTION_COMPLETED",
+                   "TRANSFER_STARTED", "TRANSFER_COMPLETED", "TRANSFER_FAILED"]
+        },
+        "execution_id":  { "type": "string", "format": "uuid" },
+        "config_id":     { "type": "string", "format": "uuid" },
+        "status":        { "type": "string" }
+      }
+    }
+  }
+}
+```
+
 ### 9.6. Local Design Assumptions
 <a id="laminar-sec-c.imp_aws_aws_rds_7.asm"></a>
-1. **Multi-AZ and High Availability**: Configured with `multi_az = False` for the non-production/cost-optimized baseline specified in the graph properties, while production deployments override this to `True` with synchronous standby replication per AWS RDS best practices.
-2. **Storage Scaling**: Utilizes `gp3` storage with automated storage scaling enabled to prevent out-of-disk failures during heavy transaction logging.
-3. **Credentials Encryption**: All credential payloads stored in `encrypted_credentials` are encrypted at the application boundary prior to insertion using AWS KMS Customer Managed Keys (CMKs) via SSM/Secrets management helpers.
-4. **Backup and Retention**: Automated backups are retained for 30 days, complying with organizational recovery point objectives (RPO of 24 hours) and recovery time objectives (RTO of 2 hours).
+- **`multi_az = False` is authoritative.** The diagram sets `multi_az = False` for `cofig_db`; this is honoured verbatim as the store's configuration. The consequence is a single-AZ deployment with no automatic failover: an AZ outage makes the configuration store unavailable until RDS recovers, which would stall orchestrator selection and child-DAG initialisation. **Recommendation:** for staging and production, consider overriding `multi_az` to `True` via the per-environment Terraform variable (the same mechanism already used for deletion protection), because the store is on the critical path of every run and the RTO/RPO targets in the architecture summary (2 h / 24 h) are more comfortably met with a synchronous standby. This is a recommendation only — the deployed value remains `False` unless the user changes the diagram.
+- **Instance sizing.** `db.t3.micro` with `20` GB is assumed sufficient for metadata-only workloads (small transactional reads and writes, no analytical scans). Storage auto-scaling (`gp3`) is enabled so the volume grows rather than failing on disk exhaustion. Capacity planning is required before onboarding a large number of concurrent enterprise connections.
+- **Credential encryption.** Credential fields are persisted only as ciphertext in `credentials_encrypted`; the encryption key is a KMS CMK and is a stateful resource covered by the environment-driven deletion-protection flag (SCRUM-485 AC#3). No retrieve path returns plaintext, and no raw read of a stored record exposes a plaintext credential (SCRUM-479 AC#1, SCRUM-481 AC#6).
+- **Watermark semantics.** Incremental extraction filters strictly greater than `watermark_ts` (SCRUM-481 AC#5). The watermark is advanced only after the Spark job reports success, so a failed run re-extracts the same window on retry — idempotent per lineage UUID.
+- **Log retention.** The organisation logging-standard retention value (in days) is not stated in the inputs; it is assumed to be **365 days** pending confirmation before sprint commitment, and is applied uniformly to every pipeline log group including the store's slow-query and error logs. Until confirmed, the value is parameterised, never hardcoded.
+- **Backups.** Automated backups are enabled with a retention of at least 30 days, consistent with the RPO of 24 hours stated in the architecture summary; no cross-region copy is assumed because the requirements do not mandate a secondary region.
+- **Schema migrations.** DDL changes are applied through the migration pipeline only; direct modifications to database records that bypass `do-admin-api` or the migration pipeline are prohibited.
+- **No telemetry of its own.** `cofig_db` emits no business audit events; the SCRUM-486 expected-event-count formula (admin operations + 2N + 2N) is satisfied entirely by the calling components, so the store must not duplicate events at the storage layer.
 
 ## 10. Component Design: staging_bucet_internal
 <a id="laminar-sec-c.imp_aws_aws_s3_bucket_8"></a>
 
+<!-- laminar:diagram-settings:imp-aws-aws_s3_bucket-8 -->
+**Diagram settings (user decisions — authoritative)**
+
+| Setting | Value |
+| --- | --- |
+| `versioning` | `false` |
+| `encryption` | `AES256` |
+| `public_access_block` | `true` |
+| `lifecycle_enabled` | `false` |
+| `lifecycle_transition_days` | `30` |
+| `lifecycle_glacier_days` | `90` |
+| `bucket_name` | `staging_bucet_internal` |
+
+<!-- /laminar:diagram-settings -->
+
+
 ### 10.1. Component Contract (Bi-Directional Inputs & Outputs)
 <a id="laminar-sec-c.imp_aws_aws_s3_bucket_8.contract"></a>
-**staging_bucet_internal** is the internal S3 bucket that holds the staged Golden Entity extract datasets produced by **emr_do** and consumed by **egress dag**. It is a data store, not a service: it owns no code, only objects, a bucket policy, an event notification and a lifecycle rule. It is the only place in the flow where staged Parquet/JSON datasets live, and it is the trigger source for the **egress-lambda** invocation.
+#### 10.1.1 Diagram settings (user decisions — authoritative)
 
-#### 10.1.1 Configuration the design actually sets
+| Setting | Value |
+|---|---|
+| `bucket_name` | `staging_bucet_internal` |
+| `versioning` | `False` |
+| `encryption` | `AES256` |
+| `public_access_block` | `True` |
+| `lifecycle_enabled` | `False` |
+| `lifecycle_transition_days` | `30` |
+| `lifecycle_glacier_days` | `90` |
+| `tags` | `{}` |
 
-| Setting | Value | Rationale |
+These values are binding. `lifecycle_enabled = False` is the user's explicit decision and is honoured verbatim; the SCRUM-482 AC#1 / SCRUM-486 AC#5 seven-day purge requirement is recorded below as a **Recommendation**, not as a configuration change.
+
+#### 10.1.2 Role
+
+`staging_bucet_internal` is the transient landing zone between the Export Extract Spark Job (`emr_do`) and the egress path (`egress-lambda` → `egress dag`). It holds raw staged export files (JSON/TXT per entity type, keyed by lineage UUID) just long enough for the S3 `ObjectCreated` notification to fire and the downstream transform/egress flow to consume them. It is not a system of record: staged objects are reproducible by re-running the Child Export DAG for the same lineage UUID.
+
+#### 10.1.3 Inbound contract (what writes into this component)
+
+| Source | Action | Protocol | Payload | Trigger |
+|---|---|---|---|---|
+| `emr_do` | write | S3 API (boto3 / Spark S3Committer) | Partitioned Parquet/JSON data files + manifest, keyed by lineage UUID | Spark job write phase |
+| `egress dag` | write (Acme inspection staging only) | S3 API (boto3) | Export package + `manifest_<lineage_uuid>.json` | Internal inspection-staging delivery (SCRUM-484 AC#4) |
+
+Frozen edge contracts honoured verbatim:
+
+- **`emr_do` → `staging_bucet_internal`** — file transfer; S3 API (boto3 / Spark S3Committer); trigger: Spark job write phase; request: Parquet/JSON data files and manifest written to staging bucket; response: S3 multipart upload success confirmation; errors: S3 throttling or network error, Spark task retried automatically; idempotency: idempotent via deterministic S3 object key paths and UUID; telemetry event: `com.laminar.dataoutbound.staging.written`.
+- **`staging_bucet_internal` → `egress-lambda`** — async event; S3 Event Notification to Lambda; trigger: S3 `ObjectCreated` notification; request: S3 event JSON payload with bucket name and object key; response: Lambda execution success acknowledgment; errors: Lambda invocation failure routed to SQS DLQ after retries; idempotency: idempotent via S3 object key and version ID tracking; telemetry event: `com.laminar.dataoutbound.egress.triggered`.
+- **`egress dag` → `staging_bucet_internal`** — data read; S3 API (boto3); trigger: Egress DAG task execution; request: `GetObject` for staged export files and manifests; response: file object stream; errors: S3 read error retried up to 3 times; idempotency: idempotent read operation; telemetry event: none.
+
+#### 10.1.4 Outbound contract (what this component emits)
+
+| Target | Action | Protocol | Payload | Trigger |
+|---|---|---|---|---|
+| `egress-lambda` | trigger | S3 Event Notification → Lambda | S3 event JSON (bucket, key, eventTime, sequencer) | `ObjectCreated` on the staging prefix |
+
+Exactly one notification per staged object; the notification configuration must not fan out to multiple consumers.
+
+#### 10.1.5 Configuration actually set (with rationale)
+
+| Property | Value | Rationale |
 |---|---|---|
-| `bucket_name` | `staging_bucet_internal` | User decision. |
-| `versioning` | `False` | User decision — staged data is transient and regenerated by re-runs; versioning would multiply storage cost for no recovery benefit. |
-| `encryption` | `AES256` (SSE-S3) | User decision — server-side encryption at rest for staged customer data. |
-| `public_access_block` | `True` | User decision — no public access; all access is via IAM roles inside the VPC. |
-| Lifecycle expiration | **exactly 7 days** on every staged object | Required by SCRUM-482 AC#1/AC#2 and SCRUM-486 AC#5 ("lifecycle rule configured with expiration of exactly 7 days on every customer staging bucket"). |
-| `lifecycle_transition_days` / `lifecycle_glacier_days` | `30` / `90` | User decision, retained as the archival rule for any object that survives the 7-day expiration (e.g. Acme inspection staging copies). |
-| Event notification | `s3:ObjectCreated:*` on prefix `staging/` → **egress-lambda** | Required by the frozen edge `staging_bucet_internal → egress-lambda`. |
+| `versioning` | `False` | Staged files are deterministic, re-runnable outputs; versioning would double storage cost for no recovery benefit. Accepted risk: an overwrite or delete of a staged object is unrecoverable and is recovered by Child Export DAG re-execution. |
+| `encryption` | `AES256` (SSE-S3) | S3-managed AES-256 at rest satisfies baseline confidentiality for transient staging data without SSE-KMS key-management overhead; the fail-closed PGP gate protects data at the customer boundary. |
+| `public_access_block` | `True` | Staging data must never be publicly reachable — non-negotiable security default. |
+| `lifecycle_enabled` | `False` | User-set and authoritative. No S3 lifecycle rule is configured on this bucket. |
+| `lifecycle_transition_days` / `lifecycle_glacier_days` | `30` / `90` | Retained as declared values; they are inert while `lifecycle_enabled = False`. |
+| Deletion protection | Read from per-environment Terraform variable (dev/staging/prod) | SCRUM-485 AC#3: no hardcoded values; lower environments tear down cleanly, prod is protected. |
 
-> **Assumption (node-property conflict):** the node property `lifecycle_enabled=False` conflicts with SCRUM-482 AC#1 and SCRUM-486 AC#5, which require an expiration rule of exactly 7 days. The requirement is treated as authoritative: the 7-day expiration rule is enabled, and the `lifecycle_transition_days`/`lifecycle_glacier_days` values are retained for the archival tier only.
+**Recommendation (not applied):** SCRUM-482 AC#1 and SCRUM-486 AC#5 require a lifecycle rule with expiration of exactly 7 days on every customer staging bucket, and SCRUM-484 AC#4 requires the internal inspection-staging objects to be purged after 7 days. Because the diagram sets `lifecycle_enabled = False`, that rule is **not** provisioned here. To satisfy those acceptance criteria without contradicting the user's setting, either (a) the property is deliberately revised to `lifecycle_enabled = True` with a 7-day expiration rule, or (b) the purge is performed by an external, pipeline-independent mechanism outside this architecture's diagram. This conflict is flagged for confirmation with the Security & Operations Engineer before sprint commitment; no silent override is applied in either direction.
 
-#### 10.1.2 Bi-directional contract
+#### 10.1.6 Failure behaviour
 
-**Inbound (writers)**
-
-| From | Action | Protocol | Payload | Idempotency |
-|---|---|---|---|---|
-| **emr_do** | `write` | S3 API (boto3 / Spark S3Committer) | Parquet/JSON data files + `manifest_<lineage_uuid>.json` under `staging/<config_id>/<lineage_uuid>/` | Deterministic object key paths including the lineage UUID; re-running the same logical execution overwrites the same keys. |
-| **egress dag** | `push` (Acme inspection staging destination, SCRUM-484 AC#4) | S3 API (boto3) | Final export package + manifest written back to the same bucket | Deterministic object naming; SHA-256 recomputed on read-back must equal the manifest value. |
-
-**Outbound (readers / triggers)**
-
-| To | Action | Protocol | Payload | Failure behaviour |
-|---|---|---|---|---|
-| **egress dag** | `read` | S3 API (boto3) | `GetObject` for staged files and manifests | S3 read error retried up to 3 times. |
-| **egress-lambda** | `trigger` | S3 Event Notification → Lambda | S3 event JSON (`bucket`, `key`, `versionId`, `eventTime`) | Lambda invocation failure routed to the SQS DLQ after retries. |
-
-**Telemetry:** every successful write emits `com.laminar.dataoutbound.staging.written` (from **emr_do**); the S3 notification that reaches **egress-lambda** emits `com.laminar.dataoutbound.egress.triggered`.
+- **Access/throttle errors** are surfaced as typed errors through the shared S3 client (`common/clients/aws/s3/s3_client.py`) to the calling component, which applies its own retry policy (Spark task retry for writes; the Egress Lambda's 3-retry rule for delivery).
+- **Missing/expired object** is always an auditable failure, never a no-op: the Transform & Encrypt DAG or Egress Lambda fails the run with an audit error entry, and the Child Export DAG re-run regenerates the file.
+- **Notification delivery failure** is captured by the SQS DLQ attached to the S3 notification configuration; a DLQ depth alarm is the primary health signal.
 
 ---
 
 ### 10.2. Class and Interface Definitions
 <a id="laminar-sec-c.imp_aws_aws_s3_bucket_8.classes"></a>
-**staging_bucet_internal** owns no runtime code. Its "interface" is the object-key convention plus the bucket configuration, both expressed through the foundation's `S3Client` (`common/clients/aws/s3/s3_client.py`). The typed definitions below are the contract every writer and reader uses; they are illustrative of the data-store boundary, not a service class.
+The bucket itself is infrastructure; the classes below are the typed access layer used by the components that read from and write to it. They live in the shared foundation and are imported, never re-declared.
 
 ```python
-# Illustrative — the Component Contract and Schema Definitions are binding.
-# staging_bucet_internal is a data store; these types describe its object-key
-# convention and the foundation S3Client surface its writers/readers use.
+"""Typed access layer for staging_bucet_internal.
 
+Shared foundation only: the bucket has no component-owned code module.
+Every reader/writer (emr_do, egress-lambda, egress dag) imports these types
+from the blueprint foundation rather than constructing boto3 clients itself.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from enum import Enum
+from typing import Iterator, Optional
 
 from dataoutbound_section_tree.common.clients.aws.s3.s3_client import S3Client
-from dataoutbound_section_tree.config.config_loader import ConfigLoader
+from dataoutbound_section_tree.common.logging.logger import get_logger
+from dataoutbound_section_tree.common.telemetry.auditor import AuditPublisher
+from dataoutbound_section_tree.util.exceptions import ClientError, NotFoundError, ValidationError
+
+logger = get_logger(__name__)
+
+
+class StagingEntityType(str, Enum):
+    """The eight Golden Entity datasets staged by emr_do (SCRUM-481 AC#4)."""
+    UNIFIED_IDENTITY_PROFILE = "unified_identity_profile"
+    PII_RESTRICTED_PROFILE = "pii_restricted_profile"
+    CONTACT_METHOD_SUBSCRIPTION = "contact_method_subscription"
+    ENRICHED_CAMPAIGNS = "enriched_campaigns"
+    ENRICHED_CAMPAIGN_REACTIONS = "enriched_campaign_reactions"
+    ROOM_STAY_RESERVATION = "room_stay_reservation"
+    RESTAURANT_RESERVATION = "restaurant_reservation"
+    TEE_TIME_RESERVATION = "tee_time_reservation"
+    SPA_TREATMENT_RESERVATION = "spa_treatment_reservation"
+
+
+class StagingObjectState(str, Enum):
+    STAGED = "STAGED"
+    CONSUMED = "CONSUMED"
+    MISSING = "MISSING"
 
 
 @dataclass(frozen=True)
-class StagingObjectKey:
-    """Deterministic key layout for every object in staging_bucet_internal.
-
-    Layout: staging/<config_id>/<lineage_uuid>/<dataset>/<part>.<ext>
-    The lineage UUID is the idempotency anchor: a re-run of the same logical
-    execution writes the same keys and therefore overwrites, never duplicates.
-    """
-
-    config_id: str
+class StagingObjectRef:
+    """Immutable reference to one staged object; the lineage UUID is mandatory."""
+    bucket: str
+    key: str
     lineage_uuid: str
-    dataset: str
-    part: str
-    extension: str = "parquet"
+    entity_type: StagingEntityType
+    size_bytes: int
+    etag: str
+    last_modified: datetime
+    state: StagingObjectState = StagingObjectState.STAGED
 
-    def as_key(self) -> str:
-        return (
-            f"staging/{self.config_id}/{self.lineage_uuid}/"
-            f"{self.dataset}/{self.part}.{self.extension}"
-        )
+    def __post_init__(self) -> None:
+        if not self.lineage_uuid:
+            raise ValidationError("staging object key must carry a lineage UUID")
 
 
 @dataclass(frozen=True)
-class StagingManifest:
-    """Manifest control file written alongside the staged data files."""
-
+class StagingWriteRequest:
+    """Contract for a single staged-object write (emr_do or egress dag)."""
     lineage_uuid: str
-    config_id: str
-    dataset: str
-    record_count: int
-    total_size_bytes: int
-    files: list[dict[str, Any]] = field(default_factory=list)  # {name, sha256, size_bytes}
-    created_at_utc: datetime | None = None
-
-    def manifest_key(self) -> str:
-        return f"staging/{self.config_id}/{self.lineage_uuid}/manifest_{self.lineage_uuid}.json"
+    entity_type: StagingEntityType
+    content_type: str = "application/json"
+    partition: dict[str, str] = field(default_factory=dict)
 
 
-class StagingBucket:
-    """Thin, typed facade over the foundation S3Client for this bucket only.
+@dataclass(frozen=True)
+class StagingNotificationEvent:
+    """The S3 ObjectCreated notification payload handed to egress-lambda."""
+    bucket: str
+    key: str
+    event_name: str
+    event_time: datetime
+    sequencer: str
 
-    Constructed with the shared ConfigLoader; never builds a boto3 client itself.
+    @property
+    def lineage_uuid(self) -> str:
+        """Lineage UUID is embedded in the object key; absence is a contract violation."""
+        parts = self.key.split("/")
+        for part in parts:
+            if len(part) == 36 and part.count("-") == 4:
+                return part
+        raise ValidationError(f"no lineage UUID found in staging key: {self.key}")
+
+
+class StagingBucketGateway:
+    """Thin, typed facade over S3Client scoped to staging_bucet_internal.
+
+    Owns no state and no business logic: it builds deterministic keys, enforces
+    the lineage-UUID contract, and maps SDK errors to util.exceptions.
     """
 
-    def __init__(self, config: ConfigLoader, s3: S3Client | None = None) -> None:
-        self._config = config
-        self._bucket = config.get("staging_bucket.name", default="staging_bucet_internal")
-        self._s3 = s3 or S3Client(config)
+    def __init__(self, s3: S3Client, bucket_name: str, auditor: AuditPublisher) -> None:
+        self._s3 = s3
+        self._bucket = bucket_name
+        self._auditor = auditor
 
-    def put_object(self, key: str, body: bytes, content_type: str = "application/octet-stream") -> str:
-        """Write one staged object; returns the ETag. SSE-S3 (AES256) is applied by the client."""
-        return self._s3.upload_bytes(bucket=self._bucket, key=key, body=body, content_type=content_type)
+    def build_key(self, lineage_uuid: str, entity_type: StagingEntityType,
+                  file_name: str) -> str:
+        """Non-sequential, lineage-prefixed key layout (avoids S3 hot partitions)."""
+        return f"staging/{entity_type.value}/{lineage_uuid}/{file_name}"
+
+    def put_object(self, request: StagingWriteRequest, body: bytes,
+                   file_name: str) -> StagingObjectRef:
+        raise NotImplementedError
 
     def get_object(self, key: str) -> bytes:
-        """Read one staged object; raises ClientError/NotFoundError from the foundation."""
-        return self._s3.download_bytes(bucket=self._bucket, key=key)
+        raise NotImplementedError
 
-    def list_prefix(self, prefix: str) -> list[dict[str, Any]]:
-        """List staged objects under a prefix (used by egress dag to enumerate a package)."""
-        return self._s3.list_objects(bucket=self._bucket, prefix=prefix)
+    def list_objects(self, lineage_uuid: str) -> Iterator[StagingObjectRef]:
+        raise NotImplementedError
+
+    def head_object(self, key: str) -> Optional[StagingObjectRef]:
+        raise NotImplementedError
 ```
 
 ---
 
 ### 10.3. Implementation Code Skeleton (Stubs & Handlers)
 <a id="laminar-sec-c.imp_aws_aws_s3_bucket_8.skeleton"></a>
-Illustrative skeleton — the Component Contract and Schema Definitions are binding. **staging_bucet_internal** has no handler of its own; the code below is the bucket configuration (Terraform) and the two call sites that write to and read from it, expressed against the foundation clients.
-
-```hcl
-# terraform/s3.tf — staging_bucet_internal (excerpt)
-resource "aws_s3_bucket" "staging_bucet_internal" {
-  bucket        = "staging_bucet_internal"
-  force_destroy = var.deletion_protection_enabled ? false : true   # env-driven, never hardcoded
-}
-
-resource "aws_s3_bucket_server_side_encryption_configuration" "staging" {
-  bucket = aws_s3_bucket.staging_bucet_internal.id
-  rule {
-    apply_server_side_encryption_by_default { sse_algorithm = "AES256" }
-  }
-}
-
-resource "aws_s3_bucket_public_access_block" "staging" {
-  bucket                  = aws_s3_bucket.staging_bucet_internal.id
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
-}
-
-# 7-day expiration required by SCRUM-482 AC#1 / SCRUM-486 AC#5
-resource "aws_s3_bucket_lifecycle_configuration" "staging" {
-  bucket = aws_s3_bucket.staging_bucet_internal.id
-  rule {
-    id     = "expire-staged-exports-7d"
-    status = "Enabled"
-    filter { prefix = "staging/" }
-    expiration { days = 7 }
-  }
-}
-
-resource "aws_s3_bucket_notification" "staging_to_egress_lambda" {
-  bucket = aws_s3_bucket.staging_bucet_internal.id
-  lambda_function {
-    lambda_function_arn = aws_lambda_function.egress_lambda.arn
-    events              = ["s3:ObjectCreated:*"]
-    filter_prefix       = "staging/"
-  }
-}
-```
+Illustrative skeleton — the Component Contract and Schema Definitions are binding. The bucket has no component-owned module in the blueprint; the code below is the shared-foundation access layer that `emr_do`, `egress-lambda` and `egress dag` import.
 
 ```python
-# Illustrative — writer side (emr_do), using the foundation S3Client.
+"""Illustrative skeleton for the staging_bucet_internal access layer.
+
+Blueprint paths:
+  src/dataoutbound_section_tree/common/clients/aws/s3/s3_client.py
+  src/dataoutbound_section_tree/common/telemetry/auditor.py
+  src/dataoutbound_section_tree/common/logging/logger.py
+  src/dataoutbound_section_tree/util/exceptions.py
+"""
+from __future__ import annotations
+
+from typing import Iterator, Optional
+
 from dataoutbound_section_tree.common.clients.aws.s3.s3_client import S3Client
 from dataoutbound_section_tree.common.logging.logger import get_logger
 from dataoutbound_section_tree.common.telemetry.auditor import AuditPublisher
-from dataoutbound_section_tree.config.config_loader import ConfigLoader
-from dataoutbound_section_tree.util.exceptions import ClientError
+from dataoutbound_section_tree.util.exceptions import ClientError, NotFoundError, ValidationError
 
-log = get_logger(__name__)
+from .classes import (  # illustrative local import; real code lives in the foundation
+    StagingBucketGateway,
+    StagingEntityType,
+    StagingNotificationEvent,
+    StagingObjectRef,
+    StagingObjectState,
+    StagingWriteRequest,
+)
 
+logger = get_logger(__name__)
 
-def write_staged_partition(
-    config: ConfigLoader,
-    *,
-    config_id: str,
-    lineage_uuid: str,
-    dataset: str,
-    part: str,
-    body: bytes,
-) -> str:
-    """Write one staged object and emit the staging.written audit event."""
-    s3 = S3Client(config)
-    auditor = AuditPublisher(config=config)
-    key = f"staging/{config_id}/{lineage_uuid}/{dataset}/{part}.parquet"
-    try:
-        etag = s3.upload_bytes(bucket="staging_bucet_internal", key=key, body=body)
-    except ClientError as exc:
-        log.error("staging write failed", extra={"key": key, "error": str(exc)})
-        raise
-    auditor.publish(
-        "com.laminar.dataoutbound.staging.written",
-        {
-            "actor_id": "system:emr_do",
-            "execution_id": lineage_uuid,
-            "config_id": config_id,
-            "bucket": "staging_bucet_internal",
-            "key": key,
-            "etag": etag,
-        },
-    )
-    return etag
-```
-
-```python
-# Illustrative — reader side (egress dag), using the foundation S3Client.
-from dataoutbound_section_tree.common.clients.aws.s3.s3_client import S3Client
-from dataoutbound_section_tree.config.config_loader import ConfigLoader
+STAGING_WRITTEN_EVENT = "com.laminar.dataoutbound.staging.written"
+EGRESS_TRIGGERED_EVENT = "com.laminar.dataoutbound.egress.triggered"
 
 
-def read_staged_package(config: ConfigLoader, *, config_id: str, lineage_uuid: str) -> list[dict]:
-    """Enumerate every staged object for one lineage UUID."""
-    s3 = S3Client(config)
-    prefix = f"staging/{config_id}/{lineage_uuid}/"
-    return s3.list_objects(bucket="staging_bucet_internal", prefix=prefix)
+class StagingBucketGatewayImpl(StagingBucketGateway):
+    """Concrete implementation over the shared S3Client."""
+
+    def put_object(self, request: StagingWriteRequest, body: bytes,
+                   file_name: str) -> StagingObjectRef:
+        key = self.build_key(request.lineage_uuid, request.entity_type, file_name)
+        try:
+            result = self._s3.upload(
+                bucket=self._bucket,
+                key=key,
+                body=body,
+                content_type=request.content_type,
+                server_side_encryption="AES256",  # user-set encryption, honoured verbatim
+            )
+        except ClientError as exc:
+            logger.error("staging write failed", extra={"key": key, "error": str(exc)})
+            raise
+
+        ref = StagingObjectRef(
+            bucket=self._bucket,
+            key=key,
+            lineage_uuid=request.lineage_uuid,
+            entity_type=request.entity_type,
+            size_bytes=len(body),
+            etag=result["ETag"],
+            last_modified=result["LastModified"],
+            state=StagingObjectState.STAGED,
+        )
+        self._auditor.publish(
+            event_type=STAGING_WRITTEN_EVENT,
+            payload={
+                "execution_id": request.lineage_uuid,
+                "bucket": self._bucket,
+                "key": key,
+                "entity_type": request.entity_type.value,
+                "size_bytes": ref.size_bytes,
+            },
+        )
+        return ref
+
+    def get_object(self, key: str) -> bytes:
+        try:
+            return self._s3.download(bucket=self._bucket, key=key)
+        except NotFoundError:
+            logger.error("staged object absent", extra={"key": key})
+            raise
+        except ClientError as exc:
+            logger.error("staging read failed", extra={"key": key, "error": str(exc)})
+            raise
+
+    def list_objects(self, lineage_uuid: str) -> Iterator[StagingObjectRef]:
+        prefix = f"staging/"
+        for obj in self._s3.list(bucket=self._bucket, prefix=prefix):
+            if lineage_uuid in obj["Key"]:
+                yield StagingObjectRef(
+                    bucket=self._bucket,
+                    key=obj["Key"],
+                    lineage_uuid=lineage_uuid,
+                    entity_type=self._entity_from_key(obj["Key"]),
+                    size_bytes=obj["Size"],
+                    etag=obj["ETag"],
+                    last_modified=obj["LastModified"],
+                )
+
+    def head_object(self, key: str) -> Optional[StagingObjectRef]:
+        try:
+            head = self._s3.head(bucket=self._bucket, key=key)
+        except NotFoundError:
+            return None
+        return StagingObjectRef(
+            bucket=self._bucket,
+            key=key,
+            lineage_uuid=StagingNotificationEvent(
+                bucket=self._bucket, key=key, event_name="", event_time=head["LastModified"],
+                sequencer="",
+            ).lineage_uuid,
+            entity_type=self._entity_from_key(key),
+            size_bytes=head["ContentLength"],
+            etag=head["ETag"],
+            last_modified=head["LastModified"],
+        )
+
+    @staticmethod
+    def _entity_from_key(key: str) -> StagingEntityType:
+        parts = key.split("/")
+        if len(parts) < 3:
+            raise ValidationError(f"malformed staging key: {key}")
+        return StagingEntityType(parts[1])
+
+
+def handle_object_created(event: dict) -> None:
+    """Entry point invoked by the S3 notification path (owned by egress-lambda).
+
+    Kept here only to document the contract; the handler itself lives in
+    src/dataoutbound_section_tree/lambdas/egress_lambda.py.
+    """
+    for record in event.get("Records", []):
+        s3 = record["s3"]
+        notification = StagingNotificationEvent(
+            bucket=s3["bucket"]["name"],
+            key=s3["object"]["key"],
+            event_name=record["eventName"],
+            event_time=record["eventTime"],
+            sequencer=s3["object"].get("sequencer", ""),
+        )
+        # The lineage UUID is mandatory; absence fails the downstream run.
+        _ = notification.lineage_uuid
 ```
 
 ---
 
 ### 10.4. Cross-Component Interaction Sequence (Local Mermaid/ASCII Flow)
 <a id="laminar-sec-c.imp_aws_aws_s3_bucket_8.seq"></a>
-The sequence below describes the interactions in which **staging_bucet_internal** participates, in order. The pipeline inserts the Mermaid diagram for this section.
+`staging_bucet_internal` is passive storage: it never initiates a call. Its behaviour is entirely driven by the writers and readers around it, and by the S3 notification configuration that fires on object creation.
 
-1. **emr_do** completes the Spark extract and writes each staged data file plus `manifest_<lineage_uuid>.json` to `staging/<config_id>/<lineage_uuid>/…` using the foundation `S3Client` (S3 API, SSE-S3). On success it emits `com.laminar.dataoutbound.staging.written`.
-2. The bucket's `s3:ObjectCreated:*` notification on prefix `staging/` fires and invokes **egress-lambda** with the S3 event JSON (`bucket`, `key`, `versionId`, `eventTime`). If the Lambda invocation fails after retries, the event is routed to the SQS DLQ.
-3. **egress-lambda** parses the event, derives the lineage UUID from the object key, and triggers exactly one **egress dag** run carrying that lineage UUID (`com.laminar.dataoutbound.egress.triggered`, then `com.laminar.dataoutbound.egress_dag.started`).
-4. **egress dag** reads the staged files and manifest from the bucket (`GetObject` / `list_objects`), applies GZIP then fail-closed PGP encryption, and delivers the package to the configured customer destination.
-5. When the configured destination is the Acme inspection staging destination, **egress dag** writes the final package and manifest back into the same bucket under a deterministic key; the SHA-256 recomputed on read-back must equal the manifest value (SCRUM-484 AC#4).
-6. **Failure paths:** an S3 read error in step 4 is retried up to 3 times; a PGP encryption failure aborts the transfer before any object is written to a customer destination and records a `TRANSFER_FAILED` event. Staged objects are purged by the 7-day lifecycle expiration regardless of transfer outcome.
+1. **`emr_do` writes staged files.** During the Spark job's write phase, `emr_do` writes partitioned Parquet/JSON data files plus a manifest into the staging prefix, using deterministic keys that embed the lineage UUID (`staging/<entity_type>/<lineage_uuid>/<file_name>`). The write uses the shared `S3Client` with SSE-S3 (`AES256`) and the Spark S3 committer for atomicity. On success, `emr_do` publishes `com.laminar.dataoutbound.staging.written` to `audit_bucket`. On S3 throttling or network error, the Spark task is retried automatically; a persistent failure fails the job run and is recorded as an execution failure.
+
+2. **S3 raises `ObjectCreated`.** For each staged object, the bucket's notification configuration invokes `egress-lambda` asynchronously with the standard S3 event JSON (bucket name, object key, event time, sequencer). Exactly one notification per object; the configuration does not fan out to multiple consumers. If the Lambda invocation fails after the notification mechanism's retries, the event is captured by the SQS DLQ attached to the notification configuration and a DLQ depth alarm is raised.
+
+3. **`egress-lambda` deduplicates and triggers `egress dag`.** The Lambda extracts the lineage UUID from the object key, deduplicates on it (guarding against S3's at-least-once delivery), and triggers exactly one Transform & Encrypt DAG run carrying that lineage UUID. It publishes `com.laminar.dataoutbound.egress.triggered`.
+
+4. **`egress dag` reads staged content.** The Transform & Encrypt DAG pulls the staged files and manifest via `GetObject` using the shared `S3Client`. Read errors are retried up to 3 times; a missing object is an auditable failure, never a no-op.
+
+5. **`egress dag` writes back for internal inspection staging (SCRUM-484 AC#4).** When the Acme inspection-staging destination is configured, the DAG writes the export package and `manifest_<lineage_uuid>.json` back into this bucket. The same ephemerality applies.
+
+6. **Failure path.** Any access denial, throttling or missing object surfaces as a typed error through `common/clients/aws/s3/s3_client.py` to the calling component, which applies its own retry policy. Because `versioning = False` and `lifecycle_enabled = False`, recovery from staged-object loss is by Child Export DAG re-execution for the same lineage UUID — never by object restore.
 
 ---
 ```mermaid
 sequenceDiagram
     participant EMR as emr_do
     participant STG as staging_bucet_internal
-    participant LMB as egress-lambda
+    participant LAM as egress-lambda
     participant DAG as egress dag
+    participant DLQ as SQS DLQ
 
-    Note over EMR,STG: Trigger Spark job write phase. Protocol S3 API (boto3 / Spark S3Committer). Idempotent via deterministic S3 object key paths and UUID.
-    EMR->>STG: write - file transfer - Parquet/JSON data files and manifest written to staging bucket
-    alt S3 multipart upload success
+    Note over STG: Passive storage. Never initiates calls.
+
+    EMR->>STG: write Parquet/JSON data files and manifest written to staging bucket
+    alt S3 multipart upload success confirmation
         STG-->>EMR: S3 multipart upload success confirmation
-        Note over EMR,STG: telemetry com.laminar.dataoutbound.staging.written
+        Note over EMR: telemetry com.laminar.dataoutbound.staging.written
     else S3 throttling or network error
         STG-->>EMR: S3 throttling or network error
         Note over EMR: Spark task retried automatically
     end
 
-    Note over STG,LMB: Trigger S3 ObjectCreated notification. Protocol S3 Event Notification to Lambda. Idempotent via S3 object key and version ID tracking.
-    STG->>LMB: trigger - async event - S3 event JSON payload with bucket name and object key
-    alt Lambda execution success
-        LMB-->>STG: Lambda execution success acknowledgment
-        Note over STG,LMB: telemetry com.laminar.dataoutbound.egress.triggered
+    STG->>LAM: trigger S3 event JSON payload with bucket name and object key
+    alt Lambda execution success acknowledgment
+        LAM-->>STG: Lambda execution success acknowledgment
+        Note over LAM: telemetry com.laminar.dataoutbound.egress.triggered
     else Lambda invocation failure
-        LMB-->>STG: Lambda invocation failure
-        Note over LMB: routed to SQS DLQ after retries
+        LAM-->>STG: Lambda invocation failure
+        STG->>DLQ: routed to SQS DLQ after retries
     end
 
-    Note over LMB,DAG: egress-lambda parses event, derives lineage UUID, triggers exactly one egress dag run carrying that lineage UUID.
-    Note over DAG,STG: Trigger Egress DAG task execution. Protocol S3 API (boto3). Idempotent read operation. Telemetry none.
-    DAG->>STG: read - data read - GetObject request for staged export files and manifests
-    alt S3 read success
+    DAG->>STG: read GetObject request for staged export files and manifests
+    alt File object stream
         STG-->>DAG: File object stream
     else S3 read error
         STG-->>DAG: S3 read error
         Note over DAG: retried up to 3 times
     end
+
+    DAG->>STG: write export package and manifest_lineage_uuid.json back into staging bucket
+    alt S3 multipart upload success confirmation
+        STG-->>DAG: S3 multipart upload success confirmation
+    else access denial or throttling or missing object
+        STG-->>DAG: typed error via common/clients/aws/s3/s3_client.py
+        Note over DAG: recovery by Child Export DAG re-execution for same lineage UUID
+        Note over STG: versioning False and lifecycle_enabled False. Never object restore.
+    end
 ```
 
 ### 10.5. Schema Definitions (DB Tables / API JSON / Telemetry CloudEvents)
 <a id="laminar-sec-c.imp_aws_aws_s3_bucket_8.schema"></a>
-**staging_bucet_internal** owns no database tables. Its schemas are the object-key layout, the manifest control file, the S3 event notification payload, and the CloudEvents telemetry it emits.
+#### 10.5.1 S3 object key layout (the bucket's only structural contract)
 
-#### 10.5.1 Object key layout
-
-```json
-{
-  "layout": "staging/<config_id>/<lineage_uuid>/<dataset>/<part>.<extension>",
-  "manifest": "staging/<config_id>/<lineage_uuid>/manifest_<lineage_uuid>.json",
-  "example": "staging/cfg-8f21/6f1c9d2e-4b7a-4f0e-9c31-2a5b7d8e1f04/identity_profiles/part-00000.parquet",
-  "idempotency": "deterministic keys including the lineage UUID; re-runs overwrite the same keys"
-}
+```text
+staging/<entity_type>/<lineage_uuid>/<file_name>
 ```
 
-#### 10.5.2 Manifest control file (`manifest_<lineage_uuid>.json`)
+- `<entity_type>` — one of the eight values of `StagingEntityType`.
+- `<lineage_uuid>` — the RFC 4122 v4 UUID generated by `orchestrator`; mandatory in every key.
+- `<file_name>` — deterministic per run so a retried write overwrites the same key rather than creating a duplicate.
 
-```json
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://laminar.com/dataoutbound/staging/staging_manifest.json",
-  "title": "StagingManifest",
-  "type": "object",
-  "required": ["execution_id", "generated_at_utc", "entities"],
-  "additionalProperties": false,
-  "properties": {
-    "execution_id": { "type": "string", "format": "uuid" },
-    "generated_at_utc": {
-      "type": "string",
-      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
-    },
-    "entities": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["dataset", "record_count", "bytes_written", "sha256"],
-        "additionalProperties": false,
-        "properties": {
-          "dataset": { "type": "string" },
-          "record_count": { "type": "integer", "minimum": 0 },
-          "bytes_written": { "type": "integer", "minimum": 0 },
-          "sha256": {
-            "type": "object",
-            "additionalProperties": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
-          }
-        }
-      }
-    }
-  }
-}
-```
+#### 10.5.2 S3 `ObjectCreated` notification payload (bucket → `egress-lambda`)
 
-> Same `StagingManifest` as defined in *Staging manifest (`s3://staging_bucet_internal/<config_id>/<execution_id>/manifest_<execution_id>.json`)* — one schema, one definition.
-
-#### 10.5.3 S3 event notification payload (delivered to **egress-lambda**)
-
-```json
-{
-  "Records": [
-    {
-      "eventSource": "aws:s3",
-      "eventName": "ObjectCreated:Put",
-      "awsRegion": "eu-west-1",
-      "s3": {
-        "bucket": { "name": "staging_bucet_internal" },
-        "object": {
-          "key": "staging/cfg-8f21/6f1c9d2e-4b7a-4f0e-9c31-2a5b7d8e1f04/identity_profiles/part-00000.parquet",
-          "size": 1048576,
-          "eTag": "d41d8cd98f00b204e9800998ecf8427e"
-        }
-      }
-    }
-  ]
-}
-```
-
-#### 10.5.4 Telemetry CloudEvents emitted at this boundary
-
-```json
-{
-  "specversion": "1.0",
-  "type": "com.laminar.dataoutbound.staging.written",
-  "source": "system:emr_do",
-  "id": "6f1c9d2e-4b7a-4f0e-9c31-2a5b7d8e1f04",
-  "time": "2025-01-31T02:15:00.000Z",
-  "subject": "staging_bucet_internal/staging/cfg-8f21/6f1c9d2e-4b7a-4f0e-9c31-2a5b7d8e1f04/identity_profiles/part-00000.parquet",
-  "data": {
-    "actor_id": "system:emr_do",
-    "execution_id": "6f1c9d2e-4b7a-4f0e-9c31-2a5b7d8e1f04",
-    "config_id": "cfg-8f21",
-    "bucket": "staging_bucet_internal",
-    "key": "staging/cfg-8f21/6f1c9d2e-4b7a-4f0e-9c31-2a5b7d8e1f04/identity_profiles/part-00000.parquet",
-    "etag": "d41d8cd98f00b204e9800998ecf8427e"
-  }
-}
-```
-
-```json
-{
-  "specversion": "1.0",
-  "type": "com.laminar.dataoutbound.egress.triggered",
-  "source": "system:egress-lambda",
-  "id": "b2a4c6e8-1f3d-4a5b-8c7e-9d0f1a2b3c4d",
-  "time": "2025-01-31T02:15:03.000Z",
-  "subject": "staging_bucet_internal/staging/cfg-8f21/6f1c9d2e-4b7a-4f0e-9c31-2a5b7d8e1f04/identity_profiles/part-00000.parquet",
-  "data": {
-    "actor_id": "system:egress-lambda",
-    "execution_id": "6f1c9d2e-4b7a-4f0e-9c31-2a5b7d8e1f04",
-    "config_id": "cfg-8f21",
-    "bucket": "staging_bucet_internal",
-    "key": "staging/cfg-8f21/6f1c9d2e-4b7a-4f0e-9c31-2a5b7d8e1f04/identity_profiles/part-00000.parquet"
-  }
-}
-```
-
----
-
-### 10.6. Local Design Assumptions
-<a id="laminar-sec-c.imp_aws_aws_s3_bucket_8.asm"></a>
-- **Lifecycle conflict resolved in favour of the requirement.** The node property `lifecycle_enabled=False` is overridden by SCRUM-482 AC#1 and SCRUM-486 AC#5, which require an expiration rule of exactly 7 days on every staging object. The `lifecycle_transition_days=30` / `lifecycle_glacier_days=90` values are retained as the archival tier for objects that survive the 7-day expiration (e.g. Acme inspection staging copies).
-- **Versioning disabled.** `versioning=False` is honoured; idempotency is achieved through deterministic object keys containing the lineage UUID, not through object versions. The S3 event payload's `versionId` field is therefore absent and **egress-lambda** keys idempotency on the object key alone.
-- **Event notification scope.** The notification is scoped to prefix `staging/` so that Acme inspection staging copies written back by **egress dag** under the same prefix do not re-trigger **egress-lambda** in a loop; the write-back path uses a distinct prefix (`inspection/`) — an assumption recorded here because the diagram does not specify the write-back prefix.
-- **Encryption.** SSE-S3 (`AES256`) is the user decision; no KMS CMK is configured for this bucket. Staged data is transient and re-derivable, so the additional key-management overhead of SSE-KMS is not justified.
-- **Deletion protection.** The bucket's `force_destroy` flag is read from the per-environment `deletion_protection_enabled` variable (SCRUM-485 AC#3/AC#4/AC#5); no value is hardcoded.
-- **No DLQ on the bucket itself.** The SQS DLQ for failed **egress-lambda** invocations is attached to the Lambda's event source mapping, not to the bucket; the bucket only emits notifications.
-
----
-
-## 11. Component Design: egress-lambda
-<a id="laminar-sec-c.imp_aws_aws_lambda_9"></a>
-
-### 11.1. Component Contract (Bi-Directional Inputs & Outputs)
-<a id="laminar-sec-c.imp_aws_aws_lambda_9.contract"></a>
-The `egress-lambda` component acts as the event-driven bridge between internal staging object creation and the downstream egress orchestration pipeline.
-
-#### 11.1.1 Inbound Interfaces & Triggers
-- **Trigger Source**: `staging_bucet_internal` (Amazon S3 bucket event notification).
-- **Protocol / Mechanism**: Asynchronous S3 `ObjectCreated:*` event notification invoking the Lambda function via AWS Lambda event source mapping.
-- **Payload Schema**: Standard AWS S3 Event Notification JSON containing `Records` array with bucket ARN/name, object key, size, and ETag. The object key encodes metadata in the structured path convention: `exports/{connection_id}/{execution_id}/{dataset}/{filename}`.
-
-#### 11.1.2 Outbound Interfaces & Destinations
-- **Trigger Target**: `transform_encrypt_dag` (Amazon MWAA REST API / TriggerDagRun).
-- **Protocol / Mechanism**: HTTPS REST call via `MwaaClient` using boto3 / MWAA CLI token authentication.
-- **Outbound Payload (`dag_conf`)**: JSON object carrying `execution_id`, `connection_id`, `object_key`, `dataset`, `source_bucket`, and `source_key`.
-- **Telemetry / Audit Sink**: `audit_bucket` via `AuditPublisher`, emitting CloudEvents record `com.laminar.dataoutbound.egress.triggered`.
-
-#### 11.1.3 Resilience & Error Handling
-- **Retry Policy**: AWS Lambda built-in asynchronous retry policy (2 retries with exponential backoff) combined with `MwaaClient` internal backoff retries.
-- **Dead-Letter Queue (DLQ)**: Configured with an SQS DLQ target for event payloads exceeding maximum invocation retries.
-- **Idempotency**: Tracked via S3 object key and version ID / `execution_id` combination to prevent duplicate DAG triggers.
-
----
-
-### 11.2. Class and Interface Definitions
-<a id="laminar-sec-c.imp_aws_aws_lambda_9.classes"></a>
-```python
-from dataclasses import dataclass, field
-from typing import Dict, Any, Optional
-from datetime import datetime
-
-@dataclass
-class S3ObjectMetadata:
-    bucket_name: str
-    object_key: str
-    size_bytes: int
-    etag: str
-    sequencer: str
-
-@dataclass
-class S3EventRecord:
-    event_name: str
-    event_time: str
-    bucket_name: str
-    object_key: str
-    object_size: int
-    etag: str
-
-@dataclass
-class EgressTriggerPayload:
-    execution_id: str
-    connection_id: str
-    object_key: str
-    dataset: str
-    source_bucket: str
-    source_key: str
-    triggered_at: str = field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "execution_id": self.execution_id,
-            "connection_id": self.connection_id,
-            "object_key": self.object_key,
-            "dataset": self.dataset,
-            "source_bucket": self.source_bucket,
-            "source_key": self.source_key,
-            "triggered_at": self.triggered_at,
-        }
-```
-
-> Same `S3EventRecord` as defined in *Class and Interface Definitions* — one schema, one definition.
-
----
-
-### 11.3. Implementation Code Skeleton (Stubs & Handlers)
-<a id="laminar-sec-c.imp_aws_aws_lambda_9.skeleton"></a>
-Illustrative skeleton — the Component Contract and Schema Definitions are binding. The binding artefact for **egress-lambda** is the handler signature and the operations it performs; the code below is the public entry point and its helpers, importing every shared concern from the blueprint's foundation.
-
-```python
-# src/dataoutbound_section_tree/lambdas/egress_lambda.py
-# Illustrative skeleton — the Component Contract and Schema Definitions are binding.
-from __future__ import annotations
-
-import json
-import os
-from typing import Any
-
-from dataoutbound_section_tree.common.clients.aws.mwaa.mwaa_client import MwaaClient
-from dataoutbound_section_tree.common.logging.logger import get_logger
-from dataoutbound_section_tree.common.telemetry.auditor import AuditPublisher
-from dataoutbound_section_tree.config.config_loader import ConfigLoader
-from dataoutbound_section_tree.util.exceptions import ClientError, ValidationError
-from dataoutbound_section_tree.util.idempotency import IdempotencyKey
-
-log = get_logger(__name__)
-
-# Environment variables (all read from config, never hardcoded):
-#   EGRESS_DAG_NAME        — the MWAA DAG to trigger (default "egress dag")
-#   STAGING_BUCKET_NAME    — the bucket the notification came from
-#   CONFIG_ENV             — dev | staging | prod
-EGRESS_DAG_NAME = os.environ.get("EGRESS_DAG_NAME", "egress dag")
-STAGING_BUCKET_NAME = os.environ.get("STAGING_BUCKET_NAME", "staging_bucet_internal")
-
-
-def _parse_s3_event(event: dict[str, Any]) -> tuple[str, str, str]:
-    """Extract (bucket, key, lineage_uuid) from an S3 ObjectCreated notification.
-
-    Raises ValidationError if the event is malformed or the key does not carry
-    a lineage UUID in the expected staging/<config_id>/<lineage_uuid>/... layout.
-    """
-    try:
-        record = event["Records"][0]
-        bucket = record["s3"]["bucket"]["name"]
-        key = record["s3"]["object"]["key"]
-    except (KeyError, IndexError, TypeError) as exc:
-        raise ValidationError("malformed S3 event payload") from exc
-
-    parts = key.split("/")
-    if len(parts) < 3 or parts[0] != "staging":
-        raise ValidationError(f"unexpected staging key layout: {key}")
-    config_id, lineage_uuid = parts[1], parts[2]
-    return bucket, key, lineage_uuid
-
-
-def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
-    """Entry point for the S3 ObjectCreated notification on staging_bucet_internal.
-
-    Triggers exactly one egress dag run carrying the lineage UUID parsed from the
-    object key. Idempotent on the object key: a duplicate notification for the
-    same key produces the same logical DAG run id.
-    """
-    config = ConfigLoader(env=os.environ.get("CONFIG_ENV", "dev"))
-    auditor = AuditPublisher(config=config)
-    mwaa = MwaaClient(config)
-
-    try:
-        bucket, key, lineage_uuid = _parse_s3_event(event)
-    except ValidationError as exc:
-        log.error("egress-lambda rejected event", extra={"error": str(exc)})
-        return {"statusCode": 400, "body": json.dumps({"error": {"code": "VALIDATION_ERROR", "message": str(exc)}})}
-
-    run_id = IdempotencyKey.build("egress", key)
-    auditor.publish(
-        "com.laminar.dataoutbound.egress.triggered",
-        {
-            "actor_id": "system:egress-lambda",
-            "execution_id": lineage_uuid,
-            "bucket": bucket,
-            "key": key,
-        },
-    )
-
-    try:
-        dag_run = mwaa.trigger_dag_run(
-            dag_name=EGRESS_DAG_NAME,
-            run_id=run_id,
-            conf={"lineage_uuid": lineage_uuid, "bucket": bucket, "key": key},
-        )
-    except ClientError as exc:
-        log.error("egress dag trigger failed", extra={"key": key, "error": str(exc)})
-        # Non-2xx surfaces to the S3 event source mapping, which routes to the SQS DLQ.
-        return {"statusCode": 502, "body": json.dumps({"error": {"code": "DAG_TRIGGER_FAILED", "message": str(exc)}})}
-
-    auditor.publish(
-        "com.laminar.dataoutbound.egress_dag.started",
-        {
-            "actor_id": "system:egress-lambda",
-            "execution_id": lineage_uuid,
-            "dag_run_id": dag_run.get("dag_run_id"),
-            "bucket": bucket,
-            "key": key,
-        },
-    )
-    return {"statusCode": 200, "body": json.dumps({"dag_run_id": dag_run.get("dag_run_id")})}
-```
-
----
-
-### 11.4. Cross-Component Interaction Sequence (Local Mermaid/ASCII Flow)
-<a id="laminar-sec-c.imp_aws_aws_lambda_9.seq"></a>
-1. **S3 Event Generation**: When `emr_do` writes completed staging output files and manifests to `staging_bucet_internal`, Amazon S3 generates an `ObjectCreated` event notification.
-2. **Lambda Invocation**: S3 invokes `egress-lambda` asynchronously, passing the S3 event payload containing bucket and object details.
-3. **Key Parsing & Validation**: `egress-lambda` extracts the object key, parses out `connection_id`, `execution_id`, and `dataset`, and validates structure compliance.
-4. **DAG Trigger**: `egress-lambda` utilizes `MwaaClient` to invoke `transform_encrypt_dag` on Amazon MWAA, passing the execution configuration dictionary (`dag_conf`).
-5. **Audit Publication**: `egress-lambda` publishes the `com.laminar.dataoutbound.egress.triggered` CloudEvent record to `audit_bucket` via `AuditPublisher`.
-6. **Error Path**: On network or MWAA API failure, the Lambda runtime retries up to configured limits before routing the failed event to the SQS Dead-Letter Queue.
-
----
-```mermaid
-sequenceDiagram
-participant staging_bucet_internal
-participant egress-lambda
-participant egress dag
-participant audit_bucket
-participant SQS DLQ
-staging_bucet_internal->>egress-lambda: S3 event JSON payload with bucket name and object key
-Note over egress-lambda: Parse keys and validate structure compliance
-alt Success Path
-egress-lambda->>egress dag: DAG trigger JSON payload with object key and configuration ID
-egress dag-->>egress-lambda: 200 OK with DAG run ID
-egress-lambda->>audit_bucket: com.laminar.dataoutbound.egress.triggered telemetry event
-else Failure Path
-egress-lambda->>egress-lambda: Retries exhausted with exponential backoff
-egress-lambda->>SQS DLQ: Lambda invocation failure payload
-end
-```
-
-### 11.5. Schema Definitions (DB Tables / API JSON / Telemetry CloudEvents)
-<a id="laminar-sec-c.imp_aws_aws_lambda_9.schema"></a>
-#### 11.5.1 S3 Event Notification Input JSON
 ```json
 {
   "Records": [
     {
       "eventVersion": "2.1",
       "eventSource": "aws:s3",
-      "awsRegion": "us-east-1",
+      "awsRegion": "eu-west-1",
       "eventTime": "2025-01-31T02:15:00.000Z",
       "eventName": "ObjectCreated:Put",
       "s3": {
-        "s3SchemaVersion": "1.0",
-        "configurationId": "EgressTriggerConfig",
-        "bucket": {
-          "name": "staging_bucet_internal",
-          "ownerIdentity": { "principalId": "A1234567890" },
-          "arn": "arn:aws:s3:::staging_bucet_internal"
-        },
+        "bucket": { "name": "staging_bucet_internal" },
         "object": {
-          "key": "exports/conn-uuid-001/exec-uuid-999/identity_profiles/data_001.json.gz",
+          "key": "staging/unified_identity_profile/3f2a9c1e-7b4d-4a8e-9c1f-2d6e8a0b4c7d/part-00000.json",
           "size": 1048576,
           "eTag": "d41d8cd98f00b204e9800998ecf8427e",
-          "sequencer": "0055AED6F070281ECB"
+          "sequencer": "00A1B2C3D4E5F6G7"
         }
       }
     }
@@ -4204,39 +4144,374 @@ end
 }
 ```
 
-#### 11.5.2 MWAA DAG Trigger Payload (`dag_conf`) JSON
-```json
-{
-  "execution_id": "exec-uuid-999",
-  "connection_id": "conn-uuid-001",
-  "object_key": "exports/conn-uuid-001/exec-uuid-999/identity_profiles/data_001.json.gz",
-  "dataset": "identity_profiles",
-  "source_bucket": "staging_bucet_internal",
-  "source_key": "exports/conn-uuid-001/exec-uuid-999/identity_profiles/data_001.json.gz",
-  "triggered_at": "2025-01-31T02:15:01.123Z"
-}
-```
+#### 10.5.3 Telemetry CloudEvents emitted by writers/readers of this bucket
 
-#### 11.5.3 CloudEvents Telemetry Record (`com.laminar.dataoutbound.egress.triggered`)
+The bucket itself emits no business audit events; the components that act on it do. Both events below conform to the SCRUM-486 audit schema (`actor_id`, `timestamp_utc`, `event_type`, `execution_id`) and to the frozen edge contracts.
+
 ```json
 {
   "specversion": "1.0",
-  "type": "com.laminar.dataoutbound.egress.triggered",
-  "source": "arn:aws:lambda:us-east-1:123456789012:function:egress-lambda",
-  "id": "evt-uuid-5555",
-  "time": "2025-01-31T02:15:01.150Z",
+  "id": "b7c1e2f4-9a3d-4e5b-8c6f-1d2e3a4b5c6d",
+  "source": "com.laminar.dataoutbound.emr_do",
+  "type": "com.laminar.dataoutbound.staging.written",
+  "time": "2025-01-31T02:15:00.000Z",
   "datacontenttype": "application/json",
-  "subject": "exec-uuid-999",
-  "detail": {
-    "execution_id": "exec-uuid-999",
-    "connection_id": "conn-uuid-001",
-    "source_bucket": "staging_bucet_internal",
-    "object_key": "exports/conn-uuid-001/exec-uuid-999/identity_profiles/data_001.json.gz",
-    "dag_run_id": "manual__2025-01-31T02:15:01+00:00",
-    "actor_id": "system:egress-lambda",
-    "timestamp_utc": "2025-01-31T02:15:01.123Z",
-    "status": "SUCCESS"
+  "data": {
+    "actor_id": "system:emr_do",
+    "timestamp_utc": "2025-01-31T02:15:00.000Z",
+    "event_type": "EXECUTION_COMPLETED",
+    "execution_id": "3f2a9c1e-7b4d-4a8e-9c1f-2d6e8a0b4c7d",
+    "bucket": "staging_bucet_internal",
+    "key": "staging/unified_identity_profile/3f2a9c1e-7b4d-4a8e-9c1f-2d6e8a0b4c7d/part-00000.json",
+    "entity_type": "unified_identity_profile",
+    "size_bytes": 1048576
   }
+}
+```
+
+```json
+{
+  "specversion": "1.0",
+  "id": "c8d2f3a5-0b4e-4f6c-9d7a-2e3f4b5c6d7e",
+  "source": "com.laminar.dataoutbound.egress_lambda",
+  "type": "com.laminar.dataoutbound.egress.triggered",
+  "time": "2025-01-31T02:15:02.000Z",
+  "datacontenttype": "application/json",
+  "data": {
+    "actor_id": "system:egress-lambda",
+    "timestamp_utc": "2025-01-31T02:15:02.000Z",
+    "event_type": "EXECUTION_STARTED",
+    "execution_id": "3f2a9c1e-7b4d-4a8e-9c1f-2d6e8a0b4c7d",
+    "bucket": "staging_bucet_internal",
+    "key": "staging/unified_identity_profile/3f2a9c1e-7b4d-4a8e-9c1f-2d6e8a0b4c7d/part-00000.json",
+    "dag_run_id": "manual__2025-01-31T02:15:02+00:00"
+  }
+}
+```
+
+#### 10.5.4 No DDL
+
+This component owns no relational tables. It is object storage; the only structural contract is the key layout above.
+
+---
+
+### 10.6. Local Design Assumptions
+<a id="laminar-sec-c.imp_aws_aws_s3_bucket_8.asm"></a>
+- **Lifecycle conflict (authoritative).** The user's explicit property `lifecycle_enabled = False` on this bucket is honoured as stated. The SCRUM-482 AC#1 / SCRUM-486 AC#5 requirement for a 7-day expiration rule on every customer staging bucket is therefore **not** implemented by an S3 lifecycle rule on this bucket. **Recommendation:** either the property is deliberately revised to `lifecycle_enabled = True` with a 7-day expiration rule, or the purge is performed by an external, pipeline-independent mechanism outside this architecture's diagram. This conflict is flagged for confirmation with the Security & Operations Engineer before sprint commitment; no silent override is applied in either direction.
+
+- **Encryption choice.** `AES256` (SSE-S3) is taken verbatim from the user's property; no KMS CMK is introduced for this bucket. Trade-off accepted: no per-key audit trail or independent key revocation for staging data, justified by the data's transient, reproducible nature and the fail-closed PGP gate at the egress boundary.
+
+- **Versioning absence.** Recovery from any staged-object loss is by Child Export DAG re-execution for the same lineage UUID; no backup of staging data is assumed.
+
+- **Retention value.** The organisation logging-standard retention value referenced by SCRUM-486 remains unconfirmed and applies to log groups, not to this bucket; it does not alter this bucket's configuration.
+
+- **Deletion protection.** The bucket's deletion-protection flag is read from the per-environment Terraform variable (dev/staging/prod) per SCRUM-485 AC#3; no value is hardcoded in the module.
+
+- **Notification fan-out.** Exactly one S3 notification configuration targets `egress-lambda`; the bucket does not fan out to multiple consumers. A DLQ is attached to the notification configuration so undeliverable events are captured rather than dropped silently.
+
+- **Key layout.** Object keys are non-sequential and lineage-UUID-prefixed to avoid S3 hot-partition throttling; the Spark job must not write unpartitioned small files, and the staging key layout is part of the `emr_do` contract.
+
+- **Audit boundary.** No component may write audit records directly into this bucket; it is not the audit store. Audit records for staging-related activity are written by `emr_do`, `egress-lambda` and `egress dag` to `audit_bucket`, avoiding double-counting against the SCRUM-486 expected-event-count formula (admin ops + 2N + 2N).
+
+## 11. Component Design: egress-lambda
+<a id="laminar-sec-c.imp_aws_aws_lambda_9"></a>
+
+<!-- laminar:diagram-settings:imp-aws-aws_lambda-9 -->
+**Diagram settings (user decisions — authoritative)**
+
+| Setting | Value |
+| --- | --- |
+| `runtime` | `python3.11` |
+| `handler` | `lambda_function.lambda_handler` |
+| `memory_mb` | `512` |
+| `timeout_seconds` | `30` |
+| `vpc_enabled` | `false` |
+| `function_name` | `egress-lambda` |
+
+<!-- /laminar:diagram-settings -->
+
+
+### 11.1. Component Contract (Bi-Directional Inputs & Outputs)
+<a id="laminar-sec-c.imp_aws_aws_lambda_9.contract"></a>
+- **Inbound Trigger (`staging_bucet_internal` → `egress-lambda`)**:
+  - **Protocol / Mechanism**: Asynchronous S3 Event Notification (`ObjectCreated:Put`).
+  - **Payload**: Standard AWS S3 event JSON containing bucket name and object key matching the `staging/` prefix layout (`staging/{connection_id}/{execution_id}/{dataset}/{filename}`).
+  - **Behavior & Validation**: The Lambda parses the S3 event, extracts `connection_id` and `execution_id` from the object key, verifies that the key starts with `staging/`, and ignores non-matching records.
+- **Outbound Action (`egress-lambda` → `egress dag`)**:
+  - **Protocol / Mechanism**: HTTPS REST API call (Airflow REST API `TriggerDagRunOperator` endpoint via `MwaaClient`).
+  - **Target DAG**: `egress dag` (matching the exact DAG identifier defined in `transform_encrypt_dag.py` / `egress dag`).
+  - **Payload**: JSON run configuration containing `execution_id`, `connection_id`, and `object_key`.
+  - **Success Response**: HTTP 200 OK with DAG run metadata.
+  - **Error Handling & Retries**: Retried up to 3 times with exponential backoff on network or 5xx errors; unrecoverable failures route the event to an SQS DLQ.
+
+---
+
+### 11.2. Class and Interface Definitions
+<a id="laminar-sec-c.imp_aws_aws_lambda_9.classes"></a>
+```python
+from __future__ import annotations
+
+import logging
+from typing import Any, Dict, List, Optional
+from pydantic import BaseModel, Field, validator
+
+logger = logging.getLogger(__name__)
+
+class S3ObjectReference(BaseModel):
+    key: str = Field(..., description="S3 object key matching staging/ layout")
+    size: int = Field(..., ge=0)
+    e_tag: str = Field(..., alias="eTag")
+
+class S3BucketReference(BaseModel):
+    name: str = Field(..., description="S3 bucket name")
+    arn: str = Field(..., description="S3 bucket ARN")
+
+class S3Record(BaseModel):
+    event_source: str = Field(..., alias="eventSource")
+    event_time: str = Field(..., alias="eventTime")
+    event_name: str = Field(..., alias="eventName")
+    s3_bucket: S3BucketReference = Field(..., alias="s3")
+    s3_object: S3ObjectReference = Field(..., alias="object")
+
+    @validator("event_source")
+    def validate_source(cls, v: str) -> str:
+        if v != "aws:s3":
+            raise ValueError(f"Invalid eventSource: {v}")
+        return v
+
+class S3EventNotification(BaseModel):
+    records: List[S3Record] = Field(..., alias="Records")
+
+class EgressDagTriggerPayload(BaseModel):
+    execution_id: str = Field(..., description="RFC 4122 v4 lineage UUID")
+    connection_id: str = Field(..., description="Export connection ID")
+    object_key: str = Field(..., description="S3 object key in staging bucket")
+    bucket_name: str = Field(..., description="Staging bucket name")
+
+class EgressLambdaService:
+    def __init__(self, mwaa_client: Any, auditor: Any) -> None:
+        self.mwaa_client = mwaa_client
+        self.auditor = auditor
+
+    def process_s3_event(self, event: Dict[str, Any]) -> Dict[str, Any]:
+        parsed_event = S3EventNotification.parse_obj(event)
+        triggered_runs = []
+        for record in parsed_event.records:
+            key = record.s3_object.key
+            if not key.startswith("staging/"):
+                logger.warning("Skipping S3 event with non-staging key: %s", key)
+                continue
+
+            parts = key.split("/")
+            if len(parts) < 4:
+                logger.error("Invalid staging key structure: %s", key)
+                continue
+
+            connection_id = parts[1]
+            execution_id = parts[2]
+            bucket_name = record.s3_bucket.name
+
+            trigger_payload = EgressDagTriggerPayload(
+                execution_id=execution_id,
+                connection_id=connection_id,
+                object_key=key,
+                bucket_name=bucket_name
+            )
+
+            dag_id = "egress dag"
+            response = self.mwaa_client.trigger_dag_run(
+                dag_id=dag_id,
+                conf=trigger_payload.dict()
+            )
+
+            self.auditor.publish(
+                event_type="EXECUTION_STARTED",
+                payload={
+                    "actor_id": "system:egress-lambda",
+                    "execution_id": execution_id,
+                    "connection_id": connection_id,
+                    "object_key": key
+                }
+            )
+            triggered_runs.append(response)
+
+        return {"status": "success", "triggered_runs": len(triggered_runs)}
+```
+
+---
+
+### 11.3. Implementation Code Skeleton (Stubs & Handlers)
+<a id="laminar-sec-c.imp_aws_aws_lambda_9.skeleton"></a>
+```python
+"""
+Path: src/dataoutbound_section_tree/lambdas/egress_lambda.py
+Implementation Code Skeleton for egress-lambda.
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+from typing import Any, Dict
+
+from dataoutbound_section_tree.common.logging.logger import get_logger
+from dataoutbound_section_tree.common.clients.aws.mwaa.mwaa_client import MwaaClient
+from dataoutbound_section_tree.common.telemetry.auditor import AuditPublisher
+from dataoutbound_section_tree.util.exceptions import ValidationError, ClientError
+
+logger = get_logger(__name__)
+
+def _parse_s3_event(event: Dict[str, Any]) -> tuple[str, str, str, str]:
+    records = event.get("Records", [])
+    if not records:
+        raise ValidationError("S3 event notification contains no records")
+
+    record = records[0]
+    s3_info = record.get("s3", {})
+    bucket_name = s3_info.get("bucket", {}).get("name")
+    object_key = s3_info.get("object", {}).get("key")
+
+    if not object_key or not bucket_name:
+        raise ValidationError("S3 event missing bucket name or object key")
+
+    if not object_key.startswith("staging/"):
+        raise ValidationError(f"Object key '{object_key}' does not start with expected 'staging/' prefix")
+
+    parts = object_key.split("/")
+    if len(parts) < 4:
+        raise ValidationError(f"Object key '{object_key}' does not conform to staging layout staging/{{connection_id}}/{{execution_id}}/{{dataset}}/{{filename}}")
+
+    connection_id = parts[1]
+    execution_id = parts[2]
+    return bucket_name, object_key, connection_id, execution_id
+
+def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+    logger.info("Egress Lambda invoked with event payload size: %d bytes", len(str(event)))
+
+    try:
+        bucket_name, object_key, connection_id, execution_id = _parse_s3_event(event)
+
+        mwaa_client = MwaaClient()
+        auditor = AuditPublisher()
+
+        dag_id = "egress dag"
+        trigger_conf = {
+            "execution_id": execution_id,
+            "connection_id": connection_id,
+            "object_key": object_key,
+            "bucket_name": bucket_name
+        }
+
+        logger.info("Triggering MWAA DAG '%s' for lineage UUID: %s", dag_id, execution_id)
+        response = mwaa_client.trigger_dag_run(dag_id=dag_id, conf=trigger_conf)
+
+        auditor.publish(
+            event_type="EXECUTION_STARTED",
+              payload={
+                "actor_id": "system:egress-lambda",
+                "execution_id": execution_id,
+                "connection_id": connection_id,
+                "object_key": object_key
+            }
+        )
+
+        return {
+            "statusCode": 200,
+            "body": {
+                "message": "Successfully triggered egress dag",
+                "dag_run_id": response.get("dag_run_id"),
+                "execution_id": execution_id
+            }
+        }
+
+    except ValidationError as ve:
+        logger.error("Validation error processing S3 event: %s", str(ve), exc_info=True)
+        return {
+            "statusCode": 400,
+            "body": {"error": {"code": "BAD_REQUEST", "message": str(ve), "details": []}}
+        }
+    except Exception as exc:
+        logger.error("Unexpected error in egress-lambda handler: %s", str(exc), exc_info=True)
+        raise exc
+```
+
+---
+
+### 11.4. Cross-Component Interaction Sequence (Local Mermaid/ASCII Flow)
+<a id="laminar-sec-c.imp_aws_aws_lambda_9.seq"></a>
+1. **S3 Event Notification**: When EMR Serverless finishes writing staged export files into `staging_bucet_internal` under the `staging/{connection_id}/{execution_id}/...` prefix key layout, S3 automatically publishes an `ObjectCreated:Put` event notification.
+2. **Lambda Invocation**: The S3 event notification invokes `egress-lambda` (`vpc_enabled = false`, operating outside the VPC).
+3. **Event Validation & Parsing**: `egress-lambda` parses the event records, validates that the object key starts with the mandatory `staging/` prefix, and extracts the `connection_id` and `execution_id` (lineage UUID).
+4. **MWAA DAG Trigger**: `egress-lambda` initializes the `MwaaClient` and sends an authenticated HTTPS REST API request (`POST /api/v1/dags/egress dag/dagRuns`) over public AWS service endpoints using SigV4 signing to trigger `egress dag`.
+5. **Audit Publication**: `egress-lambda` publishes an `EXECUTION_STARTED` audit record containing the lineage UUID and `actor_id = system:egress-lambda` to `audit_bucket`.
+6. **Error Handling & Failure Path**: If the MWAA REST API call encounters transient network errors or 5xx responses, `egress-lambda` retries up to 3 times with exponential backoff. If retries are exhausted, the event is routed to an SQS DLQ for operational review, and an alert is raised.
+
+---
+```mermaid
+sequenceDiagram
+autonumber
+participant staging as staging_bucet_internal
+participant lambda as egress-lambda
+participant dag as egress dag
+participant audit as audit_bucket
+participant dlq as SQS DLQ
+
+staging->>lambda: S3 event JSON payload
+Note over lambda: Parse and validate object key
+lambda->>audit: EXECUTION_STARTED audit record
+alt API Success
+    lambda->>dag: DAG trigger JSON payload
+    dag-->>lambda: 200 OK with DAG run ID
+else API Failure or Lambda Invocation Failure
+    lambda->>dlq: Routed to SQS DLQ after retries
+end
+```
+
+### 11.5. Schema Definitions (DB Tables / API JSON / Telemetry CloudEvents)
+<a id="laminar-sec-c.imp_aws_aws_lambda_9.schema"></a>
+#### 11.5.1 Lambda Trigger Request Schema (`egress dag` MWAA Trigger Payload)
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "EgressLambdaTriggerPayload",
+  "type": "object",
+  "properties": {
+    "execution_id": { "type": "string", "format": "uuid" },
+    "connection_id": { "type": "string" },
+    "object_key": { "type": "string", "pattern": "^staging/.+$" },
+    "bucket_name": { "type": "string", "const": "staging_bucet_internal" }
+  },
+  "required": ["execution_id", "connection_id", "object_key", "bucket_name"]
+}
+```
+
+#### 11.5.2 Telemetry Event Schema (`EXECUTION_STARTED` CloudEvent)
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "EgressLambdaExecutionStartedEvent",
+  "type": "object",
+  "properties": {
+    "specversion": { "type": "string", "const": "1.0" },
+    "type": { "type": "string", "const": "com.laminar.dataoutbound.execution.started" },
+    "source": { "type": "string", "const": "urn:laminar:dataoutbound:lambda:egress-lambda" },
+    "id": { "type": "string", "format": "uuid" },
+    "time": { "type": "string", "format": "date-time" },
+    "datacontenttype": { "type": "string", "const": "application/json" },
+    "data": {
+      "type": "object",
+      "properties": {
+        "actor_id": { "type": "string", "const": "system:egress-lambda" },
+        "timestamp_utc": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$" },
+        "event_type": { "type": "string", "const": "EXECUTION_STARTED" },
+        "execution_id": { "type": "string", "format": "uuid" },
+        "connection_id": { "type": "string" },
+        "object_key": { "type": "string" }
+      },
+      "required": ["actor_id", "timestamp_utc", "event_type", "execution_id", "connection_id"]
+    }
+  },
+  "required": ["specversion", "type", "source", "id", "time", "data"]
 }
 ```
 
@@ -4244,44 +4519,48 @@ end
 
 ### 11.6. Local Design Assumptions
 <a id="laminar-sec-c.imp_aws_aws_lambda_9.asm"></a>
-- **Runtime Configuration**: Python 3.11 runtime environment with memory allocation set to 512 MB and execution timeout configured to 30 seconds, balancing rapid cold starts with adequate JSON payload parsing throughput.
-- **VPC Network Isolation**: Executed outside a dedicated VPC (`vpc_enabled = False`) as stateful DB access is not required; outbound HTTPS calls to the MWAA REST API traverse the standard managed Lambda NAT infrastructure.
-- **IAM Least Privilege**: Lambda execution role grants `s3:GetObject` on `staging_bucet_internal`, execution permissions for MWAA REST triggers, and write access to explicit CloudWatch Log groups and `audit_bucket`.
+- **Non-VPC Execution Posture**: The `egress-lambda` function operates with `vpc_enabled = false` per user configuration, invoking the MWAA REST API securely over AWS public service endpoints via SigV4 authentication without provisioning elastic network interfaces (ENIs).
+- **Naming Consistency**: The downstream workflow triggered by the Lambda is explicitly named `egress dag`, aligning with the DAG identifier defined in `transform_encrypt_dag.py` and graph declarations.
+- **Retry & DLQ Default**: Transient invocation failures against MWAA are retried up to 3 times by Lambda runtime retry mechanics before routing to an SQS dead-letter queue.
 
 ## 12. Component Design: egress dag
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_10"></a>
 
+<!-- laminar:diagram-settings:imp-aws-aws_mwaa_dag-10 -->
+**Diagram settings (user decisions — authoritative)**
+
+| Setting | Value |
+| --- | --- |
+| `schedule` | `@daily` |
+| `catchup` | `false` |
+| `max_active_runs` | `1` |
+| `dag_name` | `egress dag` |
+
+<!-- /laminar:diagram-settings -->
+
+
 ### 12.1. Component Contract (Bi-Directional Inputs & Outputs)
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_10.contract"></a>
-The Transform & Encrypt DAG (`transform_encrypt_dag`) operates as an Amazon MWAA orchestration pipeline responsible for fetching staged export datasets, applying optional GZIP compression and strict fail-closed PGP encryption, verifying file integrity via SHA-256 manifests, delivering payloads to customer-owned destinations (S3, Azure Blob, GCS, or SFTP), and recording comprehensive lifecycle telemetry.
+- **Inbound Trigger Interface**:
+  - **Trigger Source**: `egress-lambda` (via MWAA REST API / `TriggerDagRun`).
+  - **Protocol**: HTTPS (REST API).
+  - **Payload Structure**: JSON containing `execution_id` (lineage UUID), `connection_id`, and `object_key`.
+  - **Idempotency**: Idempotent via unique execution identifier and object key tracking.
 
-#### 12.1.1 Inbound Contract (Trigger & Payload)
-- **Trigger Source**: Invoked asynchronously by `egress-lambda` via the Airflow REST API (`POST /api/v1/dags/transform_encrypt_dag/dagRuns`) upon receiving an S3 ObjectCreated event from `staging_bucet_internal`.
-- **Payload (`dag_conf`)**:
-  ```json
-  {
-    "execution_id": "c015b5e4-1234-4567-890a-bcdef0123456",
-    "connection_id": "conn-hospitality-001",
-    "object_key": "staged/2025/03/30/identity_profiles_c015b5e4.parquet",
-    "dataset": "identity_profiles"
-  }
-  ```
-- **Authentication**: IAM-authenticated SigV4 request via Airflow API or Boto3 client wrapper (`common/clients/aws/mwaa/mwaa_client.py`).
+- **Outbound & Side Effect Interfaces**:
+  - **Staging Read**: Reads raw export files and metadata from `staging_bucet_internal` via `S3Client`.
+  - **Transformation & Encryption**: Applies optional GZIP compression followed by fail-closed PGP encryption. Generates `manifest_<execution_id>.json`.
+  - **Destination Egress Sinks**:
+    - `customer SFTP server`: Pushes via SSH (Port 22) with key-based authentication and strict host-key verification.
+    - `customer bucket`: Pushes via S3 API over TLS 1.3.
+    - `Customer Azure Blob Destination`: Pushes via HTTPS (Azure Blob Storage REST API) using managed identity or secure SAS tokens.
+    - `Customer GCS Destination`: Pushes via HTTPS (Google Cloud Storage API) using service account credentials.
+    - `staging_bucet_internal` (Internal Inspection Staging): Writes packaged export and manifest back to S3 staging under internal inspection paths with a 7-day lifecycle rule.
+  - **Audit Publishing**: Emits `TRANSFER_STARTED`, `TRANSFER_COMPLETED`, and `TRANSFER_FAILED` CloudEvents-shaped records to `audit_bucket` via `AuditPublisher`.
 
-#### 12.1.2 Outbound Contracts & Integrations
-- **Data Source (`staging_bucet_internal`)**: Retrieves staged export data files and manifests via S3 `GetObject` (`common/clients/aws/s3/s3_client.py`).
-- **Secret Retrieval (`ssm`)**: Fetches customer destination credentials and PGP public keys from SSM Parameter Store (`SecureString`) via `common/clients/aws/ssm/ssm_client.py`.
-- **Destinations**:
-  - `customer SFTP server`: Transfers encrypted/raw files over SSH (port 22) using key-based authentication with strict host-key verification and atomic temporary file rename (`common/clients/sftp/sftp_client.py`).
-  - `customer bucket`: Pushes objects over TLS 1.3 using AWS S3 client with server-side encryption (`common/clients/aws/s3/s3_client.py`).
-  - `Customer Azure Blob Destination`: Pushes blobs using Azure Blob Storage REST API with Managed Identity (`common/clients/azure/blob_client.py`).
-  - `Customer GCS Destination`: Pushes objects using Google Cloud Storage API with workload identity (`common/clients/gcp/gcs_client.py`).
-- **Audit Sink (`audit_bucket`)**: Publishes execution start, completion, and failure audit records conforming to CloudEvents specification (`common/telemetry/auditor.py`).
-
-#### 12.1.3 Resilience, Retries & Error Handling
-- **Idempotency**: Strictly idempotent via deterministic object naming and lineage UUID tracking (`execution_id`). Re-running the DAG for the same `execution_id` overwrites or safely replaces target objects.
-- **Retry Policy**: Tasks are configured with up to 3 retry attempts and exponential backoff.
-- **Fail-Closed PGP Security**: If PGP encryption is enabled and the key is missing, corrupted, or encounters a cryptographic failure, the transfer aborts immediately. Zero bytes of unencrypted data are transmitted, a `TRANSFER_FAILED` event is written to `audit_bucket`, and an automated alert is triggered.
+- **Error Handling & Resilience**:
+  - **PGP Failure Gate**: If PGP encryption is enabled and key retrieval or encryption fails, the transfer aborts immediately, transmitting zero unencrypted bytes, raising an alert, and publishing a `TRANSFER_FAILED` audit record within 5 seconds.
+  - **Retry Policy**: Transient destination errors are retried up to 3 times with exponential backoff before recording terminal failure. sFTP host-key verification failures are non-retryable (refuse connection, zero bytes sent, immediate abort and alert).
 
 ---
 
@@ -4289,7 +4568,7 @@ The Transform & Encrypt DAG (`transform_encrypt_dag`) operates as an Amazon MWAA
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_10.classes"></a>
 ```python
 from dataclasses import dataclass, field
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, List, Optional
 from enum import Enum
 
 class DestinationType(str, Enum):
@@ -4297,254 +4576,237 @@ class DestinationType(str, Enum):
     AZURE_BLOB = "azure_blob"
     GCS = "gcs"
     SFTP = "sftp"
-
-class TransferStatus(str, Enum):
-    STARTED = "TRANSFER_STARTED"
-    COMPLETED = "TRANSFER_COMPLETED"
-    FAILED = "TRANSFER_FAILED"
+    INTERNAL_STAGING = "internal_staging"
 
 @dataclass
-class EgressConfig:
+class EgressTaskContext:
     execution_id: str
     connection_id: str
     object_key: str
-    dataset: str
     destination_type: DestinationType
     destination_uri: str
-    compression_enabled: bool = True
-    encryption_enabled: bool = True
-    pgp_key_id: Optional[str] = None
-    split_threshold: int = 500000
+    enable_gzip: bool = True
+    enable_pgp: bool = True
+    pgp_key_ref: Optional[str] = None
+    credentials_ref: Optional[str] = None
 
 @dataclass
-class ManifestRecord:
+class ExportManifestEntry:
     file_name: str
     record_count: int
     file_size_bytes: int
     sha256_checksum: str
 
 @dataclass
-class AuditRecord:
-    actor_id: str
-    timestamp_utc: str
-    event_type: str
+class ExportManifest:
     execution_id: str
-    details: Dict[str, Any] = field(default_factory=dict)
+    connection_id: str
+    timestamp_utc: str
+    files: List[ExportManifestEntry] = field(default_factory=list)
+
+@dataclass
+class TransferResult:
+    execution_id: str
+    destination: str
+    status: str
+    files_delivered: List[str]
+    checksum_verified: bool
+    error_message: Optional[str] = None
 ```
 
 ---
 
 ### 12.3. Implementation Code Skeleton (Stubs & Handlers)
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_10.skeleton"></a>
-Illustrative skeleton — the Component Contract and Schema Definitions are binding. The binding artefact for **egress dag** is the DAG definition and its task sequence; the code below is the public entry point, importing every shared concern from the blueprint's foundation.
-
 ```python
-# src/dataoutbound_section_tree/dags/transform_encrypt_dag.py
-# Illustrative skeleton — the Component Contract and Schema Definitions are binding.
-from __future__ import annotations
+# Illustrative skeleton — the Component Contract and Schema Definitions are binding
+# Module path: src/dataoutbound_section_tree/dags/transform_encrypt_dag.py
 
-import gzip
-import hashlib
+from datetime import datetime
 import json
-from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Dict, Any
 
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 
+from dataoutbound_section_tree.common.logging.logger import get_logger
+from dataoutbound_section_tree.common.telemetry.auditor import AuditPublisher
 from dataoutbound_section_tree.common.clients.aws.s3.s3_client import S3Client
 from dataoutbound_section_tree.common.clients.azure.blob_client import BlobClient
 from dataoutbound_section_tree.common.clients.gcp.gcs_client import GcsClient
 from dataoutbound_section_tree.common.clients.sftp.sftp_client import SftpClient
-from dataoutbound_section_tree.common.logging.logger import get_logger
-from dataoutbound_section_tree.common.telemetry.auditor import AuditPublisher
 from dataoutbound_section_tree.config.config_loader import ConfigLoader
 from dataoutbound_section_tree.util.exceptions import ClientError, ValidationError
 
-log = get_logger(__name__)
+logger = get_logger("transform_encrypt_dag")
 
-DAG_ID = "egress dag"
-DEFAULT_ARGS = {
-    "owner": "dataoutbound",
+def _transform_and_encrypt(context: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+    """
+    Downloads staged files, applies optional GZIP and fail-closed PGP encryption,
+    generates the manifest, and returns payload with execution_id and file metadata.
+    """
+    dag_run_conf = kwargs.get("dag_run", {}).conf or {}
+    execution_id = dag_run_conf.get("execution_id")
+    connection_id = dag_run_conf.get("connection_id")
+    object_key = dag_run_conf.get("object_key")
+
+    if not execution_id or not connection_id or not object_key:
+        raise ValidationError("Missing required DAG run configuration parameters: execution_id, connection_id, object_key")
+
+    logger.info("Starting transform and encrypt", extra={"execution_id": execution_id, "connection_id": connection_id})
+
+    # Audit transfer start
+    auditor = AuditPublisher()
+    auditor.publish(
+        event_type="TRANSFER_STARTED",
+        payload={"execution_id": execution_id, "connection_id": connection_id, "status": "STARTED"}
+    )
+
+    # Simulation of transformation, GZIP, and PGP encryption logic
+    # In production, S3Client reads the file, transforms are applied, and output is secured.
+    transformed_body = b"encrypted-export-payload-bytes"
+    sha256_checksum = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
+    return {
+        "execution_id": execution_id,
+        "connection_id": connection_id,
+        "object_key": object_key,
+        "body": transformed_body,
+        "sha256": sha256_checksum
+    }
+
+def _deliver(ti, **kwargs) -> None:
+    """
+    Delivers encrypted package and manifest to destination with read-back verification.
+    """
+    task_output = ti.xcom_pull(task_ids="transform_and_encrypt_task")
+    if not task_output:
+        raise ClientError("No payload received from transform task XCom.")
+
+    execution_id = task_output["execution_id"]
+    connection_id = task_output["connection_id"]
+    sha256_checksum = task_output["sha256"]
+
+    logger.info("Delivering export package", extra={"execution_id": execution_id, "connection_id": connection_id})
+
+    auditor = AuditPublisher()
+    try:
+        # Destination delivery logic (S3, Azure, GCS, sFTP) with SHA-256 validation
+        auditor.publish(
+            event_type="TRANSFER_COMPLETED",
+            payload={"execution_id": execution_id, "connection_id": connection_id, "sha256": sha256_checksum, "status": "COMPLETED"}
+        )
+    except Exception as e:
+        logger.error("Transfer failed", extra={"execution_id": execution_id, "error": str(e)})
+        auditor.publish(
+            event_type="TRANSFER_FAILED",
+            payload={"execution_id": execution_id, "connection_id": connection_id, "error": str(e), "status": "FAILED"}
+        )
+        raise
+
+default_args = {
+    "owner": "data-platform",
     "retries": 3,
-    "retry_delay": timedelta(minutes=5),
-    "email_on_failure": False,
 }
 
-
-def _read_staged(config: ConfigLoader, conf: dict[str, Any]) -> dict[str, Any]:
-    """Read the staged package and its manifest from staging_bucet_internal."""
-    s3 = S3Client(config)
-    bucket = conf["bucket"]
-    key = conf["key"]
-    lineage_uuid = conf["lineage_uuid"]
-    body = s3.download_bytes(bucket=bucket, key=key)
-    manifest_key = f"staging/{key.split('/')[1]}/{lineage_uuid}/manifest_{lineage_uuid}.json"
-    manifest = json.loads(s3.download_bytes(bucket=bucket, key=manifest_key))
-    return {"body": body, "manifest": manifest, "lineage_uuid": lineage_uuid}
-
-
-def _transform_and_encrypt(config: ConfigLoader, conf: dict[str, Any], staged: dict[str, Any]) -> dict[str, Any]:
-    """Apply optional GZIP then fail-closed PGP encryption.
-
-    Fail-closed: if PGP is enabled and encryption fails, raise before any bytes
-    are handed to the transfer task. Zero unencrypted bytes leave this task.
-    """
-    auditor = AuditPublisher(config=config)
-    lineage_uuid = staged["lineage_uuid"]
-    auditor.publish(
-        "com.laminar.dataoutbound.transform.started",
-        {"actor_id": "system:egress dag", "execution_id": lineage_uuid, "key": conf["key"]},
-    )
-
-    body = staged["body"]
-    if conf.get("gzip_enabled"):
-        body = gzip.compress(body)
-    if conf.get("pgp_enabled"):
-        try:
-            body = _pgp_encrypt(config, body, conf["pgp_key_ref"])
-        except Exception as exc:  # fail-closed
-            auditor.publish(
-                "com.laminar.dataoutbound.transfer.failed",
-                {
-                    "actor_id": "system:egress dag",
-                    "execution_id": lineage_uuid,
-                    "reason": "PGP_ENCRYPTION_FAILED",
-                    "error": str(exc),
-                },
-            )
-            raise
-
-    sha256 = hashlib.sha256(body).hexdigest()
-    auditor.publish(
-        "com.laminar.dataoutbound.transform.completed",
-        {"actor_id": "system:egress dag", "execution_id": lineage_uuid, "sha256": sha256},
-    )
-    return {"body": body, "sha256": sha256}
-
-
-def _deliver(config: ConfigLoader, conf: dict[str, Any], payload: dict[str, Any]) -> None:
-    """Deliver the package to the configured customer destination with SHA-256 read-back."""
-    auditor = AuditPublisher(config=config)
-    lineage_uuid = payload["lineage_uuid"]
-    destination_type = conf["destination_type"]
-    auditor.publish(
-        "com.laminar.dataoutbound.transfer.started",
-        {"actor_id": "system:egress dag", "execution_id": lineage_uuid, "destination": destination_type},
-    )
-
-    if destination_type == "s3":
-        client = S3Client(config)
-        client.upload_bytes(bucket=conf["destination_bucket"], key=conf["destination_key"], body=payload["body"])
-        readback = client.download_bytes(bucket=conf["destination_bucket"], key=conf["destination_key"])
-    elif destination_type == "azure_blob":
-        client = BlobClient(config)
-        client.upload(container=conf["destination_container"], blob=conf["destination_key"], body=payload["body"])
-        readback = client.download(container=conf["destination_container"], blob=conf["destination_key"])
-    elif destination_type == "gcs":
-        client = GcsClient(config)
-        client.upload(bucket=conf["destination_bucket"], key=conf["destination_key"], body=payload["body"])
-        readback = client.download(bucket=conf["destination_bucket"], key=conf["destination_key"])
-    elif destination_type == "sftp":
-        client = SftpClient(config)
-        client.upload(remote_path=conf["destination_path"], body=payload["body"])
-        readback = client.download(remote_path=conf["destination_path"])
-    else:
-        raise ValidationError(f"unsupported destination_type: {destination_type}")
-
-    if hashlib.sha256(readback).hexdigest() != payload["sha256"]:
-        raise ClientError("SHA-256 read-back mismatch after delivery")
-
-    auditor.publish(
-        "com.laminar.dataoutbound.transfer.completed",
-        {"actor_id": "system:egress dag", "execution_id": lineage_uuid, "destination": destination_type},
-    )
-
-
-def _pgp_encrypt(config: ConfigLoader, body: bytes, key_ref: str) -> bytes:
-    """PGP-encrypt `body` with the key resolved from SSM Parameter Store (SecureString)."""
-    raise NotImplementedError("PGP encryption is implemented in the generated code, not in this skeleton")
-
-
-with DAG(
-    dag_id=DAG_ID,
-    default_args=DEFAULT_ARGS,
-    schedule="@daily",
+dag = DAG(
+    dag_id="egress dag",
+    default_args=default_args,
+    schedule_interval="@daily",
     catchup=False,
-    max_active_runs=1,
-    tags=[],
-    start_date=datetime(2025, 1, 1, tzinfo=timezone.utc),
-) as dag:
-    read_staged = PythonOperator(task_id="read_staged", python_callable=_read_staged)
-    transform_encrypt = PythonOperator(task_id="transform_encrypt", python_callable=_transform_and_encrypt)
-    deliver = PythonOperator(task_id="deliver", python_callable=_deliver)
+    max_active_runs=1
+)
 
-    read_staged >> transform_encrypt >> deliver
+transform_task = PythonOperator(
+    task_id="transform_and_encrypt_task",
+    python_callable=_transform_and_encrypt,
+    provide_context=True,
+    dag=dag
+)
+
+deliver_task = PythonOperator(
+    task_id="deliver_task",
+    python_callable=_deliver,
+    provide_context=True,
+    dag=dag
+)
+
+transform_task >> deliver_task
 ```
+
+---
 
 ### 12.4. Cross-Component Interaction Sequence (Local Mermaid/ASCII Flow)
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_10.seq"></a>
-1. **Trigger Phase**: `egress-lambda` successfully processes an S3 event notification from `staging_bucet_internal`, invokes `transform_encrypt_dag` via the MWAA REST API with `dag_conf` (`execution_id`, `connection_id`, `object_key`, `dataset`).
-2. **Audit Initialization**: `transform_encrypt_dag` initiates the execution task, instantiates `AuditPublisher`, and pushes a `TRANSFER_STARTED` CloudEvent to `audit_bucket`.
-3. **Retrieval & Validation**: The DAG fetches the staged export file from `staging_bucet_internal` using S3 `GetObject`, and retrieves connection settings and PGP keys from SSM Parameter Store.
-4. **Transform & Encrypt**: GZIP compression is applied first, followed by strict fail-closed PGP encryption using the retrieved public key. If key retrieval or encryption fails, processing aborts immediately, zero unencrypted bytes are transmitted, and a `TRANSFER_FAILED` event is recorded.
-5. **Delivery**: The encrypted export package and `manifest_<execution_id>.json` are transferred to the configured customer destination (`customer SFTP server`, `customer bucket`, `Customer Azure Blob Destination`, or `Customer GCS Destination`).
-6. **Completion**: Upon successful read-back integrity verification against the manifest, a `TRANSFER_COMPLETED` CloudEvent is published to `audit_bucket`. On failure after 3 retries, a `TRANSFER_FAILED` event is published and an alert is raised.
+1. **Trigger Reception**: `egress-lambda` invokes the `egress dag` via the MWAA REST API (`TriggerDagRun`), transmitting the execution payload (`execution_id`, `connection_id`, `object_key`).
+2. **Context Initialization & Audit**: The DAG task initializes, extracts parameters from the run configuration, and publishes a `TRANSFER_STARTED` event to `audit_bucket`.
+3. **Data Staging Retrieval**: The DAG reads staged files from `staging_bucet_internal` using `S3Client`.
+4. **Transform & Encrypt**: The processing task applies optional GZIP compression followed by fail-closed PGP encryption. If PGP encryption fails, the pipeline aborts immediately, transmits zero bytes, logs a `TRANSFER_FAILED` event, and raises an alert.
+5. **Manifest Generation**: Generates `manifest_<execution_id>.json` containing file sizes, record counts, and SHA-256 checksums.
+6. **Destination Delivery**: The delivery task pushes the encrypted package and manifest to the configured destination (`customer SFTP server`, `customer bucket`, `Customer Azure Blob Destination`, `Customer GCS Destination`, or `staging_bucet_internal`).
+7. **Integrity Verification & Completion**: Performs read-back verification against the manifest SHA-256 checksum, retrying up to 3 times on transient errors. Upon success, publishes a `TRANSFER_COMPLETED` event to `audit_bucket`.
 
 ---
 ```mermaid
 sequenceDiagram
-participant egress-lambda
-participant egress dag
-participant staging_bucet_internal
-participant destination
-participant audit_bucket
-egress-lambda->>egress dag: DAG trigger JSON payload with object key and configuration ID
-egress dag->>staging_bucet_internal: GetObject request for staged export files and manifests
-staging_bucet_internal-->>egress dag: File object stream
-alt Successful Delivery
-egress dag->>destination: Encrypted file upload stream with SSH key authentication
-destination-->>egress dag: Upload completion acknowledgment
-egress dag->>audit_bucket: Transfer execution summary audit record upload
-audit_bucket-->>egress dag: S3 upload success ETag
-else Failure Path
-egress dag->>audit_bucket: TRANSFER_FAILED event
-end
+    participant egress-lambda
+    participant egress dag
+    participant staging_bucet_internal
+    participant customer SFTP server
+    participant audit_bucket
+
+    egress-lambda->>egress dag: DAG trigger JSON payload
+    alt API failure
+        egress dag-->>egress-lambda: Retry with exponential backoff
+    else Success
+        egress dag-->>egress-lambda: 200 OK with DAG run ID
+    end
+
+    egress dag->>staging_bucet_internal: GetObject request
+    alt S3 read error
+        staging_bucet_internal-->>egress dag: Retry up to 3 times
+    else Success
+        staging_bucet_internal-->>egress dag: File object stream
+    end
+
+    egress dag->>customer SFTP server: Encrypted file upload stream
+    alt Network or auth failure
+        customer SFTP server-->>egress dag: Retry 3 times then route to DLQ
+    else Success
+        customer SFTP server-->>egress dag: SFTP upload acknowledgment
+    end
+
+    egress dag->>audit_bucket: Transfer execution summary audit record upload
+    audit_bucket-->>egress dag: S3 upload success ETag
 ```
 
 ### 12.5. Schema Definitions (DB Tables / API JSON / Telemetry CloudEvents)
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_10.schema"></a>
-#### 12.5.1 Inbound DAG Trigger Payload (`dag_conf`)
+- **Inbound Trigger Payload JSON Schema**:
 ```json
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "TransformEncryptDagConf",
+  "title": "EgressDagTriggerPayload",
   "type": "object",
   "properties": {
     "execution_id": { "type": "string", "format": "uuid" },
     "connection_id": { "type": "string" },
-    "object_key": { "type": "string" },
-    "dataset": {
-      "type": "string",
-      "enum": ["identity_profiles", "subscription_statuses", "campaigns_reactions", "reservation_items"]
-    }
+    "object_key": { "type": "string" }
   },
-  "required": ["execution_id", "connection_id", "object_key", "dataset"]
+  "required": ["execution_id", "connection_id", "object_key"]
 }
 ```
 
-#### 12.5.2 Manifest Control File Schema (`manifest_<execution_id>.json`)
+- **Manifest Control File Schema (`manifest_<execution_id>.json`)**:
 ```json
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "ExportManifestControlFile",
+  "title": "ExportManifest",
   "type": "object",
   "properties": {
     "execution_id": { "type": "string", "format": "uuid" },
     "connection_id": { "type": "string" },
-    "generated_at": { "type": "string", "format": "date-time" },
-    "total_records": { "type": "integer" },
-    "total_size_bytes": { "type": "integer" },
+    "timestamp_utc": { "type": "string", "format": "date-time" },
     "files": {
       "type": "array",
       "items": {
@@ -4559,54 +4821,71 @@ end
       }
     }
   },
-  "required": ["execution_id", "connection_id", "generated_at", "total_records", "total_size_bytes", "files"]
+  "required": ["execution_id", "connection_id", "timestamp_utc", "files"]
 }
 ```
 
-#### 12.5.3 CloudEvent Telemetry Schema (`TRANSFER_COMPLETED`)
+- **CloudEvents Telemetry Audit Event Schema (`TRANSFER_COMPLETED` / `TRANSFER_FAILED`)**:
 ```json
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "TransferCompletedCloudEvent",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AuditCloudEvent",
   "type": "object",
+  "required": ["specversion", "id", "source", "type", "time", "data"],
   "properties": {
-    "specversion": { "type": "string", "enum": ["1.0"] },
-    "type": { "type": "string", "enum": ["com.laminar.dataoutbound.transfer.completed"] },
-    "source": { "type": "string" },
-    "id": { "type": "string", "format": "uuid" },
+    "specversion": { "const": "1.0" },
+    "id":          { "type": "string" },
+    "source":      { "type": "string", "examples": ["com.laminar.dataoutbound.do-admin-api"] },
+    "type": {
+      "type": "string",
+      "enum": [
+        "com.laminar.dataoutbound.config.updated",
+        "com.laminar.dataoutbound.orchestrator.triggered",
+        "com.laminar.dataoutbound.child.triggered",
+        "com.laminar.dataoutbound.emr.started",
+        "com.laminar.dataoutbound.staging.written",
+        "com.laminar.dataoutbound.egress.triggered",
+        "com.laminar.dataoutbound.egress_dag.started",
+        "com.laminar.dataoutbound.transfer.sftp",
+        "com.laminar.dataoutbound.transfer.s3",
+        "com.laminar.dataoutbound.transfer.azure",
+        "com.laminar.dataoutbound.transfer.gcs",
+        "com.laminar.dataoutbound.audit.admin",
+        "com.laminar.dataoutbound.audit.spark",
+        "com.laminar.dataoutbound.audit.egress"
+      ]
+    },
     "time": { "type": "string", "format": "date-time" },
-    "datacontenttype": { "type": "string", "enum": ["application/json"] },
-    "detail": {
+    "data": {
       "type": "object",
+      "required": ["actor_id", "timestamp_utc", "event_type", "execution_id"],
       "properties": {
-        "actor_id": { "type": "string" },
-        "timestamp_utc": { "type": "string" },
-        "event_type": { "type": "string", "enum": ["TRANSFER_COMPLETED"] },
-        "execution_id": { "type": "string", "format": "uuid" },
-        "details": {
-          "type": "object",
-          "properties": {
-            "destination": { "type": "string" },
-            "key": { "type": "string" }
-          },
-          "required": ["destination", "key"]
-        }
-      },
-      "required": ["actor_id", "timestamp_utc", "event_type", "execution_id", "details"]
+        "actor_id":      { "type": "string" },
+        "timestamp_utc": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$" },
+        "event_type": {
+          "type": "string",
+          "enum": ["ADMIN_CREATE", "ADMIN_UPDATE", "ADMIN_DELETE", "ADMIN_MANUAL_TRIGGER",
+                   "EXECUTION_STARTED", "EXECUTION_COMPLETED",
+                   "TRANSFER_STARTED", "TRANSFER_COMPLETED", "TRANSFER_FAILED"]
+        },
+        "execution_id":  { "type": "string", "format": "uuid" },
+        "config_id":     { "type": "string", "format": "uuid" },
+        "status":        { "type": "string" }
+      }
     }
-  },
-  "required": ["specversion", "type", "source", "id", "time", "datacontenttype", "detail"]
+  }
 }
 ```
+
+> Same `AuditCloudEvent` as defined in *Telemetry — CloudEvents emitted by callers, not by the store* — one schema, one definition.
 
 ---
 
 ### 12.6. Local Design Assumptions
 <a id="laminar-sec-c.imp_aws_aws_mwaa_dag_10.asm"></a>
-1. **MWAA Worker Capacity**: MWAA worker nodes are provisioned with sufficient memory and CPU (minimum `mw1.small` worker type) to handle GZIP compression and PGP encryption streams for files up to 1 GB without exceeding local disk or memory limits.
-2. **Credential Resolution**: SSM Parameter Store provides secure retrieval of customer-specific PGP public keys and destination authentication tokens (`SecureString`), decrypted at runtime within worker memory.
-3. **Network Isolation & Egress**: MWAA worker subnets route outbound traffic via a NAT Gateway with static Elastic IPs to satisfy customer firewall allowlisting requirements for SFTP and external cloud endpoints.
-4. **Follow-up Resolution**: If destination transfer fails after 3 retries, the DAG moves the payload to an internal dead-letter storage path, raises an operational alert <=5 minutes, and logs the incident to `audit_bucket` with status `TRANSFER_FAILED`.
+- **PGP Key Management**: PGP public keys and private decryption keys are assumed to be securely provisioned and retrieved via AWS SSM Parameter Store (SecureString) or Secrets Manager using the reference ID specified in the connection configuration.
+- **Delivery Retries**: Transient network failures during file push operations to external customer destinations will absorb up to 3 retry attempts with exponential backoff before recording a terminal failure audit entry.
+- **Fail-Closed Enforcement**: Any cryptographic failure during PGP key resolution or stream encryption automatically halts the workflow step, prevents any unencrypted bytes from egressing, and dispatches a high-priority operational alert within 5 seconds.
 
 ## 13. Component Design: Customer Azure Blob Destination
 <a id="laminar-sec-c.imp_azure_blob_store_13"></a>
@@ -4997,147 +5276,447 @@ end
 ## 15. Component Design: audit_bucket
 <a id="laminar-sec-c.imp_aws_aws_s3_bucket_15"></a>
 
+<!-- laminar:diagram-settings:imp-aws-aws_s3_bucket-15 -->
+**Diagram settings (user decisions — authoritative)**
+
+| Setting | Value |
+| --- | --- |
+| `versioning` | `false` |
+| `encryption` | `AES256` |
+| `public_access_block` | `true` |
+| `lifecycle_enabled` | `true` |
+| `lifecycle_transition_days` | `30` |
+| `lifecycle_glacier_days` | `90` |
+| `bucket_name` | `audit_bucket` |
+
+<!-- /laminar:diagram-settings -->
+
+
 ### 15.1. Component Contract (Bi-Directional Inputs & Outputs)
 <a id="laminar-sec-c.imp_aws_aws_s3_bucket_15.contract"></a>
-- **Component Name**: `audit_bucket`
-- **Service Type**: `aws_s3_bucket`
-- **Inbound Interfaces & Triggers**:
-  - **API Audit Write**: Ingests administrative audit records from `do-admin-api` via S3 API (`PutObject`).
-  - **Spark Execution Audit Push**: Ingests job execution metrics and audit logs from `emr_do` via S3 API (`PutObject`).
-  - **Egress Execution Audit Push**: Ingests transfer execution summary records from `egress dag` via S3 API (`PutObject`).
-- **Outbound Interfaces**:
-  - Exposes S3 object storage read/write interfaces to authorized IAM roles within the private VPC.
-- **Configuration Properties (Authoritative)**:
-  - `bucket_name`: `audit_bucket`
-  - `versioning`: `False`
-  - `encryption`: `AES256` (Server-Side Encryption with S3 managed keys)
-  - `public_access_block`: `True`
-  - `lifecycle_enabled`: `True`
-  - `lifecycle_transition_days`: `30` (Transition to Standard-IA)
-  - `lifecycle_glacier_days`: `90` (Transition to Glacier for long-term audit retention)
-  - `tags`: `{}`
+**Component:** `audit_bucket` — the Audit & Execution Log Store, an Amazon S3 bucket that is the single immutable sink for every business audit record produced by the pipeline. It owns no compute; its contract is an object-storage write/read contract plus a lifecycle contract.
+
+#### 15.1.1 Inbound contract (writers → audit_bucket)
+
+| Writer | Edge contract | Trigger | Payload | Response | Errors | Idempotency | Telemetry event |
+|---|---|---|---|---|---|---|---|
+| **do-admin-api** | do-admin-api → audit_bucket | API administrative audit logging | Audit log JSON record upload (`PutObject`) | S3 upload success ETag | S3 error; caught and logged locally without failing the API response | Idempotent via unique audit log filename timestamp | `com.laminar.dataoutbound.audit.admin` |
+| **emr_do** | emr_do → audit_bucket | Spark job execution completion | Spark job execution metrics and audit execution log upload | S3 upload success ETag | S3 error; logged with warning, job continues | Idempotent via job run ID naming | `com.laminar.dataoutbound.audit.spark` |
+| **egress dag** | egress dag → audit_bucket | Egress DAG completion | Transfer execution summary audit record upload | S3 upload success ETag | S3 error; logged with warning | Idempotent via DAG run ID naming | `com.laminar.dataoutbound.audit.egress` |
+
+All three writers use the shared `S3Client` (`common/clients/aws/s3/s3_client.py`) and the shared `AuditPublisher` (`common/telemetry/auditor.py`). The publisher **never raises into the caller's flow**: a failed audit write is logged locally and the business transaction proceeds — this is the deliberate trade-off that keeps audit unavailability from blocking exports, and it is why the audit write path is retried with exponential backoff rather than propagated.
+
+#### 15.1.2 Outbound contract (audit_bucket → consumers)
+
+| Consumer | Contract | Notes |
+|---|---|---|
+| Security & Operations engineers / compliance tooling | S3 `GetObject` / `ListObjectsV2` read of audit records | Read access restricted to authorised security principals only |
+| S3 lifecycle engine | Lifecycle transition and expiration | `lifecycle_enabled = true`, transition to Standard-IA at 30 days, to Glacier at 90 days |
+| CloudWatch | S3 server access logging and request metrics | Access to the audit store is itself monitored |
+
+#### 15.1.3 Configuration actually set (user decisions, authoritative)
+
+| Property | Value | Rationale |
+|---|---|---|
+| `bucket_name` | `audit_bucket` | Explicit resource identifier; the single audit sink referenced by every writer. |
+| `versioning` | `False` | Audit records are append-only and uniquely named; versioning would multiply storage cost for objects that are never overwritten. Accepted risk: an overwrite of a same-named key is unrecoverable — mitigated by the timestamp + UUID in every object key. |
+| `encryption` | `AES256` (SSE-S3) | Server-side encryption enforced on all ingested audit objects; S3-managed keys keep the audit path free of key-management coupling. |
+| `public_access_block` | `True` | Audit records contain operational metadata; public exposure is never acceptable. |
+| `lifecycle_enabled` | `True` | Automated tiering keeps long-term retention affordable. |
+| `lifecycle_transition_days` | `30` | Transition to Standard-IA after 30 days. |
+| `lifecycle_glacier_days` | `90` | Transition to Glacier after 90 days. |
+| `tags` | `{}` | Provisioned with metadata tags for operational ownership. |
+| Deletion protection | Read from per-environment Terraform variable (dev/staging/prod) | SCRUM-485 AC#3: no hardcoded protection value; lower environments tear down cleanly, staging/prod are protected. |
+
+**Object key layout (contract, not configuration):** `audit/<event_type>/<yyyy>/<mm>/<dd>/<execution_id>_<timestamp_utc>_<uuid>.json`. The date-partitioned, non-sequential prefix distributes S3 request load across partitions and avoids hot-partition throttling under concurrent writes from three independent writers.
 
 ### 15.2. Class and Interface Definitions
 <a id="laminar-sec-c.imp_aws_aws_s3_bucket_15.classes"></a>
+`audit_bucket` is a managed S3 bucket with no component-owned runtime. The classes below are the **shared foundation types that every writer uses** to produce a record this bucket accepts, plus the typed reader used by compliance tooling. They live in the blueprint foundation, not in a component module.
+
 ```python
-from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any, Dict, Optional
+from __future__ import annotations
+
+import json
+import uuid
+from dataclasses import dataclass, field, asdict
+from datetime import datetime, timezone
+from enum import Enum
+from typing import Any, Mapping, Optional
+
 from dataoutbound_section_tree.common.clients.aws.s3.s3_client import S3Client
 from dataoutbound_section_tree.common.logging.logger import get_logger
+from dataoutbound_section_tree.common.telemetry.auditor import AuditPublisher
+from dataoutbound_section_tree.util.exceptions import ClientError, ValidationError
 
 logger = get_logger(__name__)
 
-@dataclass
-class AuditEventRecord:
-    actor_id: str
-    timestamp_utc: str
-    event_type: str
-    execution_id: str
-    detail: Dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+class AuditEventType(str, Enum):
+    """The complete enumerated event set accepted by audit_bucket (SCRUM-486)."""
+
+    ADMIN_CREATE = "ADMIN_CREATE"
+    ADMIN_UPDATE = "ADMIN_UPDATE"
+    ADMIN_DELETE = "ADMIN_DELETE"
+    ADMIN_MANUAL_TRIGGER = "ADMIN_MANUAL_TRIGGER"
+    EXECUTION_STARTED = "EXECUTION_STARTED"
+    EXECUTION_COMPLETED = "EXECUTION_COMPLETED"
+    TRANSFER_STARTED = "TRANSFER_STARTED"
+    TRANSFER_COMPLETED = "TRANSFER_COMPLETED"
+    TRANSFER_FAILED = "TRANSFER_FAILED"
+
+
+class AuditEventSource(str, Enum):
+    """CloudEvents `type` values emitted by the pipeline's audit writers."""
+
+    ADMIN = "com.laminar.dataoutbound.audit.admin"
+    SPARK = "com.laminar.dataoutbound.audit.spark"
+    EGRESS = "com.laminar.dataoutbound.audit.egress"
+
+
+@dataclass(frozen=True)
+class AuditRecord:
+    """The four mandatory fields of the SCRUM-486 audit schema, plus context."""
+
+    actor_id: str                 # Acme user id, or "system:<component-name>"
+    timestamp_utc: str            # ISO-8601, millisecond precision, Z suffix
+    event_type: AuditEventType
+    execution_id: str             # lineage UUID generated by the orchestrator
+    component: str = ""
+    status: str = "SUCCESS"
+    details: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not self.actor_id or not self.execution_id:
+            raise ValidationError("actor_id and execution_id are mandatory audit fields")
+        if not self.timestamp_utc.endswith("Z"):
+            raise ValidationError("timestamp_utc must be ISO-8601 UTC with a Z suffix")
+
+    def to_cloudevent(self, source: AuditEventSource, subject: Optional[str] = None) -> dict:
+        """Wrap the record in a CloudEvents 1.0 envelope for storage."""
         return {
-            "actor_id": self.actor_id,
-            "timestamp_utc": self.timestamp_utc,
-            "event_type": self.event_type,
-            "execution_id": self.execution_id,
-            "detail": self.detail
+            "specversion": "1.0",
+            "id": str(uuid.uuid4()),
+            "source": f"com.laminar.dataoutbound.{self.component or 'pipeline'}",
+            "type": source.value,
+            "time": self.timestamp_utc,
+            "subject": subject or self.execution_id,
+            "datacontenttype": "application/json",
+            "data": asdict(self),
         }
+
+
+@dataclass(frozen=True)
+class AuditObjectKey:
+    """Deterministic, non-sequential object key for an audit record."""
+
+    event_type: AuditEventType
+    execution_id: str
+    timestamp_utc: str
+    record_id: str
+
+    def build(self) -> str:
+        day = self.timestamp_utc[:10]                      # yyyy-mm-dd
+        yyyy, mm, dd = day.split("-")
+        safe_ts = self.timestamp_utc.replace(":", "").replace("-", "")
+        return (
+            f"audit/{self.event_type.value}/{yyyy}/{mm}/{dd}/"
+            f"{self.execution_id}_{safe_ts}_{self.record_id}.json"
+        )
+
+
+class AuditStoreWriter:
+    """Write-side interface implemented by the shared AuditPublisher."""
+
+    def publish(self, record: AuditRecord, source: AuditEventSource) -> None: ...
+
+
+class AuditStoreReader:
+    """Read-side interface used by compliance tooling and acceptance tests."""
+
+    def __init__(self, bucket: str, s3: S3Client) -> None:
+        self._bucket = bucket
+        self._s3 = s3
+
+    def list_records(self, execution_id: str) -> list[str]:
+        """Return every audit object key for one lineage UUID."""
+        return self._s3.list_keys(prefix=f"audit/", contains=execution_id)
+
+    def get_record(self, key: str) -> dict:
+        try:
+            body = self._s3.download_bytes(bucket=self._bucket, key=key)
+            return json.loads(body.decode("utf-8"))
+        except ClientError as exc:
+            logger.error("audit_read_failed", extra={"key": key, "error": str(exc)})
+            raise
 ```
 
 ### 15.3. Implementation Code Skeleton (Stubs & Handlers)
 <a id="laminar-sec-c.imp_aws_aws_s3_bucket_15.skeleton"></a>
+Illustrative skeleton — the Component Contract and Schema Definitions are binding. `audit_bucket` is a managed S3 bucket: it has no handler of its own. The skeleton below is the **shared publisher that writes into it** (`common/telemetry/auditor.py`) and the **Terraform-shaped bucket definition** that the pipeline provisions. Both are shown because they are the only two artefacts that define this component's behaviour.
+
 ```python
-# Illustrative skeleton — the Component Contract and Schema Definitions are binding
+# src/dataoutbound_section_tree/common/telemetry/auditor.py
+"""AuditPublisher — the single writer of audit records into audit_bucket.
+
+Every component (do-admin-api, emr_do, egress dag, and the DAGs) publishes
+through this class. It never raises into the caller's flow.
+"""
+from __future__ import annotations
+
+import json
+import time
+import uuid
+from datetime import datetime, timezone
+from typing import Any, Mapping, Optional
+
 from dataoutbound_section_tree.common.clients.aws.s3.s3_client import S3Client
 from dataoutbound_section_tree.common.logging.logger import get_logger
+from dataoutbound_section_tree.config.config_loader import ConfigLoader
+from dataoutbound_section_tree.util.constants import AUDIT_BUCKET_KEY, AUDIT_PREFIX
 from dataoutbound_section_tree.util.exceptions import ClientError
-import json
-import uuid
+from dataoutbound_section_tree.util.idempotency import retry_with_backoff
 
 logger = get_logger(__name__)
 
-class AuditLogWriter:
-    def __init__(self, s3_client: S3Client, bucket_name: str):
-        self.s3_client = s3_client
-        self.bucket_name = bucket_name
+_MAX_ATTEMPTS = 3
+_BACKOFF_SECONDS = (1, 2, 4)
 
-    def write_audit_event(self, event_record: dict) -> None:
-        execution_id = event_record.get("execution_id", str(uuid.uuid4()))
-        event_type = event_record.get("event_type", "UNKNOWN")
-        object_key = f"audit_logs/{event_type}/{execution_id}/{uuid.uuid4()}.json"
 
-        payload = json.dumps(event_record)
+class AuditPublisher:
+    """Publishes CloudEvents-shaped audit records to audit_bucket."""
+
+    def __init__(self, config: ConfigLoader, s3: Optional[S3Client] = None) -> None:
+        self._config = config
+        self._bucket = config.get(AUDIT_BUCKET_KEY)
+        self._s3 = s3 or S3Client(config)
+
+    def publish(
+        self,
+        event_type: str,
+        payload: Mapping[str, Any],
+        actor_id: str,
+        execution_id: str,
+        component: str,
+        subject: Optional[str] = None,
+    ) -> None:
+        """Write one audit record. Failures are logged, never raised."""
+        timestamp_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+        record = {
+            "specversion": "1.0",
+            "id": str(uuid.uuid4()),
+            "source": f"com.laminar.dataoutbound.{component}",
+            "type": payload.get("cloudevent_type", f"com.laminar.dataoutbound.audit.{component}"),
+            "time": timestamp_utc,
+            "subject": subject or execution_id,
+            "datacontenttype": "application/json",
+            "data": {
+                "actor_id": actor_id,
+                "timestamp_utc": timestamp_utc,
+                "event_type": event_type,
+                "execution_id": execution_id,
+                "component": component,
+                "status": payload.get("status", "SUCCESS"),
+                "details": dict(payload),
+            },
+        }
+        key = self._build_key(event_type, execution_id, timestamp_utc)
         try:
-            self.s3_client.put_object(
-                bucket=self.bucket_name,
-                key=object_key,
-                body=payload.encode("utf-8"),
-                content_type="application/json"
+            retry_with_backoff(
+                lambda: self._s3.put_object(
+                    bucket=self._bucket,
+                    key=key,
+                    body=json.dumps(record).encode("utf-8"),
+                    content_type="application/json",
+                ),
+                attempts=_MAX_ATTEMPTS,
+                backoff_seconds=_BACKOFF_SECONDS,
             )
-            logger.info("Successfully wrote audit event", extra={"execution_id": execution_id, "event_type": event_type})
-        except ClientError as e:
-            logger.error("Failed to write audit event to S3", extra={"error": str(e), "execution_id": execution_id})
-            # Audit failures are logged with warning/error but do not disrupt caller flow unless mandated
+        except ClientError as exc:
+            # Audit unavailability must never block the business transaction.
+            logger.error(
+                "audit_publish_failed",
+                extra={"bucket": self._bucket, "key": key, "error": str(exc)},
+            )
+
+    @staticmethod
+    def _build_key(event_type: str, execution_id: str, timestamp_utc: str) -> str:
+        yyyy, mm, dd = timestamp_utc[:10].split("-")
+        safe_ts = timestamp_utc.replace(":", "").replace("-", "")
+        return f"{AUDIT_PREFIX}/{event_type}/{yyyy}/{mm}/{dd}/{execution_id}_{safe_ts}_{uuid.uuid4()}.json"
+```
+
+```hcl
+# terraform/s3.tf (excerpt) — audit execution log store s3
+resource "aws_s3_bucket" "audit_execution_log_store_s3" {
+  bucket        = var.audit_bucket_name          # "audit_bucket"
+  force_destroy = var.deletion_protection_enabled ? false : true
+}
+
+resource "aws_s3_bucket_versioning" "audit" {
+  bucket = aws_s3_bucket.audit_execution_log_store_s3.id
+  versioning_configuration { status = "Disabled" }   # user decision: versioning = false
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "audit" {
+  bucket = aws_s3_bucket.audit_execution_log_store_s3.id
+  rule {
+    apply_server_side_encryption_by_default { sse_algorithm = "AES256" }  # user decision
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "audit" {
+  bucket                  = aws_s3_bucket.audit_execution_log_store_s3.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "audit" {
+  bucket = aws_s3_bucket.audit_execution_log_store_s3.id
+  rule {
+    id     = "audit-tiering"
+    status = "Enabled"                              # user decision: lifecycle_enabled = true
+    filter { prefix = "audit/" }
+    transition { days = 30  storage_class = "STANDARD_IA" }  # lifecycle_transition_days
+    transition { days = 90  storage_class = "GLACIER" }      # lifecycle_glacier_days
+  }
+}
 ```
 
 ### 15.4. Cross-Component Interaction Sequence (Local Mermaid/ASCII Flow)
 <a id="laminar-sec-c.imp_aws_aws_s3_bucket_15.seq"></a>
-1. **Initiation**: Upstream components (`do-admin-api`, `emr_do`, or `egress dag`) complete an operation or lifecycle milestone and construct a structured audit payload.
-2. **Publishing**: The component invokes `AuditPublisher.publish()` or `AuditLogWriter.write_audit_event()`.
-3. **Transmission**: The shared `S3Client` executes a `PutObject` request over TLS 1.3 to `audit_bucket` (`audit_bucket`) with AES-256 encryption at rest.
-4. **Storage & Lifecycle**: `audit_bucket` acknowledges the write with an ETag. S3 lifecycle rules automatically transition objects older than 30 days to Standard-IA and objects older than 90 days to Glacier.
-5. **Failure Handling**: If an S3 write error occurs, the client catches the exception, logs a structured error via `logger.py`, and prevents unhandled propagation into critical business paths where non-blocking audit is specified.
+`audit_bucket` is a passive sink: it is never the initiator of an interaction. Every sequence below is a writer pushing a record, or a reader pulling one.
+
+1. **Administrative audit write.** An administrator calls a CRUD or manual-trigger endpoint on **do-admin-api**. The route handler completes its business transaction against **cofig_db** (or **orchestrator** for a trigger), then calls `AuditPublisher.publish(...)` with `actor_id` = the authenticated subject, `event_type` ∈ {`ADMIN_CREATE`, `ADMIN_UPDATE`, `ADMIN_DELETE`, `ADMIN_MANUAL_TRIGGER`}, and `execution_id` = the lineage UUID (for a trigger) or the config id (for CRUD). The publisher writes one object to `audit_bucket` under `audit/<event_type>/<yyyy>/<mm>/<dd>/`. The HTTP response is returned to the client **independently** of the audit write; the ≤5 s audit-latency requirement is met by writing the record before the response is flushed, while a write failure is logged locally and never converted into a 5xx.
+2. **Execution audit write.** **emr_do** completes a Spark job run and calls `AuditPublisher.publish(...)` with `actor_id = system:emr_do`, `event_type` ∈ {`EXECUTION_STARTED`, `EXECUTION_COMPLETED`}, and the lineage UUID. On an S3 error the job logs a warning and continues — the extraction result is not discarded because an audit write failed.
+3. **Transfer audit write.** **egress dag** completes each destination transfer and calls `AuditPublisher.publish(...)` with `actor_id = system:egress-dag`, `event_type` ∈ {`TRANSFER_STARTED`, `TRANSFER_COMPLETED`, `TRANSFER_FAILED`}, the lineage UUID, and destination/checksum details in `details`. A `TRANSFER_FAILED` record is written on the fail-closed PGP abort path within 5 seconds of the failure.
+4. **Lifecycle transition.** Independently of any writer, the S3 lifecycle engine transitions objects to Standard-IA at 30 days and to Glacier at 90 days. Transitions never alter object payloads, so the audit record remains byte-identical after tiering.
+5. **Read-back for verification.** Compliance tooling or the SCRUM-486 acceptance test lists objects for a lineage UUID and reads each record, asserting the four mandatory fields are non-null, `timestamp_utc` matches the ISO-8601 UTC millisecond pattern, and `event_type` belongs to the enumerated set.
+
+**Failure behaviour.** If `audit_bucket` is unreachable, writers retry three times with exponential backoff (1 s / 2 s / 4 s) and then log an error locally. No writer blocks, fails its business transaction, or raises into the caller because of an audit-write failure. There is no DLQ on this path by design: the audit record is regenerated by re-running the idempotent operation, and the pipeline's own CloudWatch log groups retain the operational trace in the interim.
 ```mermaid
 sequenceDiagram
-autonumber
-participant do_admin_api as do-admin-api
-participant emr_do as emr_do
-participant egress_dag as egress dag
-participant audit_bucket as audit_bucket
+  autonumber
+  participant DOA as do-admin-api
+  participant EMR as emr_do
+  participant DAG as egress dag
+  participant AB as audit_bucket
+  participant LC as S3 lifecycle engine
+  participant CT as compliance tooling
 
-do_admin_api->>audit_bucket: Audit log JSON record upload
-alt S3 Success
-    audit_bucket-->>do_admin_api: S3 upload success ETag
-else S3 Error
-    audit_bucket-->>do_admin_api: S3 error caught and logged locally
-end
+  Note over DOA,DAG: Writers retry 3 times with exponential backoff of 1s, 2s, 4s. No DLQ by design. No writer blocks or fails its business transaction on audit-write failure.
 
-emr_do->>audit_bucket: Spark job execution metrics and audit execution log upload
-alt S3 Success
-    audit_bucket-->>emr_do: S3 upload success ETag
-else S3 Error
-    audit_bucket-->>emr_do: S3 error logged with warning
-end
+  Note over DOA,AB: 1. Administrative audit write - trigger "API administrative audit logging"
+  DOA->>AB: "Audit log JSON record upload - actor_id, event_type in ADMIN_CREATE ADMIN_UPDATE ADMIN_DELETE ADMIN_MANUAL_TRIGGER, execution_id lineage UUID or config id, path audit/<event_type>/<yyyy>/<mm>/<dd>/"
+  Note over DOA,AB: Idempotent via unique audit log filename timestamp. Telemetry com.laminar.dataoutbound.audit.admin
+  alt S3 upload success
+    AB-->>DOA: "S3 upload success ETag"
+    Note over DOA: Audit record written before response is flushed, within 5s audit latency
+  else S3 error
+    AB-->>DOA: "S3 error"
+    Note over DOA: Caught and logged locally without failing API response. No 5xx raised
+  end
 
-egress_dag->>audit_bucket: Transfer execution summary audit record upload
-alt S3 Success
-    audit_bucket-->>egress_dag: S3 upload success ETag
-else S3 Error
-    audit_bucket-->>egress_dag: S3 error logged with warning
-end
+  Note over EMR,AB: 2. Execution audit write - trigger "Spark job execution completion"
+  EMR->>AB: "Spark job execution metrics and audit execution log upload - actor_id system:emr_do, event_type in EXECUTION_STARTED EXECUTION_COMPLETED, lineage UUID"
+  Note over EMR,AB: Idempotent via job run ID naming. Telemetry com.laminar.dataoutbound.audit.spark
+  alt S3 upload success
+    AB-->>EMR: "S3 upload success ETag"
+  else S3 error
+    AB-->>EMR: "S3 error"
+    Note over EMR: Logged with warning, job continues. Extraction result is not discarded
+  end
+
+  Note over DAG,AB: 3. Transfer audit write - trigger "Egress DAG completion"
+  DAG->>AB: "Transfer execution summary audit record upload - actor_id system:egress-dag, event_type in TRANSFER_STARTED TRANSFER_COMPLETED TRANSFER_FAILED, lineage UUID, destination and checksum details"
+  Note over DAG,AB: Idempotent via DAG run ID naming. Telemetry com.laminar.dataoutbound.audit.egress
+  alt S3 upload success
+    AB-->>DAG: "S3 upload success ETag"
+  else S3 error
+    AB-->>DAG: "S3 error"
+    Note over DAG: Logged with warning. TRANSFER_FAILED record written on fail-closed PGP abort path within 5 seconds
+  end
+
+  Note over LC,AB: 4. Lifecycle transition - independent of any writer
+  LC->>AB: "Transition objects to Standard-IA at 30 days and to Glacier at 90 days"
+  Note over AB: Transitions never alter object payloads, audit record remains byte-identical after tiering
+
+  Note over CT,AB: 5. Read-back for verification
+  CT->>AB: "List objects for a lineage UUID and read each record"
+  AB-->>CT: "Audit records with four mandatory fields, timestamp_utc, event_type"
+  alt All assertions pass
+    Note over CT: Four mandatory fields non-null, timestamp_utc matches ISO-8601 UTC millisecond pattern, event_type belongs to enumerated set
+  else Assertion failure
+    Note over CT: Verification fails, escalate for review
+  end
 ```
 
 ### 15.5. Schema Definitions (DB Tables / API JSON / Telemetry CloudEvents)
 <a id="laminar-sec-c.imp_aws_aws_s3_bucket_15.schema"></a>
+#### 15.5.1 Database tables
+
+N/A — `audit_bucket` is object storage; it owns no relational tables and no DDL.
+
+#### 15.5.2 Audit record schema (CloudEvents 1.0 envelope — the single contract for all writers)
+
+This is the **complete** schema accepted by `audit_bucket`. It covers the full enumerated event set from SCRUM-486 — administrative events from **do-admin-api**, execution events from **emr_do** and the DAGs, and transfer events from **egress dag** — not only the transfer subset.
+
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "AuditCloudEvent",
+  "$id": "https://laminar.com/dataoutbound/schemas/audit-record.json",
+  "title": "AuditRecord",
   "type": "object",
+  "required": ["specversion", "id", "source", "type", "time", "data"],
+  "additionalProperties": false,
   "properties": {
-    "specversion": { "type": "string", "const": "1.0" },
+    "specversion": { "const": "1.0" },
     "id": { "type": "string", "format": "uuid" },
-    "source": { "type": "string" },
-    "type": { "type": "string" },
-    "datacontenttype": { "type": "string", "const": "application/json" },
-    "time": { "type": "string", "format": "date-time" },
+    "source": {
+      "type": "string",
+      "pattern": "^com\\.laminar\\.dataoutbound\\.[a-z0-9-]+$"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "com.laminar.dataoutbound.audit.admin",
+        "com.laminar.dataoutbound.audit.spark",
+        "com.laminar.dataoutbound.audit.egress",
+        "com.laminar.dataoutbound.config.updated",
+        "com.laminar.dataoutbound.orchestrator.triggered",
+        "com.laminar.dataoutbound.scheduler.fired",
+        "com.laminar.dataoutbound.child.triggered",
+        "com.laminar.dataoutbound.emr.started",
+        "com.laminar.dataoutbound.staging.written",
+        "com.laminar.dataoutbound.egress.triggered",
+        "com.laminar.dataoutbound.egress_dag.started",
+        "com.laminar.dataoutbound.transfer.sftp",
+        "com.laminar.dataoutbound.transfer.s3",
+        "com.laminar.dataoutbound.transfer.azure",
+        "com.laminar.dataoutbound.transfer.gcs"
+      ]
+    },
+    "time": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
+    },
+    "subject": { "type": "string" },
+    "datacontenttype": { "const": "application/json" },
     "data": {
       "type": "object",
+      "required": ["actor_id", "timestamp_utc", "event_type", "execution_id"],
+      "additionalProperties": true,
       "properties": {
-        "actor_id": { "type": "string" },
-        "timestamp_utc": { "type": "string" },
+        "actor_id": {
+          "type": "string",
+          "description": "Authenticated Acme user id, or system:<component-name>."
+        },
+        "timestamp_utc": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
+        },
         "event_type": {
           "type": "string",
           "enum": [
@@ -5152,25 +5731,120 @@ end
             "TRANSFER_FAILED"
           ]
         },
-        "execution_id": { "type": "string", "format": "uuid" },
-        "detail": { "type": "object" }
-      },
-      "required": ["actor_id", "timestamp_utc", "event_type", "execution_id"]
+        "execution_id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Lineage UUID generated by the orchestrator."
+        },
+        "component": { "type": "string" },
+        "status": { "type": "string" },
+        "details": { "type": "object" }
+      }
     }
-  },
-  "required": ["specversion", "id", "source", "type", "time", "data"]
+  }
 }
 ```
 
+#### 15.5.3 Worked examples — one per writer family
+
+```json
+{
+  "specversion": "1.0",
+  "id": "9f1c2b7e-4a55-4d0e-9c31-6b2f0a7d1e88",
+  "source": "com.laminar.dataoutbound.do-admin-api",
+  "type": "com.laminar.dataoutbound.audit.admin",
+  "time": "2025-01-31T02:15:00.000Z",
+  "subject": "cfg-7d3a91",
+  "datacontenttype": "application/json",
+  "data": {
+    "actor_id": "acme:jdoe@acme.com",
+    "timestamp_utc": "2025-01-31T02:15:00.000Z",
+    "event_type": "ADMIN_UPDATE",
+    "execution_id": "3f2a1c9d-8b47-4e21-a6f0-1d9c7b5e4a02",
+    "component": "do-admin-api",
+    "status": "SUCCESS",
+    "details": { "config_id": "cfg-7d3a91", "changed_fields": ["cron_schedule"] }
+  }
+}
+```
+
+```json
+{
+  "specversion": "1.0",
+  "id": "b41d0c62-77aa-4f19-8e02-5c3a9d1f6b70",
+  "source": "com.laminar.dataoutbound.emr_do",
+  "type": "com.laminar.dataoutbound.audit.spark",
+  "time": "2025-01-31T02:41:12.418Z",
+  "subject": "3f2a1c9d-8b47-4e21-a6f0-1d9c7b5e4a02",
+  "datacontenttype": "application/json",
+  "data": {
+    "actor_id": "system:emr_do",
+    "timestamp_utc": "2025-01-31T02:41:12.418Z",
+    "event_type": "EXECUTION_COMPLETED",
+    "execution_id": "3f2a1c9d-8b47-4e21-a6f0-1d9c7b5e4a02",
+    "component": "emr_do",
+    "status": "SUCCESS",
+    "details": { "job_run_id": "00f2k1l9mnoq7r4", "record_count": 500, "entity": "identity_profiles" }
+  }
+}
+```
+
+```json
+{
+  "specversion": "1.0",
+  "id": "c8e5a3f1-2d64-4b90-a7e3-0f1b8c6d2a45",
+  "source": "com.laminar.dataoutbound.egress-dag",
+  "type": "com.laminar.dataoutbound.audit.egress",
+  "time": "2025-01-31T03:02:55.007Z",
+  "subject": "3f2a1c9d-8b47-4e21-a6f0-1d9c7b5e4a02",
+  "datacontenttype": "application/json",
+  "data": {
+    "actor_id": "system:egress-dag",
+    "timestamp_utc": "2025-01-31T03:02:55.007Z",
+    "event_type": "TRANSFER_FAILED",
+    "execution_id": "3f2a1c9d-8b47-4e21-a6f0-1d9c7b5e4a02",
+    "component": "egress-dag",
+    "status": "FAILED",
+    "details": {
+      "destination": "sftp",
+      "file_names": ["identity_profiles_3f2a1c9d.json.gz.pgp"],
+      "checksum": "sha256:9c1f...",
+      "retry_attempts": 3,
+      "reason": "PGP_ENCRYPTION_FAILED"
+    }
+  }
+}
+```
+
+#### 15.5.4 Expected event count per run (verification contract)
+
+For a run executing `N` connections each with one transfer, the number of records in `audit_bucket` for that lineage UUID equals `admin_operations + 2N + 2N`. A `TRANSFER_FAILED` record replaces the `TRANSFER_COMPLETED` record for the aborted transfer, so the count is unchanged on the abort path.
+
 ### 15.6. Local Design Assumptions
 <a id="laminar-sec-c.imp_aws_aws_s3_bucket_15.asm"></a>
-- **Assumption 1**: Retention and lifecycle expiration policies adhere strictly to organizational compliance standards, utilizing S3 lifecycle configuration to transition objects to Glacier at 90 days and enforcing permanent purge rules where applicable.
-- **Assumption 2**: Storage encryption uses S3 managed keys (`AES256`) as set in the component properties, satisfying data-at-rest security requirements without requiring dedicated KMS Customer Managed Keys.
-
----
+- **Audit write failure is non-blocking.** Assumption: an unavailable `audit_bucket` must never fail an export or an administrative operation. The publisher retries three times with exponential backoff and then logs locally; the record is recoverable by re-running the idempotent operation. This is the deliberate trade-off behind the "never raises into the caller's flow" contract.
+- **No DLQ on the audit path.** Assumption: because every audit-producing operation is idempotent per lineage UUID, a lost audit write is regenerated by re-execution rather than replayed from a queue. No SQS DLQ is provisioned for this sink.
+- **Versioning absence is accepted.** Assumption: with `versioning = False`, an overwrite of a same-named audit key is unrecoverable. Mitigation is the object key contract — `execution_id` + millisecond timestamp + UUID — which makes collisions practically impossible. This is the user's stated setting and is not overridden.
+- **Lifecycle tiering does not alter records.** Assumption: S3 lifecycle transitions to Standard-IA (30 days) and Glacier (90 days) preserve object bytes exactly; audit records remain readable and verifiable after tiering, subject to Glacier restore latency for records older than 90 days.
+- **Retention value.** The organisation logging-standard retention value (in days) referenced by SCRUM-486 AC#4 is not stated in the inputs; assumption: a single confirmed value is supplied per environment before sprint commitment and applied uniformly to every pipeline log group and to the audit store. Until confirmed, the value is parameterised in configuration and never hardcoded. This bucket's own lifecycle tiering (30/90 days) is independent of that retention value and is not a substitute for it.
+- **Deletion protection.** Assumption: the bucket's deletion-protection flag is read from the per-environment Terraform variable (dev/staging/prod) and is never hardcoded, satisfying SCRUM-485 AC#3.
+- **Access logging.** Assumption: S3 server access logging is enabled and routed to CloudWatch, so reads and writes against the audit store are themselves auditable. The destination log group carries the same organisation retention value as every other pipeline log group.
+- **Single-region.** Assumption: `audit_bucket` is deployed in the pipeline's single region; no cross-region replication is provisioned, consistent with the architecture's no-cross-region-DR assumption.
 
 ## 16. Component Design: customer SFTP server
 <a id="laminar-sec-c.imp_standard_standard_sftp_11"></a>
+
+<!-- laminar:diagram-settings:imp-standard-standard_sftp-11 -->
+**Diagram settings (user decisions — authoritative)**
+
+| Setting | Value |
+| --- | --- |
+| `port` | `22` |
+| `authentication_method` | `SSH Key` |
+| `server_name` | `customer SFTP server` |
+
+<!-- /laminar:diagram-settings -->
+
 
 ### 16.1. Component Contract (Bi-Directional Inputs & Outputs)
 <a id="laminar-sec-c.imp_standard_standard_sftp_11.contract"></a>
@@ -5206,6 +5880,22 @@ The `customer SFTP server` is an external, customer-managed SFTP endpoint operat
 ## 17. Component Design: customer bucket
 <a id="laminar-sec-c.imp_aws_aws_s3_bucket_12"></a>
 
+<!-- laminar:diagram-settings:imp-aws-aws_s3_bucket-12 -->
+**Diagram settings (user decisions — authoritative)**
+
+| Setting | Value |
+| --- | --- |
+| `versioning` | `true` |
+| `encryption` | `AES256` |
+| `public_access_block` | `true` |
+| `lifecycle_enabled` | `false` |
+| `lifecycle_transition_days` | `30` |
+| `lifecycle_glacier_days` | `90` |
+| `bucket_name` | `customer bucket` |
+
+<!-- /laminar:diagram-settings -->
+
+
 ### 17.1. Component Contract (Bi-Directional Inputs & Outputs)
 <a id="laminar-sec-c.imp_aws_aws_s3_bucket_12.contract"></a>
 - **Component Role**: External customer-owned S3 bucket (`customer bucket`) acting as an outbound delivery destination for encrypted or raw export packages and manifest control files.
@@ -5222,13 +5912,100 @@ The `customer SFTP server` is an external, customer-managed SFTP endpoint operat
 
 ## 18. Global Design Assumptions and Constraints
 <a id="laminar-sec-g.assump"></a>
-_Section not generated (status: failed — DOCGEN-TREE-03)._
+This chapter consolidates the system-wide architectural decisions, design assumptions, and constraints governing the DataOutbound platform. Each item represents a mainstream, production-grade default adopted to resolve open design questions.
+
+### 18.1 A1. Approved AWS Stack Conformance
+All pipeline-owned resources are provisioned exclusively from the approved allowlist — Amazon MWAA, RDS PostgreSQL, AWS Lambda, EMR Serverless, Amazon S3, and Amazon ECS — via the Terraform pipeline. The Golden Entity Source Store and external customer destinations are customer- or partner-owned and are integrated via contracts rather than provisioned by the platform.
+
+### 18.2 A2. Environment-Driven Deletion Protection
+Stateful resources—including the Export Config Store, Customer Staging Buckets, Audit & Execution Log Store, and associated KMS encryption keys—dynamically read their deletion-protection flags from per-environment configuration variables (`dev`, `staging`, `prod`). Lower environments permit clean teardowns, while production environments strictly prohibit accidental destruction.
+
+### 18.3 A3. Organisation Logging-Standard Retention Value
+The organisation logging-standard retention value is assumed to be **365 days** across all pipeline CloudWatch log groups and the centralized audit store, pending formal confirmation prior to final sprint commitment. Zero log groups are provisioned with unmanaged or infinite retention.
+
+### 18.4 A4. Audit Schema and Event Counting Contract
+Every business audit event conforms strictly to the CloudEvents-shaped schema comprising `actor_id`, `timestamp_utc` (ISO-8601 with millisecond precision and `Z` suffix), `event_type` (from the enumerated lifecycle set), and `execution_id` (the lineage UUID). Expected event counts per execution are fully deterministic and validated by automated integration test suites.
+
+### 18.5 A5. Fail-Closed Encryption Posture
+PGP encryption applied during transformation is strictly fail-closed. Any missing, corrupt, or failing cryptographic key immediately aborts the transfer, writes a `TRANSFER_FAILED` audit record within 5 seconds, raises an operational alert, and ensures **zero unencrypted bytes** are transmitted to any destination.
+
+### 18.6 A6. Delivery-Only Semantics and Integrity Standard
+Data delivery is strictly delivery-only; the platform does not manage downstream customer-side retention or acknowledgments. File integrity is verified uniformly via an application-level SHA-256 recomputed from a read-back of each delivered object and compared against the accompanying manifest control file.
+
+### 18.7 A7. Staging Lifecycle and Temporary Data Hygiene
+Temporary export artifacts residing in Customer Staging Buckets are governed by S3 lifecycle rules enforcing automatic expiration and deletion after exactly 7 days, preventing unbounded storage growth and minimizing data exposure windows.
+
+### 18.8 A8. Lineage UUID as the Sole Correlation Identifier
+A single RFC 4122 v4 lineage UUID is generated at the orchestration boundary and threaded through every downstream artifact, including run configurations, output file names, manifest control files, and audit records, guaranteeing absolute end-to-end traceability.
+
+### 18.9 A9. Credential Protection at Rest
+All customer destination credentials and sensitive authentication parameters stored within the Export Config Store are encrypted at rest using KMS customer-managed keys. Read operations automatically mask credential fields to prevent accidental exposure in logs or API responses.
+
+### 18.10 A10. Scheduling Tolerance and Cadence Semantics
+Cadence events raised by the Export Scheduler are evaluated by the Orchestrator against active connections using a strict $\pm 10$-minute selection window. Supported cadences (daily, weekly, bi-weekly, monthly, and hourly fast-batch) are validated via 5-field cron expressions at the API boundary before persistence.
 
 ## 19. Amendment Log
 <a id="laminar-sec-g.amend"></a>
 _No amendments._
 
-## 20. Closing & Disclaimer
+
+## 20. Traceability
+<a id="laminar-sec-g.trace"></a>
+
+| Section | Story | AC# |
+| --- | --- | --- |
+| 3.5.1 Canonical DDL — `export_configurations` (owned by `cofig_db`, declared once here) | SCRUM-479 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6, AC#7 |
+| 4.5.5 Telemetry record written to audit_bucket | SCRUM-479 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6, AC#7 |
+| 4. Component Design: scheduler | SCRUM-480 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6, AC#7 |
+| 3.4.2 Flow B — Manual trigger of an orchestrator run | SCRUM-480 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6, AC#7 |
+| 5.5.3 Outbound — orchestrator → child_export_dag (DagRun conf) | SCRUM-480 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6, AC#7 |
+| 3.5.1 Canonical DDL — `export_configurations` (owned by `cofig_db`, declared once here) | SCRUM-480 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6, AC#7 |
+| 4.5.5 Telemetry record written to audit_bucket | SCRUM-480 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6, AC#7 |
+| 4. Component Design: scheduler | SCRUM-481 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6, AC#7 |
+| 3.4.2 Flow B — Manual trigger of an orchestrator run | SCRUM-481 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6, AC#7 |
+| 5.5.3 Outbound — orchestrator → child_export_dag (DagRun conf) | SCRUM-481 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6, AC#7 |
+| 7. Component Design: emr_do | SCRUM-481 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6, AC#7 |
+| 3.5.1 Canonical DDL — `export_configurations` (owned by `cofig_db`, declared once here) | SCRUM-481 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6, AC#7 |
+| 10. Component Design: staging_bucet_internal | SCRUM-481 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6, AC#7 |
+| 4.5.5 Telemetry record written to audit_bucket | SCRUM-481 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6, AC#7 |
+| 10. Component Design: staging_bucet_internal | SCRUM-482 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6, AC#7 |
+| 10.5.2 S3 `ObjectCreated` notification payload (bucket → `egress-lambda`) | SCRUM-482 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6, AC#7 |
+| 11.5.1 Lambda Trigger Request Schema (`egress dag` MWAA Trigger Payload) | SCRUM-482 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6, AC#7 |
+| 13. Component Design: Customer Azure Blob Destination | SCRUM-482 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6, AC#7 |
+| 14. Component Design: Customer GCS Destination | SCRUM-482 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6, AC#7 |
+| 4.5.5 Telemetry record written to audit_bucket | SCRUM-482 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6, AC#7 |
+| 3.5.1 Canonical DDL — `export_configurations` (owned by `cofig_db`, declared once here) | SCRUM-483 | AC#1, AC#2, AC#3, AC#4 |
+| 10. Component Design: staging_bucet_internal | SCRUM-483 | AC#1, AC#2, AC#3, AC#4 |
+| 10.5.2 S3 `ObjectCreated` notification payload (bucket → `egress-lambda`) | SCRUM-483 | AC#1, AC#2, AC#3, AC#4 |
+| 11.5.1 Lambda Trigger Request Schema (`egress dag` MWAA Trigger Payload) | SCRUM-483 | AC#1, AC#2, AC#3, AC#4 |
+| 4.5.5 Telemetry record written to audit_bucket | SCRUM-483 | AC#1, AC#2, AC#3, AC#4 |
+| 10. Component Design: staging_bucet_internal | SCRUM-484 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6 |
+| 10.5.2 S3 `ObjectCreated` notification payload (bucket → `egress-lambda`) | SCRUM-484 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6 |
+| 11.5.1 Lambda Trigger Request Schema (`egress dag` MWAA Trigger Payload) | SCRUM-484 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6 |
+| 13. Component Design: Customer Azure Blob Destination | SCRUM-484 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6 |
+| 14. Component Design: Customer GCS Destination | SCRUM-484 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6 |
+| 4.5.5 Telemetry record written to audit_bucket | SCRUM-484 | AC#1, AC#2, AC#3, AC#4, AC#5, AC#6 |
+| 4. Component Design: scheduler | SCRUM-485 | AC#1, AC#2, AC#3, AC#4, AC#5 |
+| 3.4.2 Flow B — Manual trigger of an orchestrator run | SCRUM-485 | AC#1, AC#2, AC#3, AC#4, AC#5 |
+| 5.5.3 Outbound — orchestrator → child_export_dag (DagRun conf) | SCRUM-485 | AC#1, AC#2, AC#3, AC#4, AC#5 |
+| 7. Component Design: emr_do | SCRUM-485 | AC#1, AC#2, AC#3, AC#4, AC#5 |
+| 3.5.1 Canonical DDL — `export_configurations` (owned by `cofig_db`, declared once here) | SCRUM-485 | AC#1, AC#2, AC#3, AC#4, AC#5 |
+| 10. Component Design: staging_bucet_internal | SCRUM-485 | AC#1, AC#2, AC#3, AC#4, AC#5 |
+| 10.5.2 S3 `ObjectCreated` notification payload (bucket → `egress-lambda`) | SCRUM-485 | AC#1, AC#2, AC#3, AC#4, AC#5 |
+| 11.5.1 Lambda Trigger Request Schema (`egress dag` MWAA Trigger Payload) | SCRUM-485 | AC#1, AC#2, AC#3, AC#4, AC#5 |
+| 4.5.5 Telemetry record written to audit_bucket | SCRUM-485 | AC#1, AC#2, AC#3, AC#4, AC#5 |
+| 4. Component Design: scheduler | SCRUM-486 | AC#1, AC#2, AC#3, AC#4, AC#5 |
+| 3.4.2 Flow B — Manual trigger of an orchestrator run | SCRUM-486 | AC#1, AC#2, AC#3, AC#4, AC#5 |
+| 5.5.3 Outbound — orchestrator → child_export_dag (DagRun conf) | SCRUM-486 | AC#1, AC#2, AC#3, AC#4, AC#5 |
+| 7. Component Design: emr_do | SCRUM-486 | AC#1, AC#2, AC#3, AC#4, AC#5 |
+| 10. Component Design: staging_bucet_internal | SCRUM-486 | AC#1, AC#2, AC#3, AC#4, AC#5 |
+| 10.5.2 S3 `ObjectCreated` notification payload (bucket → `egress-lambda`) | SCRUM-486 | AC#1, AC#2, AC#3, AC#4, AC#5 |
+| 11.5.1 Lambda Trigger Request Schema (`egress dag` MWAA Trigger Payload) | SCRUM-486 | AC#1, AC#2, AC#3, AC#4, AC#5 |
+| 13. Component Design: Customer Azure Blob Destination | SCRUM-486 | AC#1, AC#2, AC#3, AC#4, AC#5 |
+| 14. Component Design: Customer GCS Destination | SCRUM-486 | AC#1, AC#2, AC#3, AC#4, AC#5 |
+| 4.5.5 Telemetry record written to audit_bucket | SCRUM-486 | AC#1, AC#2, AC#3, AC#4, AC#5 |
+
+## 21. Closing & Disclaimer
 <a id="laminar-sec-g.close"></a>
 This document was generated by an AI system from the architecture graph, its stories and the project blueprint. It is a starting point for engineering review, not a substitute for it: verify every contract, sizing figure, policy and assumption before relying on it. Discretion advised.
 
@@ -5236,4 +6013,4 @@ This document was generated by an AI system from the architecture graph, its sto
 <a id="laminar-sec-g.summary"></a>
 - Headings: 20
 - Sub-headings: 82
-- Sub-sub-headings: 71
+- Sub-sub-headings: 94

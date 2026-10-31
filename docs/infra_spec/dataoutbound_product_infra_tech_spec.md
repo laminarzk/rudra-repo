@@ -1174,7 +1174,9 @@ The `transform_encrypt_dag` runs in the **single shared MWAA environment** whose
 | Versioning | `True` | Ensures immutability and compliance tracking. |
 | Encryption | `AES256` / KMS CMK | Encrypted at rest. |
 | Public Access Block | `True` | Strict public access blocking. |
-| Lifecycle Rule | **Override of diagram default** (`lifecycle_enabled=False`): transition to Glacier after 30 days, expire after 90 days. | The diagram default disables lifecycle; this override is documented explicitly because audit records must be retained per the organisation logging standard (SCRUM-486) rather than kept forever or purged early. The override value is environment-config driven, not hardcoded. |
+| Lifecycle Enabled | `False` | Authoritative user diagram property — no lifecycle rule is enabled by default. |
+| Lifecycle Transition Days | `30` | Authoritative user diagram property (transition tier threshold, dormant while lifecycle is disabled). |
+| Lifecycle Glacier Days | `90` | Authoritative user diagram property (Glacier transition threshold, dormant while lifecycle is disabled). |
 
 #### 5.4.2 IAM Role & Policies
 * Append-only bucket policy allowing write access from all pipeline components and read access for authorized auditors.

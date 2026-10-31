@@ -1,0 +1,430 @@
+{
+  "architecture": "DataOutbound Product",
+  "base_sha": "74dd2f3cd1642bd565786e6bc36bb57369181ee7",
+  "generated_at_epoch_ms": 1793415538968,
+  "nodes": {
+    "": {
+      "language_key": "terraform",
+      "paths": [
+        "docs/design/dataoutbound_product_high_level_design.md",
+        "reports/review/parity-report.md",
+        "terraform/main.tf",
+        "terraform/values.yaml",
+        "terraform/variables.tf"
+      ],
+      "service_key": "terraform_root",
+      "task_keys": [
+        "terraform_gen",
+        "parity"
+      ],
+      "task_paths": {
+        "parity": [
+          "docs/design/dataoutbound_product_high_level_design.md",
+          "reports/review/parity-report.md"
+        ],
+        "terraform_gen": [
+          "terraform/main.tf",
+          "terraform/values.yaml",
+          "terraform/variables.tf"
+        ]
+      }
+    },
+    "__foundation__": {
+      "language_key": "python",
+      "paths": [
+        "pyproject.toml",
+        "requirements.txt",
+        "src/dataoutbound/common/clients/aws/emr/emr_client.py",
+        "src/dataoutbound/common/clients/aws/eventbridge/eventbridge_client.py",
+        "src/dataoutbound/common/clients/aws/mwaa/mwaa_client.py",
+        "src/dataoutbound/common/clients/aws/s3/s3_client.py",
+        "src/dataoutbound/common/clients/aws/session.py",
+        "src/dataoutbound/common/clients/aws/sqs/sqs_client.py",
+        "src/dataoutbound/common/clients/aws/ssm/ssm_client.py",
+        "src/dataoutbound/common/clients/azure/blob_client.py",
+        "src/dataoutbound/common/clients/db/db_client.py",
+        "src/dataoutbound/common/clients/gcp/gcs_client.py",
+        "src/dataoutbound/common/clients/rest/rest_client.py",
+        "src/dataoutbound/common/clients/sftp/sftp_client.py",
+        "src/dataoutbound/common/logging/logger.py",
+        "src/dataoutbound/common/security/auth.py",
+        "src/dataoutbound/common/telemetry/auditor.py",
+        "src/dataoutbound/config/common_config.yaml",
+        "src/dataoutbound/config/config_loader.py",
+        "src/dataoutbound/dags/config.yml",
+        "src/dataoutbound/lambdas/config.yml",
+        "src/dataoutbound/util/constants.py",
+        "src/dataoutbound/util/exceptions.py",
+        "src/dataoutbound/util/idempotency.py",
+        "src/dataoutbound/util/utils.py"
+      ],
+      "service_key": "foundation",
+      "status": "succeeded",
+      "task_keys": [
+        "code_gen",
+        "manifest"
+      ],
+      "task_paths": {
+        "code_gen": [
+          "src/dataoutbound/common/clients/aws/emr/emr_client.py",
+          "src/dataoutbound/common/clients/aws/eventbridge/eventbridge_client.py",
+          "src/dataoutbound/common/clients/aws/mwaa/mwaa_client.py",
+          "src/dataoutbound/common/clients/aws/s3/s3_client.py",
+          "src/dataoutbound/common/clients/aws/session.py",
+          "src/dataoutbound/common/clients/aws/sqs/sqs_client.py",
+          "src/dataoutbound/common/clients/aws/ssm/ssm_client.py",
+          "src/dataoutbound/common/clients/azure/blob_client.py",
+          "src/dataoutbound/common/clients/db/db_client.py",
+          "src/dataoutbound/common/clients/gcp/gcs_client.py",
+          "src/dataoutbound/common/clients/rest/rest_client.py",
+          "src/dataoutbound/common/clients/sftp/sftp_client.py",
+          "src/dataoutbound/common/logging/logger.py",
+          "src/dataoutbound/common/security/auth.py",
+          "src/dataoutbound/common/telemetry/auditor.py",
+          "src/dataoutbound/config/common_config.yaml",
+          "src/dataoutbound/config/config_loader.py",
+          "src/dataoutbound/dags/config.yml",
+          "src/dataoutbound/lambdas/config.yml",
+          "src/dataoutbound/util/constants.py",
+          "src/dataoutbound/util/exceptions.py",
+          "src/dataoutbound/util/idempotency.py",
+          "src/dataoutbound/util/utils.py"
+        ],
+        "manifest": [
+          "pyproject.toml",
+          "requirements.txt"
+        ]
+      }
+    },
+    "imp-aws-aws_emr_serverless-5": {
+      "language_key": "python",
+      "paths": [
+        "pyproject.toml",
+        "requirements.txt",
+        "src/dataoutbound/spark_emr/export_extract_spark_job/config/config.yaml",
+        "src/dataoutbound/spark_emr/export_extract_spark_job/helper/spark_session_helper.py",
+        "src/dataoutbound/spark_emr/export_extract_spark_job/io/child_export_golden_entity_source_store_reader.py",
+        "src/dataoutbound/spark_emr/export_extract_spark_job/io/customer_staging_buckets_audit_execution_log_store_writer.py",
+        "src/dataoutbound/spark_emr/export_extract_spark_job/main.py",
+        "src/dataoutbound/spark_emr/export_extract_spark_job/processor/export_extract_input_processor.py",
+        "src/dataoutbound/spark_emr/export_extract_spark_job/processor/export_extract_output_processor.py",
+        "src/dataoutbound/spark_emr/export_extract_spark_job/transform/export_extract_transformer.py",
+        "src/dataoutbound/spark_emr/export_extract_spark_job/util/constants.py",
+        "src/dataoutbound/spark_emr/export_extract_spark_job/util/file_utils.py",
+        "terraform/emr.tf",
+        "terraform/values.yaml"
+      ],
+      "service_key": "aws_emr_serverless",
+      "status": "succeeded",
+      "task_keys": [
+        "terraform_gen",
+        "code_gen",
+        "manifest"
+      ],
+      "task_paths": {
+        "code_gen": [
+          "src/dataoutbound/spark_emr/export_extract_spark_job/config/config.yaml",
+          "src/dataoutbound/spark_emr/export_extract_spark_job/helper/spark_session_helper.py",
+          "src/dataoutbound/spark_emr/export_extract_spark_job/io/child_export_golden_entity_source_store_reader.py",
+          "src/dataoutbound/spark_emr/export_extract_spark_job/io/customer_staging_buckets_audit_execution_log_store_writer.py",
+          "src/dataoutbound/spark_emr/export_extract_spark_job/main.py",
+          "src/dataoutbound/spark_emr/export_extract_spark_job/processor/export_extract_input_processor.py",
+          "src/dataoutbound/spark_emr/export_extract_spark_job/processor/export_extract_output_processor.py",
+          "src/dataoutbound/spark_emr/export_extract_spark_job/transform/export_extract_transformer.py",
+          "src/dataoutbound/spark_emr/export_extract_spark_job/util/constants.py",
+          "src/dataoutbound/spark_emr/export_extract_spark_job/util/file_utils.py"
+        ],
+        "manifest": [
+          "pyproject.toml",
+          "requirements.txt"
+        ],
+        "terraform_gen": [
+          "terraform/emr.tf",
+          "terraform/values.yaml"
+        ]
+      }
+    },
+    "imp-aws-aws_eventbridge-2": {
+      "language_key": "",
+      "paths": [
+        "terraform/eventbridge.tf",
+        "terraform/values.yaml"
+      ],
+      "service_key": "aws_eventbridge",
+      "status": "succeeded",
+      "task_keys": [
+        "terraform_gen"
+      ],
+      "task_paths": {
+        "terraform_gen": [
+          "terraform/eventbridge.tf",
+          "terraform/values.yaml"
+        ]
+      }
+    },
+    "imp-aws-aws_lambda-9": {
+      "language_key": "python",
+      "paths": [
+        "pyproject.toml",
+        "requirements.txt",
+        "src/dataoutbound/lambdas/egress_lambda.py",
+        "terraform/lambda.tf",
+        "terraform/values.yaml"
+      ],
+      "service_key": "aws_lambda",
+      "status": "succeeded",
+      "task_keys": [
+        "terraform_gen",
+        "code_gen",
+        "manifest"
+      ],
+      "task_paths": {
+        "code_gen": [
+          "src/dataoutbound/lambdas/egress_lambda.py"
+        ],
+        "manifest": [
+          "pyproject.toml",
+          "requirements.txt"
+        ],
+        "terraform_gen": [
+          "terraform/lambda.tf",
+          "terraform/values.yaml"
+        ]
+      }
+    },
+    "imp-aws-aws_mwaa_dag-10": {
+      "language_key": "python",
+      "paths": [
+        "pyproject.toml",
+        "requirements.txt",
+        "src/dataoutbound/dags/transform_encrypt_dag.py",
+        "terraform/mwaa.tf",
+        "terraform/values.yaml"
+      ],
+      "service_key": "aws_mwaa_dag",
+      "status": "succeeded",
+      "task_keys": [
+        "terraform_gen",
+        "code_gen",
+        "manifest"
+      ],
+      "task_paths": {
+        "code_gen": [
+          "src/dataoutbound/dags/transform_encrypt_dag.py"
+        ],
+        "manifest": [
+          "pyproject.toml",
+          "requirements.txt"
+        ],
+        "terraform_gen": [
+          "terraform/mwaa.tf",
+          "terraform/values.yaml"
+        ]
+      }
+    },
+    "imp-aws-aws_mwaa_dag-3": {
+      "language_key": "python",
+      "paths": [
+        "pyproject.toml",
+        "requirements.txt",
+        "src/dataoutbound/dags/export_orchestrator_dag.py",
+        "terraform/mwaa.tf",
+        "terraform/values.yaml"
+      ],
+      "service_key": "aws_mwaa_dag",
+      "status": "succeeded",
+      "task_keys": [
+        "terraform_gen",
+        "code_gen",
+        "manifest"
+      ],
+      "task_paths": {
+        "code_gen": [
+          "src/dataoutbound/dags/export_orchestrator_dag.py"
+        ],
+        "manifest": [
+          "pyproject.toml",
+          "requirements.txt"
+        ],
+        "terraform_gen": [
+          "terraform/mwaa.tf",
+          "terraform/values.yaml"
+        ]
+      }
+    },
+    "imp-aws-aws_mwaa_dag-4": {
+      "language_key": "python",
+      "paths": [
+        "src/dataoutbound/dags/child_export_dag.py",
+        "terraform/mwaa.tf",
+        "terraform/values.yaml"
+      ],
+      "service_key": "aws_mwaa_dag",
+      "status": "succeeded",
+      "task_keys": [
+        "terraform_gen",
+        "code_gen",
+        "manifest"
+      ],
+      "task_paths": {
+        "code_gen": [
+          "src/dataoutbound/dags/child_export_dag.py"
+        ],
+        "terraform_gen": [
+          "terraform/mwaa.tf",
+          "terraform/values.yaml"
+        ]
+      }
+    },
+    "imp-aws-aws_rds-7": {
+      "language_key": "",
+      "paths": [
+        "terraform/rds.tf",
+        "terraform/values.yaml"
+      ],
+      "service_key": "aws_rds",
+      "status": "succeeded",
+      "task_keys": [
+        "terraform_gen"
+      ],
+      "task_paths": {
+        "terraform_gen": [
+          "terraform/rds.tf",
+          "terraform/values.yaml"
+        ]
+      }
+    },
+    "imp-aws-aws_redshift-6": {
+      "language_key": "",
+      "paths": [
+        "terraform/redshift.tf",
+        "terraform/values.yaml"
+      ],
+      "service_key": "aws_redshift",
+      "status": "succeeded",
+      "task_keys": [
+        "terraform_gen"
+      ],
+      "task_paths": {
+        "terraform_gen": [
+          "terraform/redshift.tf",
+          "terraform/values.yaml"
+        ]
+      }
+    },
+    "imp-aws-aws_s3_bucket-15": {
+      "language_key": "",
+      "paths": [
+        "terraform/s3.tf",
+        "terraform/values.yaml"
+      ],
+      "service_key": "aws_s3_bucket",
+      "status": "succeeded",
+      "task_keys": [
+        "terraform_gen"
+      ],
+      "task_paths": {
+        "terraform_gen": [
+          "terraform/s3.tf",
+          "terraform/values.yaml"
+        ]
+      }
+    },
+    "imp-aws-aws_s3_bucket-8": {
+      "language_key": "",
+      "paths": [
+        "terraform/s3.tf",
+        "terraform/values.yaml"
+      ],
+      "service_key": "aws_s3_bucket",
+      "status": "succeeded",
+      "task_keys": [
+        "terraform_gen"
+      ],
+      "task_paths": {
+        "terraform_gen": [
+          "terraform/s3.tf",
+          "terraform/values.yaml"
+        ]
+      }
+    },
+    "imp-azure-blob_store-13": {
+      "language_key": "",
+      "paths": [
+        "terraform/blob_store.tf",
+        "terraform/values.yaml"
+      ],
+      "service_key": "blob_store",
+      "status": "succeeded",
+      "task_keys": [
+        "terraform_gen"
+      ],
+      "task_paths": {
+        "terraform_gen": [
+          "terraform/blob_store.tf",
+          "terraform/values.yaml"
+        ]
+      }
+    },
+    "imp-gcp-gcs-14": {
+      "language_key": "",
+      "paths": [
+        "terraform/gcs.tf",
+        "terraform/values.yaml"
+      ],
+      "service_key": "gcs",
+      "status": "succeeded",
+      "task_keys": [
+        "terraform_gen"
+      ],
+      "task_paths": {
+        "terraform_gen": [
+          "terraform/gcs.tf",
+          "terraform/values.yaml"
+        ]
+      }
+    },
+    "imp-standard-standard_api-1": {
+      "language_key": "python",
+      "paths": [
+        "pyproject.toml",
+        "requirements.txt",
+        "src/dataoutbound/apis/config.yml",
+        "src/dataoutbound/apis/export_admin_api/app.py",
+        "src/dataoutbound/apis/export_admin_api/dependencies.py",
+        "src/dataoutbound/apis/export_admin_api/export_admin_routes.py",
+        "src/dataoutbound/apis/export_admin_api/export_admin_schemas.py",
+        "src/dataoutbound/apis/export_admin_api/export_admin_service.py",
+        "terraform/api.tf",
+        "terraform/values.yaml"
+      ],
+      "service_key": "standard_api",
+      "status": "succeeded",
+      "task_keys": [
+        "terraform_gen",
+        "code_gen",
+        "manifest"
+      ],
+      "task_paths": {
+        "code_gen": [
+          "src/dataoutbound/apis/config.yml",
+          "src/dataoutbound/apis/export_admin_api/app.py",
+          "src/dataoutbound/apis/export_admin_api/dependencies.py",
+          "src/dataoutbound/apis/export_admin_api/export_admin_routes.py",
+          "src/dataoutbound/apis/export_admin_api/export_admin_schemas.py",
+          "src/dataoutbound/apis/export_admin_api/export_admin_service.py"
+        ],
+        "manifest": [
+          "pyproject.toml",
+          "requirements.txt"
+        ],
+        "terraform_gen": [
+          "terraform/api.tf",
+          "terraform/values.yaml"
+        ]
+      }
+    }
+  },
+  "run_id": "14dd2ea5-4251-44df-a1a4-c903d41dd2a1",
+  "schema": 1
+}

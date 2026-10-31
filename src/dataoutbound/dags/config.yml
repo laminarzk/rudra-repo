@@ -1,0 +1,112 @@
+# Airflow / MWAA configuration per environment, read through ConfigLoader("dags").
+
+dev:
+  logging:
+    level: DEBUG
+  mwaa:
+    environment_name: dataoutbound-dev
+  dags:
+    orchestrator:
+      dag_id: orchestrator
+      schedule: "@daily"
+      catchup: false
+      max_active_runs: 1
+      retries: 2
+      retry_delay_minutes: 5
+      schedule_window_minutes: 10
+    child_export:
+      dag_id: child_export_dag
+      schedule: "@daily"
+      catchup: false
+      max_active_runs: 1
+      retries: 3
+      retry_delay_minutes: 5
+    transform_encrypt:
+      dag_id: transform_encrypt_dag
+      schedule: "@daily"
+      catchup: false
+      max_active_runs: 1
+      retries: 3
+      retry_delay_minutes: 5
+      task_timeout_minutes: 15
+  emr:
+    application_id: emr_do
+    max_capacity_units: 200
+    execution_role_arn: arn:aws:iam::000000000000:role/dataoutbound-emr-dev
+  audit:
+    bucket_name: audit_bucket
+    prefix: audit
+
+staging:
+  logging:
+    level: INFO
+  mwaa:
+    environment_name: dataoutbound-staging
+  dags:
+    orchestrator:
+      dag_id: orchestrator
+      schedule: "@daily"
+      catchup: false
+      max_active_runs: 1
+      retries: 2
+      retry_delay_minutes: 5
+      schedule_window_minutes: 10
+    child_export:
+      dag_id: child_export_dag
+      schedule: "@daily"
+      catchup: false
+      max_active_runs: 1
+      retries: 3
+      retry_delay_minutes: 5
+    transform_encrypt:
+      dag_id: transform_encrypt_dag
+      schedule: "@daily"
+      catchup: false
+      max_active_runs: 1
+      retries: 3
+      retry_delay_minutes: 5
+      task_timeout_minutes: 15
+  emr:
+    application_id: emr_do
+    max_capacity_units: 200
+    execution_role_arn: arn:aws:iam::000000000000:role/dataoutbound-emr-staging
+  audit:
+    bucket_name: audit_bucket
+    prefix: audit
+
+prod:
+  logging:
+    level: INFO
+  mwaa:
+    environment_name: dataoutbound-prod
+  dags:
+    orchestrator:
+      dag_id: orchestrator
+      schedule: "@daily"
+      catchup: false
+      max_active_runs: 1
+      retries: 2
+      retry_delay_minutes: 5
+      schedule_window_minutes: 10
+    child_export:
+      dag_id: child_export_dag
+      schedule: "@daily"
+      catchup: false
+      max_active_runs: 1
+      retries: 3
+      retry_delay_minutes: 5
+    transform_encrypt:
+      dag_id: transform_encrypt_dag
+      schedule: "@daily"
+      catchup: false
+      max_active_runs: 1
+      retries: 3
+      retry_delay_minutes: 5
+      task_timeout_minutes: 15
+  emr:
+    application_id: emr_do
+    max_capacity_units: 200
+    execution_role_arn: arn:aws:iam::000000000000:role/dataoutbound-emr-prod
+  audit:
+    bucket_name: audit_bucket
+    prefix: audit

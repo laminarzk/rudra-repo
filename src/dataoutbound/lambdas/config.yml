@@ -1,0 +1,55 @@
+# Egress Lambda configuration per environment, read through ConfigLoader("lambdas").
+
+dev:
+  logging:
+    level: DEBUG
+  lambda:
+    function_name: egress-lambda
+    timeout_seconds: 30
+    batch_size: 10
+  mwaa:
+    environment_name: dataoutbound-dev
+    transform_dag_id: transform_encrypt_dag
+  audit:
+    bucket_name: audit_bucket
+    prefix: audit
+  staging:
+    bucket_name: staging_bucet_internal
+  features:
+    async_trigger: true
+
+staging:
+  logging:
+    level: INFO
+  lambda:
+    function_name: egress-lambda
+    timeout_seconds: 30
+    batch_size: 10
+  mwaa:
+    environment_name: dataoutbound-staging
+    transform_dag_id: transform_encrypt_dag
+  audit:
+    bucket_name: audit_bucket
+    prefix: audit
+  staging:
+    bucket_name: staging_bucet_internal
+  features:
+    async_trigger: true
+
+prod:
+  logging:
+    level: INFO
+  lambda:
+    function_name: egress-lambda
+    timeout_seconds: 30
+    batch_size: 50
+  mwaa:
+    environment_name: dataoutbound-prod
+    transform_dag_id: transform_encrypt_dag
+  audit:
+    bucket_name: audit_bucket
+    prefix: audit
+  staging:
+    bucket_name: staging_bucet_internal
+  features:
+    async_trigger: true

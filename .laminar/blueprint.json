@@ -1,0 +1,1544 @@
+{
+  "archetype_key": "python_src",
+  "artifact_id": "dataoutbound",
+  "fluid_additions": {},
+  "group_id": "com.laminar",
+  "input_hash": "2113ffa45b3ca02889945794dea27e30e71b9eb7be2e2a32b97bb74e9fe3cb5d",
+  "language_key": "python",
+  "layout_tree": [
+    ".",
+    "\u251c\u2500\u2500 src",
+    "\u2502   \u2514\u2500\u2500 dataoutbound",
+    "\u2502       \u251c\u2500\u2500 apis",
+    "\u2502       \u2502   \u251c\u2500\u2500 export_admin_api",
+    "\u2502       \u2502   \u2502   \u251c\u2500\u2500 app.py",
+    "\u2502       \u2502   \u2502   \u251c\u2500\u2500 dependencies.py",
+    "\u2502       \u2502   \u2502   \u251c\u2500\u2500 export_admin_routes.py",
+    "\u2502       \u2502   \u2502   \u251c\u2500\u2500 export_admin_schemas.py",
+    "\u2502       \u2502   \u2502   \u2514\u2500\u2500 export_admin_service.py",
+    "\u2502       \u2502   \u2514\u2500\u2500 config.yml",
+    "\u2502       \u251c\u2500\u2500 common",
+    "\u2502       \u2502   \u251c\u2500\u2500 clients",
+    "\u2502       \u2502   \u2502   \u251c\u2500\u2500 aws",
+    "\u2502       \u2502   \u2502   \u2502   \u251c\u2500\u2500 emr",
+    "\u2502       \u2502   \u2502   \u2502   \u2502   \u2514\u2500\u2500 emr_client.py",
+    "\u2502       \u2502   \u2502   \u2502   \u251c\u2500\u2500 eventbridge",
+    "\u2502       \u2502   \u2502   \u2502   \u2502   \u2514\u2500\u2500 eventbridge_client.py",
+    "\u2502       \u2502   \u2502   \u2502   \u251c\u2500\u2500 mwaa",
+    "\u2502       \u2502   \u2502   \u2502   \u2502   \u2514\u2500\u2500 mwaa_client.py",
+    "\u2502       \u2502   \u2502   \u2502   \u251c\u2500\u2500 s3",
+    "\u2502       \u2502   \u2502   \u2502   \u2502   \u2514\u2500\u2500 s3_client.py",
+    "\u2502       \u2502   \u2502   \u2502   \u251c\u2500\u2500 sqs",
+    "\u2502       \u2502   \u2502   \u2502   \u2502   \u2514\u2500\u2500 sqs_client.py",
+    "\u2502       \u2502   \u2502   \u2502   \u251c\u2500\u2500 ssm",
+    "\u2502       \u2502   \u2502   \u2502   \u2502   \u2514\u2500\u2500 ssm_client.py",
+    "\u2502       \u2502   \u2502   \u2502   \u2514\u2500\u2500 session.py",
+    "\u2502       \u2502   \u2502   \u251c\u2500\u2500 azure",
+    "\u2502       \u2502   \u2502   \u2502   \u2514\u2500\u2500 blob_client.py",
+    "\u2502       \u2502   \u2502   \u251c\u2500\u2500 db",
+    "\u2502       \u2502   \u2502   \u2502   \u2514\u2500\u2500 db_client.py",
+    "\u2502       \u2502   \u2502   \u251c\u2500\u2500 gcp",
+    "\u2502       \u2502   \u2502   \u2502   \u2514\u2500\u2500 gcs_client.py",
+    "\u2502       \u2502   \u2502   \u251c\u2500\u2500 rest",
+    "\u2502       \u2502   \u2502   \u2502   \u2514\u2500\u2500 rest_client.py",
+    "\u2502       \u2502   \u2502   \u2514\u2500\u2500 sftp",
+    "\u2502       \u2502   \u2502       \u2514\u2500\u2500 sftp_client.py",
+    "\u2502       \u2502   \u251c\u2500\u2500 logging",
+    "\u2502       \u2502   \u2502   \u2514\u2500\u2500 logger.py",
+    "\u2502       \u2502   \u251c\u2500\u2500 security",
+    "\u2502       \u2502   \u2502   \u2514\u2500\u2500 auth.py",
+    "\u2502       \u2502   \u2514\u2500\u2500 telemetry",
+    "\u2502       \u2502       \u2514\u2500\u2500 auditor.py",
+    "\u2502       \u251c\u2500\u2500 config",
+    "\u2502       \u2502   \u251c\u2500\u2500 common_config.yaml",
+    "\u2502       \u2502   \u2514\u2500\u2500 config_loader.py",
+    "\u2502       \u251c\u2500\u2500 dags",
+    "\u2502       \u2502   \u251c\u2500\u2500 child_export_dag.py",
+    "\u2502       \u2502   \u251c\u2500\u2500 config.yml",
+    "\u2502       \u2502   \u251c\u2500\u2500 export_orchestrator_dag.py",
+    "\u2502       \u2502   \u2514\u2500\u2500 transform_encrypt_dag.py",
+    "\u2502       \u251c\u2500\u2500 lambdas",
+    "\u2502       \u2502   \u251c\u2500\u2500 config.yml",
+    "\u2502       \u2502   \u2514\u2500\u2500 egress_lambda.py",
+    "\u2502       \u251c\u2500\u2500 spark_emr",
+    "\u2502       \u2502   \u2514\u2500\u2500 export_extract_spark_job",
+    "\u2502       \u2502       \u251c\u2500\u2500 config",
+    "\u2502       \u2502       \u2502   \u251c\u2500\u2500 recipes",
+    "\u2502       \u2502       \u2502   \u2514\u2500\u2500 config.yaml",
+    "\u2502       \u2502       \u251c\u2500\u2500 helper",
+    "\u2502       \u2502       \u2502   \u2514\u2500\u2500 spark_session_helper.py",
+    "\u2502       \u2502       \u251c\u2500\u2500 io",
+    "\u2502       \u2502       \u2502   \u251c\u2500\u2500 child_export_golden_entity_source_store_reader.py",
+    "\u2502       \u2502       \u2502   \u2514\u2500\u2500 customer_staging_buckets_audit_execution_log_store_writer.py",
+    "\u2502       \u2502       \u251c\u2500\u2500 processor",
+    "\u2502       \u2502       \u2502   \u251c\u2500\u2500 export_extract_input_processor.py",
+    "\u2502       \u2502       \u2502   \u2514\u2500\u2500 export_extract_output_processor.py",
+    "\u2502       \u2502       \u251c\u2500\u2500 transform",
+    "\u2502       \u2502       \u2502   \u2514\u2500\u2500 export_extract_transformer.py",
+    "\u2502       \u2502       \u251c\u2500\u2500 util",
+    "\u2502       \u2502       \u2502   \u251c\u2500\u2500 constants.py",
+    "\u2502       \u2502       \u2502   \u2514\u2500\u2500 file_utils.py",
+    "\u2502       \u2502       \u2514\u2500\u2500 main.py",
+    "\u2502       \u2514\u2500\u2500 util",
+    "\u2502           \u251c\u2500\u2500 constants.py",
+    "\u2502           \u251c\u2500\u2500 exceptions.py",
+    "\u2502           \u251c\u2500\u2500 idempotency.py",
+    "\u2502           \u2514\u2500\u2500 utils.py",
+    "\u2514\u2500\u2500 terraform",
+    "    \u251c\u2500\u2500 api.tf",
+    "    \u251c\u2500\u2500 blob_store.tf",
+    "    \u251c\u2500\u2500 emr.tf",
+    "    \u251c\u2500\u2500 eventbridge.tf",
+    "    \u251c\u2500\u2500 gcs.tf",
+    "    \u251c\u2500\u2500 lambda.tf",
+    "    \u251c\u2500\u2500 main.tf",
+    "    \u251c\u2500\u2500 mwaa.tf",
+    "    \u251c\u2500\u2500 rds.tf",
+    "    \u251c\u2500\u2500 redshift.tf",
+    "    \u251c\u2500\u2500 s3.tf",
+    "    \u251c\u2500\u2500 values.yaml",
+    "    \u2514\u2500\u2500 variables.tf"
+  ],
+  "modules": [
+    {
+      "binding_sections": {
+        "assumptions": "advisory",
+        "class_interface": "n/a",
+        "contract": "binding",
+        "schema": "n/a",
+        "sequence": "n/a",
+        "skeleton": "n/a"
+      },
+      "entries": [
+        {
+          "bundle_group": "",
+          "exports": [],
+          "fluid": false,
+          "kind": "dir",
+          "name_policy": "",
+          "path": "src/dataoutbound/common",
+          "presence": "required",
+          "role": "",
+          "template": "common",
+          "text": "Cross-cutting code shared by every component: clients, logging, security, telemetry. Never contains business logic."
+        },
+        {
+          "bundle_group": "",
+          "exports": [],
+          "fluid": false,
+          "kind": "dir",
+          "name_policy": "",
+          "path": "src/dataoutbound/common/clients",
+          "presence": "required",
+          "role": "",
+          "template": "common/clients",
+          "text": "Thin, typed wrappers over external systems; one sub-package per cloud or protocol. The only place SDK clients are constructed; every method maps SDK errors to util.exceptions and logs through the shared logger."
+        },
+        {
+          "bundle_group": "",
+          "exports": [],
+          "fluid": false,
+          "kind": "dir",
+          "name_policy": "",
+          "path": "src/dataoutbound/common/clients/aws",
+          "presence": "optional",
+          "role": "",
+          "template": "common/clients/aws",
+          "text": "AWS service clients built on boto3 with one shared session factory, retries and structured error mapping."
+        },
+        {
+          "bundle_group": "",
+          "exports": [],
+          "fluid": false,
+          "kind": "dir",
+          "name_policy": "",
+          "path": "src/dataoutbound/common/clients/aws/emr",
+          "presence": "optional",
+          "role": "",
+          "template": "common/clients/aws/emr",
+          "text": "EMR Serverless job submission and status polling."
+        },
+        {
+          "bundle_group": "clients",
+          "exports": [
+            "EmrClient"
+          ],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "",
+          "path": "src/dataoutbound/common/clients/aws/emr/emr_client.py",
+          "presence": "required",
+          "role": "",
+          "template": "common/clients/aws/emr/emr_client.py",
+          "text": "EmrClient: start_job_run / get_job_run / cancel with typed job states."
+        },
+        {
+          "bundle_group": "",
+          "exports": [],
+          "fluid": false,
+          "kind": "dir",
+          "name_policy": "",
+          "path": "src/dataoutbound/common/clients/aws/eventbridge",
+          "presence": "optional",
+          "role": "",
+          "template": "common/clients/aws/eventbridge",
+          "text": "Event publishing to the solution event bus."
+        },
+        {
+          "bundle_group": "clients",
+          "exports": [
+            "EventBridgeClient"
+          ],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "",
+          "path": "src/dataoutbound/common/clients/aws/eventbridge/eventbridge_client.py",
+          "presence": "required",
+          "role": "",
+          "template": "common/clients/aws/eventbridge/eventbridge_client.py",
+          "text": "EventBridgeClient: put_events with CloudEvents-shaped detail and batching."
+        },
+        {
+          "bundle_group": "",
+          "exports": [],
+          "fluid": false,
+          "kind": "dir",
+          "name_policy": "",
+          "path": "src/dataoutbound/common/clients/aws/mwaa",
+          "presence": "optional",
+          "role": "",
+          "template": "common/clients/aws/mwaa",
+          "text": "Managed Airflow control operations: trigger, inspect and stop DAG runs."
+        },
+        {
+          "bundle_group": "clients",
+          "exports": [
+            "MwaaClient"
+          ],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "",
+          "path": "src/dataoutbound/common/clients/aws/mwaa/mwaa_client.py",
+          "presence": "required",
+          "role": "",
+          "template": "common/clients/aws/mwaa/mwaa_client.py",
+          "text": "MwaaClient: trigger_dag_run / get_dag_run / cancel via the MWAA CLI token or REST API."
+        },
+        {
+          "bundle_group": "",
+          "exports": [],
+          "fluid": false,
+          "kind": "dir",
+          "name_policy": "",
+          "path": "src/dataoutbound/common/clients/aws/s3",
+          "presence": "optional",
+          "role": "",
+          "template": "common/clients/aws/s3",
+          "text": "Object storage operations (get/put/list/multipart, presigned URLs) for the solution buckets."
+        },
+        {
+          "bundle_group": "clients",
+          "exports": [
+            "S3Client"
+          ],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "",
+          "path": "src/dataoutbound/common/clients/aws/s3/s3_client.py",
+          "presence": "required",
+          "role": "",
+          "template": "common/clients/aws/s3/s3_client.py",
+          "text": "S3Client: upload/download/list/delete with server-side encryption and typed errors."
+        },
+        {
+          "bundle_group": "clients",
+          "exports": [
+            "get_client",
+            "get_resource"
+          ],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "",
+          "path": "src/dataoutbound/common/clients/aws/session.py",
+          "presence": "required",
+          "role": "",
+          "template": "common/clients/aws/session.py",
+          "text": "Single boto3 session/client factory with region, retry and endpoint configuration from ConfigLoader."
+        },
+        {
+          "bundle_group": "",
+          "exports": [],
+          "fluid": false,
+          "kind": "dir",
+          "name_policy": "",
+          "path": "src/dataoutbound/common/clients/aws/sqs",
+          "presence": "optional",
+          "role": "",
+          "template": "common/clients/aws/sqs",
+          "text": "Queue send/receive/delete with visibility and DLQ handling."
+        },
+        {
+          "bundle_group": "clients",
+          "exports": [
+            "SqsClient"
+          ],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "",
+          "path": "src/dataoutbound/common/clients/aws/sqs/sqs_client.py",
+          "presence": "required",
+          "role": "",
+          "template": "common/clients/aws/sqs/sqs_client.py",
+          "text": "SqsClient: send/receive/delete/batch with typed messages."
+        },
+        {
+          "bundle_group": "",
+          "exports": [],
+          "fluid": false,
+          "kind": "dir",
+          "name_policy": "",
+          "path": "src/dataoutbound/common/clients/aws/ssm",
+          "presence": "optional",
+          "role": "",
+          "template": "common/clients/aws/ssm",
+          "text": "Parameter Store access for runtime configuration and secrets references."
+        },
+        {
+          "bundle_group": "clients",
+          "exports": [
+            "SsmClient"
+          ],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "",
+          "path": "src/dataoutbound/common/clients/aws/ssm/ssm_client.py",
+          "presence": "required",
+          "role": "",
+          "template": "common/clients/aws/ssm/ssm_client.py",
+          "text": "SsmClient: get/put parameters by prefix with decryption and caching."
+        },
+        {
+          "bundle_group": "",
+          "exports": [],
+          "fluid": false,
+          "kind": "dir",
+          "name_policy": "",
+          "path": "src/dataoutbound/common/clients/azure",
+          "presence": "optional",
+          "role": "",
+          "template": "common/clients/azure",
+          "text": "Azure service clients (identity, storage) for solutions that read from or deliver to Azure."
+        },
+        {
+          "bundle_group": "clients",
+          "exports": [
+            "BlobClient"
+          ],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "",
+          "path": "src/dataoutbound/common/clients/azure/blob_client.py",
+          "presence": "required",
+          "role": "",
+          "template": "common/clients/azure/blob_client.py",
+          "text": "BlobClient: upload/download/list for Blob Storage / ADLS Gen2 containers with managed identity or SAS."
+        },
+        {
+          "bundle_group": "",
+          "exports": [],
+          "fluid": false,
+          "kind": "dir",
+          "name_policy": "",
+          "path": "src/dataoutbound/common/clients/db",
+          "presence": "optional",
+          "role": "",
+          "template": "common/clients/db",
+          "text": "Relational database access: connection factory, pooled sessions, parameterised queries and transactions."
+        },
+        {
+          "bundle_group": "clients",
+          "exports": [
+            "DbClient"
+          ],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "",
+          "path": "src/dataoutbound/common/clients/db/db_client.py",
+          "presence": "required",
+          "role": "",
+          "template": "common/clients/db/db_client.py",
+          "text": "DbClient: engine/connection from ConfigLoader + secrets, execute/fetch helpers, transaction context manager. Never builds SQL from untrusted strings."
+        },
+        {
+          "bundle_group": "",
+          "exports": [],
+          "fluid": false,
+          "kind": "dir",
+          "name_policy": "",
+          "path": "src/dataoutbound/common/clients/gcp",
+          "presence": "optional",
+          "role": "",
+          "template": "common/clients/gcp",
+          "text": "Google Cloud service clients for solutions that read from or deliver to GCP."
+        },
+        {
+          "bundle_group": "clients",
+          "exports": [
+            "GcsClient"
+          ],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "",
+          "path": "src/dataoutbound/common/clients/gcp/gcs_client.py",
+          "presence": "required",
+          "role": "",
+          "template": "common/clients/gcp/gcs_client.py",
+          "text": "GcsClient: upload/download/list for Cloud Storage buckets with service-account or workload identity."
+        },
+        {
+          "bundle_group": "",
+          "exports": [],
+          "fluid": false,
+          "kind": "dir",
+          "name_policy": "",
+          "path": "src/dataoutbound/common/clients/rest",
+          "presence": "required",
+          "role": "",
+          "template": "common/clients/rest",
+          "text": "Outbound HTTP: one client with timeouts, retries with backoff, correlation-id propagation and typed errors."
+        },
+        {
+          "bundle_group": "clients",
+          "exports": [
+            "RestClient"
+          ],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "",
+          "path": "src/dataoutbound/common/clients/rest/rest_client.py",
+          "presence": "required",
+          "role": "",
+          "template": "common/clients/rest/rest_client.py",
+          "text": "RestClient: get/post/put/delete with timeout, retry, auth header injection and JSON error mapping."
+        },
+        {
+          "bundle_group": "",
+          "exports": [],
+          "fluid": false,
+          "kind": "dir",
+          "name_policy": "",
+          "path": "src/dataoutbound/common/clients/sftp",
+          "presence": "optional",
+          "role": "",
+          "template": "common/clients/sftp",
+          "text": "SFTP transfer to and from partner servers with key-based auth and resumable uploads."
+        },
+        {
+          "bundle_group": "clients",
+          "exports": [
+            "SftpClient"
+          ],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "",
+          "path": "src/dataoutbound/common/clients/sftp/sftp_client.py",
+          "presence": "required",
+          "role": "",
+          "template": "common/clients/sftp/sftp_client.py",
+          "text": "SftpClient: connect (key/password from secrets), upload/download/list with atomic rename on completion."
+        },
+        {
+          "bundle_group": "",
+          "exports": [],
+          "fluid": false,
+          "kind": "dir",
+          "name_policy": "",
+          "path": "src/dataoutbound/common/logging",
+          "presence": "required",
+          "role": "",
+          "template": "common/logging",
+          "text": "Structured JSON logging shared by every component; the only logger factory in the codebase."
+        },
+        {
+          "bundle_group": "core",
+          "exports": [
+            "get_logger"
+          ],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "",
+          "path": "src/dataoutbound/common/logging/logger.py",
+          "presence": "required",
+          "role": "",
+          "template": "common/logging/logger.py",
+          "text": "get_logger(name) returning a structured logger with correlation-id and component fields; level from ConfigLoader; never logs PII or secrets."
+        },
+        {
+          "bundle_group": "",
+          "exports": [],
+          "fluid": false,
+          "kind": "dir",
+          "name_policy": "",
+          "path": "src/dataoutbound/common/security",
+          "presence": "optional",
+          "role": "",
+          "template": "common/security",
+          "text": "Authentication and authorization helpers: token verification, subject extraction, role checks."
+        },
+        {
+          "bundle_group": "core",
+          "exports": [
+            "verify_token",
+            "current_subject",
+            "require_role"
+          ],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "",
+          "path": "src/dataoutbound/common/security/auth.py",
+          "presence": "required",
+          "role": "",
+          "template": "common/security/auth.py",
+          "text": "verify_token / current_subject / require_role helpers over the configured identity provider; raises util.exceptions.AuthError."
+        },
+        {
+          "bundle_group": "",
+          "exports": [],
+          "fluid": false,
+          "kind": "dir",
+          "name_policy": "",
+          "path": "src/dataoutbound/common/telemetry",
+          "presence": "required",
+          "role": "",
+          "template": "common/telemetry",
+          "text": "Audit events, metrics and tracing emitted by every component in one shape."
+        },
+        {
+          "bundle_group": "core",
+          "exports": [
+            "AuditPublisher"
+          ],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "",
+          "path": "src/dataoutbound/common/telemetry/auditor.py",
+          "presence": "required",
+          "role": "",
+          "template": "common/telemetry/auditor.py",
+          "text": "AuditPublisher.publish(event_type, payload) writing CloudEvents-shaped records to the configured sink; never raises into the caller's flow."
+        },
+        {
+          "bundle_group": "",
+          "exports": [],
+          "fluid": false,
+          "kind": "dir",
+          "name_policy": "",
+          "path": "src/dataoutbound/config",
+          "presence": "required",
+          "role": "",
+          "template": "config",
+          "text": "Runtime configuration: the shared base file and the loader that merges it with per-module config and environment overlays."
+        },
+        {
+          "bundle_group": "core",
+          "exports": [],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "",
+          "path": "src/dataoutbound/config/common_config.yaml",
+          "presence": "required",
+          "role": "",
+          "template": "config/common_config.yaml",
+          "text": "Base configuration shared by all modules (logging level, regions, endpoints, retry policy) with dev/staging/prod sections."
+        },
+        {
+          "bundle_group": "core",
+          "exports": [
+            "ConfigLoader",
+            "load_config"
+          ],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "",
+          "path": "src/dataoutbound/config/config_loader.py",
+          "presence": "required",
+          "role": "",
+          "template": "config/config_loader.py",
+          "text": "ConfigLoader: load common_config.yaml + <module>/config.yml, apply the environment section, resolve secret references via common.clients; typed accessors."
+        },
+        {
+          "bundle_group": "",
+          "exports": [],
+          "fluid": false,
+          "kind": "dir",
+          "name_policy": "",
+          "path": "src/dataoutbound/util",
+          "presence": "required",
+          "role": "",
+          "template": "util",
+          "text": "Pure helpers with no I/O: constants, exceptions, idempotency and small utilities."
+        },
+        {
+          "bundle_group": "core",
+          "exports": [],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "",
+          "path": "src/dataoutbound/util/constants.py",
+          "presence": "required",
+          "role": "",
+          "template": "util/constants.py",
+          "text": "Named constants shared across modules (event types, status values, header names). No magic strings elsewhere."
+        },
+        {
+          "bundle_group": "core",
+          "exports": [
+            "LaminarError",
+            "ClientError",
+            "NotFoundError",
+            "ConflictError",
+            "AuthError",
+            "ValidationError"
+          ],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "",
+          "path": "src/dataoutbound/util/exceptions.py",
+          "presence": "required",
+          "role": "",
+          "template": "util/exceptions.py",
+          "text": "Domain exception hierarchy (LaminarError base; ConfigError, ClientError, NotFoundError, ConflictError, AuthError, ValidationError)."
+        },
+        {
+          "bundle_group": "core",
+          "exports": [
+            "IdempotencyKey",
+            "retry"
+          ],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "",
+          "path": "src/dataoutbound/util/idempotency.py",
+          "presence": "required",
+          "role": "",
+          "template": "util/idempotency.py",
+          "text": "IdempotencyKey.build(*parts) and retry/backoff helpers used by APIs, lambdas and DAG tasks."
+        },
+        {
+          "bundle_group": "core",
+          "exports": [],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "",
+          "path": "src/dataoutbound/util/utils.py",
+          "presence": "required",
+          "role": "",
+          "template": "util/utils.py",
+          "text": "Small pure helpers (time formatting, chunking, safe JSON) used by more than one module."
+        },
+        {
+          "bundle_group": "",
+          "exports": [],
+          "fluid": false,
+          "kind": "dir",
+          "name_policy": "",
+          "path": "src/dataoutbound/lambdas",
+          "presence": "required",
+          "role": "",
+          "template": "lambdas",
+          "text": "All serverless function handlers of the solution plus their shared configuration. One module per function."
+        },
+        {
+          "bundle_group": "core",
+          "exports": [],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "fixed",
+          "path": "src/dataoutbound/lambdas/config.yml",
+          "presence": "required",
+          "role": "config",
+          "template": "lambdas/config.yml",
+          "text": "Function configuration per environment (timeouts, batch sizes, destination names, feature flags), loaded through ConfigLoader."
+        },
+        {
+          "bundle_group": "",
+          "exports": [],
+          "fluid": false,
+          "kind": "dir",
+          "name_policy": "",
+          "path": "src/dataoutbound/dags",
+          "presence": "required",
+          "role": "",
+          "template": "dags",
+          "text": "All Airflow / MWAA DAG definitions of the solution plus their shared configuration. Deployed as-is to the DAGs bucket."
+        },
+        {
+          "bundle_group": "core",
+          "exports": [],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "fixed",
+          "path": "src/dataoutbound/dags/config.yml",
+          "presence": "required",
+          "role": "config",
+          "template": "dags/config.yml",
+          "text": "Schedules, retries, SLAs, connection ids and per-DAG parameters per environment, loaded through ConfigLoader."
+        }
+      ],
+      "generation_mode": "module_bundle",
+      "label": "Shared foundation",
+      "module_root": "src/dataoutbound",
+      "module_slug": "",
+      "module_type": "foundation",
+      "node_id": "__foundation__",
+      "service_key": "",
+      "structure_version": 1
+    },
+    {
+      "binding_sections": {
+        "assumptions": "advisory",
+        "class_interface": "binding",
+        "contract": "binding",
+        "schema": "binding",
+        "sequence": "binding",
+        "skeleton": "indicative"
+      },
+      "entries": [
+        {
+          "bundle_group": "",
+          "exports": [],
+          "fluid": false,
+          "kind": "dir",
+          "name_policy": "",
+          "path": "src/dataoutbound/spark_emr",
+          "presence": "required",
+          "role": "",
+          "template": "spark_emr",
+          "text": "All Spark / EMR job modules of the solution; one sub-package per job component."
+        },
+        {
+          "bundle_group": "",
+          "exports": [],
+          "fluid": false,
+          "kind": "dir",
+          "name_policy": "",
+          "path": "src/dataoutbound/spark_emr/export_extract_spark_job",
+          "presence": "required",
+          "role": "",
+          "template": "spark_emr/{module}",
+          "text": "One Spark job: entrypoint, I/O, processors, transforms, configuration and recipes."
+        },
+        {
+          "bundle_group": "",
+          "exports": [],
+          "fluid": false,
+          "kind": "dir",
+          "name_policy": "",
+          "path": "src/dataoutbound/spark_emr/export_extract_spark_job/config",
+          "presence": "required",
+          "role": "",
+          "template": "spark_emr/{module}/config",
+          "text": "Job configuration and declarative recipes."
+        },
+        {
+          "bundle_group": "config",
+          "exports": [],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "fixed",
+          "path": "src/dataoutbound/spark_emr/export_extract_spark_job/config/config.yaml",
+          "presence": "required",
+          "role": "config",
+          "template": "spark_emr/{module}/config/config.yaml",
+          "text": "Job configuration per environment: sources, sinks, Spark conf, recipe directory, PII policy references."
+        },
+        {
+          "bundle_group": "",
+          "exports": [],
+          "fluid": true,
+          "kind": "dir",
+          "name_policy": "",
+          "path": "src/dataoutbound/spark_emr/export_extract_spark_job/config/recipes",
+          "presence": "required",
+          "role": "",
+          "template": "spark_emr/{module}/config/recipes",
+          "text": "Declarative extract/transform recipes (one JSON per product/dataset) interpreted by the processors."
+        },
+        {
+          "bundle_group": "",
+          "exports": [],
+          "fluid": false,
+          "kind": "dir",
+          "name_policy": "",
+          "path": "src/dataoutbound/spark_emr/export_extract_spark_job/helper",
+          "presence": "required",
+          "role": "",
+          "template": "spark_emr/{module}/helper",
+          "text": "Spark runtime helpers (session construction, Spark conf) with no job logic."
+        },
+        {
+          "bundle_group": "infra",
+          "exports": [
+            "get_spark_session"
+          ],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "fixed",
+          "path": "src/dataoutbound/spark_emr/export_extract_spark_job/helper/spark_session_helper.py",
+          "presence": "required",
+          "role": "helper",
+          "template": "spark_emr/{module}/helper/spark_session_helper.py",
+          "text": "get_spark_session(app_name, config) applying Spark conf, Hive/Glue catalog and S3 committer settings."
+        },
+        {
+          "bundle_group": "",
+          "exports": [],
+          "fluid": true,
+          "kind": "dir",
+          "name_policy": "",
+          "path": "src/dataoutbound/spark_emr/export_extract_spark_job/io",
+          "presence": "required",
+          "role": "",
+          "template": "spark_emr/{module}/io",
+          "text": "All reads and writes against external systems, one module per system. No business logic; returns/accepts DataFrames."
+        },
+        {
+          "bundle_group": "io",
+          "exports": [
+            "read_table",
+            "write_table"
+          ],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "semantic",
+          "path": "src/dataoutbound/spark_emr/export_extract_spark_job/io/child_export_golden_entity_source_store_reader.py",
+          "presence": "optional",
+          "role": "reader",
+          "template": "spark_emr/{module}/io/rds_io.py",
+          "text": "JDBC reads (partitioned) and writes against the relational source/sink using credentials from common.clients.db / secrets."
+        },
+        {
+          "bundle_group": "io",
+          "exports": [
+            "read_dataset",
+            "write_dataset"
+          ],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "semantic",
+          "path": "src/dataoutbound/spark_emr/export_extract_spark_job/io/customer_staging_buckets_audit_execution_log_store_writer.py",
+          "presence": "optional",
+          "role": "writer",
+          "template": "spark_emr/{module}/io/s3_io.py",
+          "text": "Read/write Parquet/CSV/JSON datasets on S3 with partitioning and manifest writing."
+        },
+        {
+          "bundle_group": "entry",
+          "exports": [
+            "main",
+            "run"
+          ],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "fixed",
+          "path": "src/dataoutbound/spark_emr/export_extract_spark_job/main.py",
+          "presence": "required",
+          "role": "entrypoint",
+          "template": "spark_emr/{module}/main.py",
+          "text": "Job entrypoint: argument parsing, SparkSession via helper, config/recipe loading, orchestration of processors and I/O, exit codes and audit events."
+        },
+        {
+          "bundle_group": "",
+          "exports": [],
+          "fluid": true,
+          "kind": "dir",
+          "name_policy": "",
+          "path": "src/dataoutbound/spark_emr/export_extract_spark_job/processor",
+          "presence": "required",
+          "role": "",
+          "template": "spark_emr/{module}/processor",
+          "text": "Job step logic: shape inputs, apply business rules (e.g. PII handling, projections), assemble outputs. One processor per concern."
+        },
+        {
+          "bundle_group": "processor",
+          "exports": [
+            "process_input"
+          ],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "semantic",
+          "path": "src/dataoutbound/spark_emr/export_extract_spark_job/processor/export_extract_input_processor.py",
+          "presence": "required",
+          "role": "input_processor",
+          "template": "spark_emr/{module}/processor/input_processor.py",
+          "text": "Validate and normalise the input DataFrames (schema enforcement, type casting, filtering by job parameters)."
+        },
+        {
+          "bundle_group": "processor",
+          "exports": [
+            "process_output"
+          ],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "semantic",
+          "path": "src/dataoutbound/spark_emr/export_extract_spark_job/processor/export_extract_output_processor.py",
+          "presence": "required",
+          "role": "output_processor",
+          "template": "spark_emr/{module}/processor/output_processor.py",
+          "text": "Assemble the final output datasets (ordering, partition columns, manifests, metrics) before I/O writes."
+        },
+        {
+          "bundle_group": "",
+          "exports": [],
+          "fluid": true,
+          "kind": "dir",
+          "name_policy": "",
+          "path": "src/dataoutbound/spark_emr/export_extract_spark_job/transform",
+          "presence": "required",
+          "role": "",
+          "template": "spark_emr/{module}/transform",
+          "text": "Reusable, stateless DataFrame transformers driven by recipe/config; no I/O."
+        },
+        {
+          "bundle_group": "processor",
+          "exports": [
+            "DefaultTransformer"
+          ],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "semantic",
+          "path": "src/dataoutbound/spark_emr/export_extract_spark_job/transform/export_extract_transformer.py",
+          "presence": "required",
+          "role": "transformer",
+          "template": "spark_emr/{module}/transform/default_transformer.py",
+          "text": "Default column mapping / renaming / derivation transformer applied when a recipe names no specific transformer."
+        },
+        {
+          "bundle_group": "",
+          "exports": [],
+          "fluid": false,
+          "kind": "dir",
+          "name_policy": "",
+          "path": "src/dataoutbound/spark_emr/export_extract_spark_job/util",
+          "presence": "required",
+          "role": "",
+          "template": "spark_emr/{module}/util",
+          "text": "Job-local pure helpers and constants."
+        },
+        {
+          "bundle_group": "infra",
+          "exports": [],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "fixed",
+          "path": "src/dataoutbound/spark_emr/export_extract_spark_job/util/constants.py",
+          "presence": "required",
+          "role": "constants",
+          "template": "spark_emr/{module}/util/constants.py",
+          "text": "Job constants (column names, partition keys, status values)."
+        },
+        {
+          "bundle_group": "infra",
+          "exports": [],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "fixed",
+          "path": "src/dataoutbound/spark_emr/export_extract_spark_job/util/file_utils.py",
+          "presence": "required",
+          "role": "helper",
+          "template": "spark_emr/{module}/util/file_utils.py",
+          "text": "Path building, manifest/file naming and small file helpers (no Spark dependency)."
+        }
+      ],
+      "generation_mode": "module_bundle",
+      "label": "Export Extract Spark Job (EMR Serverless)",
+      "module_root": "src/dataoutbound/spark_emr/export_extract_spark_job",
+      "module_slug": "export_extract_spark_job",
+      "module_type": "spark",
+      "node_id": "imp-aws-aws_emr_serverless-5",
+      "service_key": "aws_emr_serverless",
+      "structure_version": 1
+    },
+    {
+      "binding_sections": {
+        "assumptions": "advisory",
+        "class_interface": "binding",
+        "contract": "binding",
+        "schema": "binding",
+        "sequence": "binding",
+        "skeleton": "indicative"
+      },
+      "entries": [
+        {
+          "bundle_group": "",
+          "exports": [],
+          "fluid": false,
+          "kind": "dir",
+          "name_policy": "",
+          "path": "src/dataoutbound/lambdas",
+          "presence": "required",
+          "role": "",
+          "template": "lambdas",
+          "text": "All serverless function handlers of the solution plus their shared configuration. One module per function."
+        },
+        {
+          "bundle_group": "",
+          "exports": [],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "fixed",
+          "path": "src/dataoutbound/lambdas/config.yml",
+          "presence": "required",
+          "role": "config",
+          "template": "lambdas/config.yml",
+          "text": "Function configuration per environment (timeouts, batch sizes, destination names, feature flags), loaded through ConfigLoader."
+        },
+        {
+          "bundle_group": "",
+          "exports": [
+            "lambda_handler"
+          ],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "fixed",
+          "path": "src/dataoutbound/lambdas/egress_lambda.py",
+          "presence": "required",
+          "role": "handler",
+          "template": "lambdas/{module}.py",
+          "text": "lambda_handler plus the function's operations: event parsing with the designed schema, client calls through common.clients, error mapping, audit events."
+        }
+      ],
+      "generation_mode": "single_file",
+      "label": "Egress Lambda",
+      "module_root": "src/dataoutbound/lambdas",
+      "module_slug": "egress_lambda",
+      "module_type": "lambda",
+      "node_id": "imp-aws-aws_lambda-9",
+      "service_key": "aws_lambda",
+      "structure_version": 1
+    },
+    {
+      "binding_sections": {
+        "assumptions": "advisory",
+        "class_interface": "binding",
+        "contract": "binding",
+        "schema": "binding",
+        "sequence": "binding",
+        "skeleton": "indicative"
+      },
+      "entries": [
+        {
+          "bundle_group": "",
+          "exports": [],
+          "fluid": false,
+          "kind": "dir",
+          "name_policy": "",
+          "path": "src/dataoutbound/dags",
+          "presence": "required",
+          "role": "",
+          "template": "dags",
+          "text": "All Airflow / MWAA DAG definitions of the solution plus their shared configuration. Deployed as-is to the DAGs bucket."
+        },
+        {
+          "bundle_group": "",
+          "exports": [],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "fixed",
+          "path": "src/dataoutbound/dags/config.yml",
+          "presence": "required",
+          "role": "config",
+          "template": "dags/config.yml",
+          "text": "Schedules, retries, SLAs, connection ids and per-DAG parameters per environment, loaded through ConfigLoader."
+        },
+        {
+          "bundle_group": "",
+          "exports": [
+            "dag"
+          ],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "fixed",
+          "path": "src/dataoutbound/dags/transform_encrypt_dag.py",
+          "presence": "required",
+          "role": "dag",
+          "template": "dags/{module}.py",
+          "text": "The DAG definition: default_args, schedule from config, tasks in the designed sequence, dependencies, callbacks publishing audit events."
+        }
+      ],
+      "generation_mode": "single_file",
+      "label": "Transform & Encrypt DAG (MWAA)",
+      "module_root": "src/dataoutbound/dags",
+      "module_slug": "transform_encrypt_dag",
+      "module_type": "dag",
+      "node_id": "imp-aws-aws_mwaa_dag-10",
+      "service_key": "aws_mwaa_dag",
+      "structure_version": 1
+    },
+    {
+      "binding_sections": {
+        "assumptions": "advisory",
+        "class_interface": "binding",
+        "contract": "binding",
+        "schema": "binding",
+        "sequence": "binding",
+        "skeleton": "indicative"
+      },
+      "entries": [
+        {
+          "bundle_group": "",
+          "exports": [],
+          "fluid": false,
+          "kind": "dir",
+          "name_policy": "",
+          "path": "src/dataoutbound/dags",
+          "presence": "required",
+          "role": "",
+          "template": "dags",
+          "text": "All Airflow / MWAA DAG definitions of the solution plus their shared configuration. Deployed as-is to the DAGs bucket."
+        },
+        {
+          "bundle_group": "",
+          "exports": [],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "fixed",
+          "path": "src/dataoutbound/dags/config.yml",
+          "presence": "required",
+          "role": "config",
+          "template": "dags/config.yml",
+          "text": "Schedules, retries, SLAs, connection ids and per-DAG parameters per environment, loaded through ConfigLoader."
+        },
+        {
+          "bundle_group": "",
+          "exports": [
+            "dag"
+          ],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "fixed",
+          "path": "src/dataoutbound/dags/export_orchestrator_dag.py",
+          "presence": "required",
+          "role": "dag",
+          "template": "dags/{module}.py",
+          "text": "The DAG definition: default_args, schedule from config, tasks in the designed sequence, dependencies, callbacks publishing audit events."
+        }
+      ],
+      "generation_mode": "single_file",
+      "label": "Export Orchestrator DAG (MWAA)",
+      "module_root": "src/dataoutbound/dags",
+      "module_slug": "export_orchestrator_dag",
+      "module_type": "dag",
+      "node_id": "imp-aws-aws_mwaa_dag-3",
+      "service_key": "aws_mwaa_dag",
+      "structure_version": 1
+    },
+    {
+      "binding_sections": {
+        "assumptions": "advisory",
+        "class_interface": "binding",
+        "contract": "binding",
+        "schema": "binding",
+        "sequence": "binding",
+        "skeleton": "indicative"
+      },
+      "entries": [
+        {
+          "bundle_group": "",
+          "exports": [],
+          "fluid": false,
+          "kind": "dir",
+          "name_policy": "",
+          "path": "src/dataoutbound/dags",
+          "presence": "required",
+          "role": "",
+          "template": "dags",
+          "text": "All Airflow / MWAA DAG definitions of the solution plus their shared configuration. Deployed as-is to the DAGs bucket."
+        },
+        {
+          "bundle_group": "",
+          "exports": [],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "fixed",
+          "path": "src/dataoutbound/dags/config.yml",
+          "presence": "required",
+          "role": "config",
+          "template": "dags/config.yml",
+          "text": "Schedules, retries, SLAs, connection ids and per-DAG parameters per environment, loaded through ConfigLoader."
+        },
+        {
+          "bundle_group": "",
+          "exports": [
+            "dag"
+          ],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "fixed",
+          "path": "src/dataoutbound/dags/child_export_dag.py",
+          "presence": "required",
+          "role": "dag",
+          "template": "dags/{module}.py",
+          "text": "The DAG definition: default_args, schedule from config, tasks in the designed sequence, dependencies, callbacks publishing audit events."
+        }
+      ],
+      "generation_mode": "single_file",
+      "label": "Child Export DAG (MWAA)",
+      "module_root": "src/dataoutbound/dags",
+      "module_slug": "child_export_dag",
+      "module_type": "dag",
+      "node_id": "imp-aws-aws_mwaa_dag-4",
+      "service_key": "aws_mwaa_dag",
+      "structure_version": 1
+    },
+    {
+      "binding_sections": {
+        "assumptions": "advisory",
+        "class_interface": "binding",
+        "contract": "binding",
+        "schema": "binding",
+        "sequence": "binding",
+        "skeleton": "binding"
+      },
+      "entries": [
+        {
+          "bundle_group": "",
+          "exports": [],
+          "fluid": false,
+          "kind": "dir",
+          "name_policy": "",
+          "path": "src/dataoutbound/apis",
+          "presence": "required",
+          "role": "",
+          "template": "apis",
+          "text": "All REST/API modules of the solution; one sub-package per API component plus the shared API configuration."
+        },
+        {
+          "bundle_group": "config",
+          "exports": [],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "fixed",
+          "path": "src/dataoutbound/apis/config.yml",
+          "presence": "required",
+          "role": "config",
+          "template": "apis/config.yml",
+          "text": "API-wide configuration (host, port, CORS, auth issuer, rate limits) per environment, loaded through ConfigLoader."
+        },
+        {
+          "bundle_group": "",
+          "exports": [],
+          "fluid": false,
+          "kind": "dir",
+          "name_policy": "",
+          "path": "src/dataoutbound/apis/export_admin_api",
+          "presence": "required",
+          "role": "",
+          "template": "apis/{module}",
+          "text": "One API component: entrypoint, routes, service, schemas and wiring for a single bounded context."
+        },
+        {
+          "bundle_group": "app",
+          "exports": [
+            "create_app",
+            "app"
+          ],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "fixed",
+          "path": "src/dataoutbound/apis/export_admin_api/app.py",
+          "presence": "required",
+          "role": "entrypoint",
+          "template": "apis/{module}/app.py",
+          "text": "Application factory: creates the app, registers routers and middleware, wires dependencies, exposes health endpoint."
+        },
+        {
+          "bundle_group": "domain",
+          "exports": [],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "fixed",
+          "path": "src/dataoutbound/apis/export_admin_api/dependencies.py",
+          "presence": "required",
+          "role": "dependencies",
+          "template": "apis/{module}/dependencies.py",
+          "text": "Dependency providers: ConfigLoader, AuditPublisher, common.clients instances, current subject (auth); single construction point."
+        },
+        {
+          "bundle_group": "app",
+          "exports": [
+            "router"
+          ],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "semantic",
+          "path": "src/dataoutbound/apis/export_admin_api/export_admin_routes.py",
+          "presence": "required",
+          "role": "routes",
+          "template": "apis/{module}/routes.py",
+          "text": "HTTP route handlers exactly as in the design skeleton (method, path, status codes, auth dependency); delegates to service.py; maps domain exceptions to HTTP errors."
+        },
+        {
+          "bundle_group": "domain",
+          "exports": [],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "semantic",
+          "path": "src/dataoutbound/apis/export_admin_api/export_admin_schemas.py",
+          "presence": "required",
+          "role": "schemas",
+          "template": "apis/{module}/schemas.py",
+          "text": "Request/response and domain models (pydantic) named as in the design document's Schema Definitions."
+        },
+        {
+          "bundle_group": "domain",
+          "exports": [],
+          "fluid": false,
+          "kind": "file",
+          "name_policy": "semantic",
+          "path": "src/dataoutbound/apis/export_admin_api/export_admin_service.py",
+          "presence": "required",
+          "role": "service",
+          "template": "apis/{module}/service.py",
+          "text": "Business operations behind the routes: validation, orchestration of clients, idempotency, audit publishing. No HTTP types."
+        }
+      ],
+      "generation_mode": "module_bundle",
+      "label": "Export Admin API",
+      "module_root": "src/dataoutbound/apis/export_admin_api",
+      "module_slug": "export_admin_api",
+      "module_type": "api",
+      "node_id": "imp-standard-standard_api-1",
+      "service_key": "standard_api",
+      "structure_version": 1
+    }
+  ],
+  "package_root": "dataoutbound",
+  "renames": [],
+  "schema": 1,
+  "source_root": "src/dataoutbound",
+  "structure_versions": {
+    "api": 1,
+    "dag": 1,
+    "foundation": 1,
+    "lambda": 1,
+    "spark": 1,
+    "terraform": 1
+  },
+  "terraform": {
+    "entries": [
+      {
+        "bundle_group": "",
+        "exports": [],
+        "fluid": true,
+        "kind": "dir",
+        "name_policy": "",
+        "path": "terraform",
+        "presence": "required",
+        "role": "",
+        "template": "terraform",
+        "text": "The single Terraform root module of the solution. Infrastructure is grouped by service type, configured per environment through values.yaml."
+      },
+      {
+        "bundle_group": "",
+        "exports": [],
+        "fluid": false,
+        "kind": "file",
+        "name_policy": "",
+        "path": "terraform/main.tf",
+        "presence": "required",
+        "role": "",
+        "template": "terraform/main.tf",
+        "text": "Providers, required versions and locals (cfg = yamldecode(values.yaml)[var.env]). Platform-owned."
+      },
+      {
+        "bundle_group": "",
+        "exports": [],
+        "fluid": false,
+        "kind": "file",
+        "name_policy": "",
+        "path": "terraform/values.yaml",
+        "presence": "required",
+        "role": "",
+        "template": "terraform/values.yaml",
+        "text": "Per-environment values: dev/staging/prod \u2192 resource name \u2192 settings. Merged from component fragments."
+      },
+      {
+        "bundle_group": "",
+        "exports": [],
+        "fluid": false,
+        "kind": "file",
+        "name_policy": "",
+        "path": "terraform/variables.tf",
+        "presence": "required",
+        "role": "",
+        "template": "terraform/variables.tf",
+        "text": "env (dev|staging|prod), project_name and provider region variables. Platform-owned."
+      },
+      {
+        "bundle_group": "",
+        "exports": [],
+        "fluid": false,
+        "kind": "file",
+        "name_policy": "",
+        "path": "terraform/api.tf",
+        "presence": "required",
+        "role": "",
+        "template": "terraform/{service_group}.tf",
+        "text": "All resources of one service type (rds.tf, s3.tf, emr.tf, lambda.tf, mwaa.tf, \u2026), each component in its own marked region."
+      },
+      {
+        "bundle_group": "",
+        "exports": [],
+        "fluid": false,
+        "kind": "file",
+        "name_policy": "",
+        "path": "terraform/blob_store.tf",
+        "presence": "required",
+        "role": "",
+        "template": "terraform/{service_group}.tf",
+        "text": "All resources of one service type (rds.tf, s3.tf, emr.tf, lambda.tf, mwaa.tf, \u2026), each component in its own marked region."
+      },
+      {
+        "bundle_group": "",
+        "exports": [],
+        "fluid": false,
+        "kind": "file",
+        "name_policy": "",
+        "path": "terraform/emr.tf",
+        "presence": "required",
+        "role": "",
+        "template": "terraform/{service_group}.tf",
+        "text": "All resources of one service type (rds.tf, s3.tf, emr.tf, lambda.tf, mwaa.tf, \u2026), each component in its own marked region."
+      },
+      {
+        "bundle_group": "",
+        "exports": [],
+        "fluid": false,
+        "kind": "file",
+        "name_policy": "",
+        "path": "terraform/eventbridge.tf",
+        "presence": "required",
+        "role": "",
+        "template": "terraform/{service_group}.tf",
+        "text": "All resources of one service type (rds.tf, s3.tf, emr.tf, lambda.tf, mwaa.tf, \u2026), each component in its own marked region."
+      },
+      {
+        "bundle_group": "",
+        "exports": [],
+        "fluid": false,
+        "kind": "file",
+        "name_policy": "",
+        "path": "terraform/gcs.tf",
+        "presence": "required",
+        "role": "",
+        "template": "terraform/{service_group}.tf",
+        "text": "All resources of one service type (rds.tf, s3.tf, emr.tf, lambda.tf, mwaa.tf, \u2026), each component in its own marked region."
+      },
+      {
+        "bundle_group": "",
+        "exports": [],
+        "fluid": false,
+        "kind": "file",
+        "name_policy": "",
+        "path": "terraform/lambda.tf",
+        "presence": "required",
+        "role": "",
+        "template": "terraform/{service_group}.tf",
+        "text": "All resources of one service type (rds.tf, s3.tf, emr.tf, lambda.tf, mwaa.tf, \u2026), each component in its own marked region."
+      },
+      {
+        "bundle_group": "",
+        "exports": [],
+        "fluid": false,
+        "kind": "file",
+        "name_policy": "",
+        "path": "terraform/mwaa.tf",
+        "presence": "required",
+        "role": "",
+        "template": "terraform/{service_group}.tf",
+        "text": "All resources of one service type (rds.tf, s3.tf, emr.tf, lambda.tf, mwaa.tf, \u2026), each component in its own marked region."
+      },
+      {
+        "bundle_group": "",
+        "exports": [],
+        "fluid": false,
+        "kind": "file",
+        "name_policy": "",
+        "path": "terraform/rds.tf",
+        "presence": "required",
+        "role": "",
+        "template": "terraform/{service_group}.tf",
+        "text": "All resources of one service type (rds.tf, s3.tf, emr.tf, lambda.tf, mwaa.tf, \u2026), each component in its own marked region."
+      },
+      {
+        "bundle_group": "",
+        "exports": [],
+        "fluid": false,
+        "kind": "file",
+        "name_policy": "",
+        "path": "terraform/redshift.tf",
+        "presence": "required",
+        "role": "",
+        "template": "terraform/{service_group}.tf",
+        "text": "All resources of one service type (rds.tf, s3.tf, emr.tf, lambda.tf, mwaa.tf, \u2026), each component in its own marked region."
+      },
+      {
+        "bundle_group": "",
+        "exports": [],
+        "fluid": false,
+        "kind": "file",
+        "name_policy": "",
+        "path": "terraform/s3.tf",
+        "presence": "required",
+        "role": "",
+        "template": "terraform/{service_group}.tf",
+        "text": "All resources of one service type (rds.tf, s3.tf, emr.tf, lambda.tf, mwaa.tf, \u2026), each component in its own marked region."
+      }
+    ],
+    "node_groups": {
+      "imp-aws-aws_emr_serverless-5": "emr",
+      "imp-aws-aws_eventbridge-2": "eventbridge",
+      "imp-aws-aws_lambda-9": "lambda",
+      "imp-aws-aws_mwaa_dag-10": "mwaa",
+      "imp-aws-aws_mwaa_dag-3": "mwaa",
+      "imp-aws-aws_mwaa_dag-4": "mwaa",
+      "imp-aws-aws_rds-7": "rds",
+      "imp-aws-aws_redshift-6": "redshift",
+      "imp-aws-aws_s3_bucket-15": "s3",
+      "imp-aws-aws_s3_bucket-8": "s3",
+      "imp-azure-blob_store-13": "blob_store",
+      "imp-gcp-gcs-14": "gcs",
+      "imp-standard-standard_api-1": "api"
+    },
+    "resource_names": {
+      "imp-aws-aws_emr_serverless-5": "export_extract_spark_job_emr",
+      "imp-aws-aws_eventbridge-2": "export_scheduler_eventbridge",
+      "imp-aws-aws_lambda-9": "egress_lambda",
+      "imp-aws-aws_mwaa_dag-10": "transform_encrypt_dag_mwaa",
+      "imp-aws-aws_mwaa_dag-3": "export_orchestrator_dag_mwaa",
+      "imp-aws-aws_mwaa_dag-4": "child_export_dag_mwaa",
+      "imp-aws-aws_rds-7": "export_config_store_rds",
+      "imp-aws-aws_redshift-6": "golden_entity_source_store_redshift",
+      "imp-aws-aws_s3_bucket-15": "audit_execution_log_store_s3",
+      "imp-aws-aws_s3_bucket-8": "customer_staging_buckets_s3",
+      "imp-azure-blob_store-13": "customer_azure_blob_destination_blob_store",
+      "imp-gcp-gcs-14": "customer_gcs_destination_gcs",
+      "imp-standard-standard_api-1": "export_admin_api"
+    },
+    "service_groups": [
+      "api",
+      "blob_store",
+      "emr",
+      "eventbridge",
+      "gcs",
+      "lambda",
+      "mwaa",
+      "rds",
+      "redshift",
+      "s3"
+    ],
+    "structure_version": 1
+  },
+  "test_root": "tests"
+}
